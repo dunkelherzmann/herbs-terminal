@@ -76,11 +76,11 @@ public struct SessionToolbar<Actions: View>: View {
                            help: layout == .explorer ? "Show Terminal\nReplace the file explorer with this tab's shell." : "Show File Explorer\nBrowse files on the host this tab is connected to.") {
                         layout = layout == .explorer ? .terminal : .explorer
                     }
-                    button("Toggle Split View", "rectangle.split.2x1",
+                    button("Split View", "rectangle.split.2x1", active: layout == .split, toggle: true,
                            help: "Split View\nShow the shell and the file explorer side by side.") {
                         layout = layout == .split ? .terminal : .split
                     }
-                    button("MultiExec", "square.3.layers.3d", active: multiHostActive,
+                    button("MultiExec", "square.3.layers.3d", active: multiHostActive, toggle: true,
                            help: multiHostActive ? "Exit MultiExec (⇧⌘M)\nBack to one tab at a time; typing goes to the current tab only."
                                                  : "MultiExec (⇧⌘M)\nShow every tab side by side and type into all of them at once.", multiHost)
                     button("Tailcat Peers", "point.3.connected.trianglepath.dotted",
@@ -115,9 +115,12 @@ public struct SessionToolbar<Actions: View>: View {
                         in: RoundedRectangle(cornerRadius: 5))
     }
 
-    private func button(_ title: String, _ symbol: String, active: Bool = false, help: String,
+    /// `toggle` buttons (or any with `active` set) also tell VoiceOver whether they are on.
+    private func button(_ title: String, _ symbol: String, active: Bool = false, toggle: Bool = false, help: String,
                         _ perform: @escaping () -> Void) -> some View {
         Button(action: perform) { glyph(symbol, active: active) }
             .buttonStyle(.plain).hint(help).accessibilityLabel(title)
+            .accessibilityValue(toggle || active ? (active ? "On" : "Off") : "")
+            .accessibilityAddTraits(active ? .isSelected : [])
     }
 }

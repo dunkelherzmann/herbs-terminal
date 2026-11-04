@@ -194,7 +194,7 @@ final class FileClipboard {
 /// Streams files and folders over one SFTP channel. Uploads land under a temporary name and are
 /// renamed into place, so an interrupted upload never leaves a half-written file under the real name.
 struct SFTPTransfer {
-    static let read: UInt32 = 0x01, write: UInt32 = 0x02, create: UInt32 = 0x08, truncate: UInt32 = 0x10
+    static let read: UInt32 = 0x01, write: UInt32 = 0x02, create: UInt32 = 0x08, truncate: UInt32 = 0x10, exclusive: UInt32 = 0x20
     let client: SFTPClient
     var progress: (Int64) -> Void = { _ in }
     var isCancelled: () -> Bool = { false }
@@ -209,11 +209,14 @@ struct SFTPTransfer {
             }
             return
         }
-        let mode = (try? FileManager.default.attributesOfItem(atPath: local.path)[.posixPermissions] as? NSNumber)?.uint32Value ?? 0o644
-        let part = remoteJoin(parentPath(remote), ".\((remote as NSString).lastPathComponent).herbsterminal-part")
+        // No setuid, setgid or sticky bits: an Administrator mode upload must not hand them to root's files.
+        let mode = ((try? FileManager.default.attributesOfItem(atPath: local.path)[.posixPermissions] as? NSNumber)?.uint32Value ?? 0o644) & 0o777
+        // An unguessable name opened exclusively, so nothing planted at that name (a symlink, say) is written through.
+        let tag = UUID().uuidString.prefix(8).lowercased()
+        let part = remoteJoin(parentPath(remote), ".\((remote as NSString).lastPathComponent).\(tag).herbsterminal-part")
         let source = try FileHandle(forReadingFrom: local)
         defer { try? source.close() }
-        let handle = try client.open(part, flags: Self.write | Self.create | Self.truncate, mode: mode)
+        let handle = try client.open(part, flags: Self.write | Self.create | Self.exclusive, mode: mode)
         do {
             var offset: UInt64 = 0
             while let chunk = try source.read(upToCount: 32768), !chunk.isEmpty {
@@ -231,13 +234,15 @@ struct SFTPTransfer {
         }
     }
 
-    func download(_ remote: String, to local: URL) throws {
+    /// `top` is the item the user picked, followed if it's a link. Inside a folder, links to folders are
+    /// skipped so a link such as `loop -> ..` can't recurse forever; links to files copy their contents.
+    func download(_ remote: String, to local: URL, top: Bool = true) throws {
         try checkCancelled()
-        let attributes = try client.stat(remote, follow: true)
+        guard let attributes = try entryAttributes(remote, top: top) else { return }
         if attributes.directory {
             try FileManager.default.createDirectory(at: local, withIntermediateDirectories: false)
             for entry in try client.list(remote) {
-                try download(remoteJoin(remote, entry.name), to: local.appendingPathComponent(entry.name))
+                try download(remoteJoin(remote, entry.name), to: local.appendingPathComponent(entry.name), top: false)
             }
             return
         }
@@ -265,20 +270,23 @@ struct SFTPTransfer {
     }
 
     /// Server-side copy by streaming through this Mac, for Copy then Paste between remote folders.
-    func copy(_ source: String, to target: String) throws {
+    func copy(_ source: String, to target: String, top: Bool = true) throws {
         try checkCancelled()
-        let attributes = try client.stat(source, follow: true)
+        guard let attributes = try entryAttributes(source, top: top) else { return }
         if attributes.directory {
+            let children = try client.list(source)
             try client.mkdir(target)
-            for entry in try client.list(source) {
-                try copy(remoteJoin(source, entry.name), to: remoteJoin(target, entry.name))
+            for entry in children {
+                try copy(remoteJoin(source, entry.name), to: remoteJoin(target, entry.name), top: false)
             }
             return
         }
         let input = try client.open(source, flags: Self.read)
         defer { try? client.close(input) }
-        let output = try client.open(target, flags: Self.write | Self.create | Self.truncate, mode: (attributes.mode ?? 0o644) & 0o777)
-        defer { try? client.close(output) }
+        // The target is always a new name; opening it exclusively never writes through something already there.
+        let output = try client.open(target, flags: Self.write | Self.create | Self.exclusive, mode: (attributes.mode ?? 0o644) & 0o777)
+        var closed = false
+        defer { if !closed { try? client.close(output) } }
         var offset: UInt64 = 0
         while true {
             try checkCancelled()
@@ -288,6 +296,16 @@ struct SFTPTransfer {
             offset += UInt64(chunk.count)
             progress(Int64(chunk.count))
         }
+        // Some servers report a full disk or quota only when the file is closed.
+        closed = true
+        try client.close(output)
+    }
+
+    private func entryAttributes(_ path: String, top: Bool) throws -> RemoteAttributes? {
+        let own = try client.stat(path, follow: top)
+        guard !top, own.link else { return own }
+        let target = try client.stat(path, follow: true)
+        return target.directory ? nil : target
     }
 
     /// Deletes a remote file or folder tree. SFTP only removes empty folders, so children go first.

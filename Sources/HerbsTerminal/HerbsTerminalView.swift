@@ -123,16 +123,21 @@ final class HerbsTerminalView: LocalProcessTerminalView {
         }
     }
 
+    private var lastFlash = Date.distantPast
+
+    /// At most two flashes a second (WCAG 2.3.1), and a gentler, slower fade with Reduce Motion.
     private func flash() {
+        guard Date().timeIntervalSince(lastFlash) >= 0.5 else { return }
+        lastFlash = Date()
         let overlay = NSView(frame: bounds)
         overlay.wantsLayer = true
         overlay.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.25).cgColor
         overlay.autoresizingMask = [.width, .height]
         addSubview(overlay)
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.18
+            context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0.35 : 0.18
             overlay.animator().alphaValue = 0
-        }, completionHandler: { overlay.removeFromSuperview() })
+        }, completionHandler: { MainActor.assumeIsolated { overlay.removeFromSuperview() } })
     }
 
     // MARK: Drag and drop

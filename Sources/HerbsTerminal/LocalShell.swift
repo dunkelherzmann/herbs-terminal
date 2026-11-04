@@ -84,7 +84,7 @@ final class LocalShell: ObservableObject, Identifiable {
         guard group > 0, group != view.process.shellPid else { return nil }
         var name = [CChar](repeating: 0, count: 256)
         guard proc_name(group, &name, UInt32(name.count)) > 0 else { return nil }
-        return String(cString: name)
+        return String(decoding: name.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }
 
     func close() {

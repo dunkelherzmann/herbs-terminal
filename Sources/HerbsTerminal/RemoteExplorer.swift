@@ -23,7 +23,10 @@ final class RemoteExplorerViewModel: ObservableObject {
 
     /// Administrator mode: every listing and action uses this one root session, one at a time.
     private let shared: SFTPClient?
+    /// Guards the channel listings share: one SFTP channel answers one request at a time.
     private let sharedLock = NSLock()
+    /// Counts listings so one that finishes after a newer one started is dropped.
+    private var loadGeneration = 0
     var isAdministrator: Bool { shared != nil }
 
     init(endpoint: RemoteEndpoint, service: (any RemoteFileService)? = nil,
@@ -46,13 +49,15 @@ final class RemoteExplorerViewModel: ObservableObject {
     }
 
     func load(path: String) async {
+        loadGeneration += 1
+        let generation = loadGeneration
         currentPath = path
         isLoading = true
         errorMessage = nil
 
         let svc = self.service
         let hidden = self.showHidden
-        let lock = shared == nil ? nil : sharedLock
+        let lock = sharedLock
 
         do {
             let items = try await Task.detached {
@@ -74,12 +79,12 @@ final class RemoteExplorerViewModel: ObservableObject {
                 }
             }.value
 
-            if !Task.isCancelled {
+            if !Task.isCancelled, generation == loadGeneration {
                 self.entries = items
                 self.isLoading = false
             }
         } catch {
-            if !Task.isCancelled {
+            if !Task.isCancelled, generation == loadGeneration {
                 self.errorMessage = error.localizedDescription
                 self.isLoading = false
             }
@@ -195,6 +200,10 @@ final class RemoteExplorerViewModel: ObservableObject {
                 try await withClient { client in
                     let transfer = SFTPTransfer(client: client)
                     for path in paths {
+                        let source = normalizePath(path), target = normalizePath(folder)
+                        guard target != source, !target.hasPrefix(source + "/") else {
+                            throw FileIssue("“\((path as NSString).lastPathComponent)” can't be copied into itself.")
+                        }
                         try transfer.copy(path, to: try transfer.destination(for: (path as NSString).lastPathComponent, in: folder))
                     }
                 }
@@ -328,6 +337,7 @@ struct RemoteExplorer: View {
                     Label("Bookmark", systemImage: bookmarks.contains(normalizePath(currentPath)) ? "bookmark.fill" : "bookmark")
                 }
                 .keyboardShortcut("d", modifiers: [.command, .option])
+                .accessibilityValue(bookmarks.contains(normalizePath(currentPath)) ? "On" : "Off")
                 .hint(bookmarks.contains(normalizePath(currentPath)) ? "Remove Bookmark (⌥⌘D)\nTake this folder out of the side pane's Bookmarks."
                                                                      : "Bookmark This Folder (⌥⌘D)\nAdd it to this host's Bookmarks in the side pane.")
                 if let administratorToggle {
@@ -335,6 +345,7 @@ struct RemoteExplorer: View {
                         Label("Administrator mode", systemImage: isAdministrator ? "lock.open.fill" : "lock")
                             .foregroundStyle(isAdministrator ? Color.red : Color.primary)
                     }
+                    .accessibilityValue(isAdministrator ? "On" : "Off")
                     .hint(isAdministrator ? "Leave Administrator Mode\nGo back to working with your own account's access."
                                           : "Administrator Mode\nWork as root with sudo: open and change any file. Asks for the sudo password.")
                 }

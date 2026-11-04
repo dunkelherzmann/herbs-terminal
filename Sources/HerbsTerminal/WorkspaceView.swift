@@ -354,12 +354,17 @@ final class Workspace: ObservableObject {
     private static func watch(_ tab: TerminalTab, _ endpoint: RemoteEndpoint) async {
         let started = Date()
         var connected = false
-        while !Task.isCancelled {
-            try? await Task.sleep(for: .milliseconds(connected ? 2000 : 500))
+        // Closing the pane cancels this and may hand the tab to another pane; nothing after that may touch it.
+        let shell = tab.shell
+        var current: Bool { !Task.isCancelled && tab.shell === shell }
+        while current {
+            do { try await Task.sleep(for: .milliseconds(connected ? 2000 : 500)) } catch { return }
             let up = await Task.detached { SSHControl.isConnected(endpoint) }.value
+            guard current else { return }
             if up && !connected {
                 connected = true
                 let home = await Task.detached { (try? SFTPClient(endpoint: endpoint).canonical(".")) ?? "/" }.value
+                guard current else { return }
                 tab.state.remoteViewModel = RemoteExplorerViewModel(endpoint: endpoint)
                 tab.state.remoteDirectory = home
                 tab.state.remoteHistory = NavigationHistory(home)
@@ -454,7 +459,7 @@ final class Workspace: ObservableObject {
         } else {
             return
         }
-        window.setFrame(frame, display: true, animate: true)
+        window.setFrame(frame, display: true, animate: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     }
 
     /// Double-click on the title: the window goes back to the default size (doubled in Split View, as
@@ -471,7 +476,7 @@ final class Workspace: ObservableObject {
         if frame.maxX > screen.maxX { frame.origin.x = max(screen.minX, screen.maxX - frame.width) }
         if frame.minY < screen.minY { frame.origin.y = screen.minY }
         splitWidthAdded = split ? width - profile.windowWidth : 0
-        window.setFrame(frame, display: true, animate: true)
+        window.setFrame(frame, display: true, animate: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     }
 
     /// Right-click on the title: the current window size (a single pane's width in Split View) and the
@@ -517,7 +522,7 @@ struct WorkspaceView: View {
     }
     var body: some View {
         ActiveWorkspace(workspace: workspace, state: workspace.selected.state, legend: workspace.selected.shell.legend)
-            .onDisappear { workspace.tabs.forEach { $0.shell.close() } }
+            .onDisappear { workspace.tabs.forEach { $0.shells.forEach { $0.close() } } }
     }
 }
 
@@ -734,8 +739,10 @@ struct WindowAccessor: NSViewRepresentable {
 
 /// Sits in front of SwiftUI's window delegate to ask before closing a window with running processes,
 /// as Terminal does, and forwards every other delegate message unchanged.
+@MainActor
 final class WindowCloseGuard: NSObject, NSWindowDelegate {
-    private weak var original: NSWindowDelegate?
+    // AppKit asks responds(to:) and forwardingTarget(for:) from nonisolated overrides, always on the main thread.
+    nonisolated(unsafe) private weak var original: NSWindowDelegate?
     private weak var workspace: Workspace?
 
     init(window: NSWindow, workspace: Workspace) {
@@ -748,7 +755,7 @@ final class WindowCloseGuard: NSObject, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if original?.windowShouldClose?(sender) == false { return false }
         guard let workspace else { return true }
-        return MainActor.assumeIsolated { Workspace.confirmClosing(workspace.tabs, scope: "this window") }
+        return Workspace.confirmClosing(workspace.tabs, scope: "this window")
     }
 
     override func responds(to selector: Selector!) -> Bool {
@@ -768,7 +775,12 @@ private struct TabChip: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Button(item.title) { workspace.selected = item }
+            Button { workspace.selected = item } label: {
+                // Selection shows in weight too, not only in the faint background colour.
+                Text(item.title).fontWeight(selected ? .semibold : .regular)
+            }
+                .accessibilityLabel(item.title)
+                .accessibilityAddTraits(selected ? .isSelected : [])
                 .simultaneousGesture(TapGesture(count: 2).onEnded { workspace.rename(item) })
                 .hint("\(item.title)\nClick to switch, double-click to rename, drag to reorder.")
             Button { workspace.close(item) } label: { Image(systemName: "xmark") }
@@ -914,6 +926,7 @@ private struct MultiExecCaption: View {
         HStack(spacing: 6) {
             Toggle("", isOn: Binding(get: { included }, set: { workspace.setIncluded(shell, $0) }))
                 .toggleStyle(.checkbox).labelsHidden()
+                .accessibilityLabel("Include \(number). \(paneTitle) in MultiExec")
                 .hint(included ? "Included\nTyping in MultiExec goes to this terminal. Uncheck to leave it out."
                                : "Left out\nThis terminal only takes what you type into it. Check to include it.")
             Image(systemName: { if shell === tab.shell, case .connected = tab.state.connection { "network" } else { "terminal" } }())

@@ -114,7 +114,13 @@ final class TerminalProfile: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        var loaded = defaults.data(forKey: "terminalProfiles").flatMap { try? JSONDecoder().decode([NamedProfile].self, from: $0) } ?? []
+        let stored = defaults.data(forKey: "terminalProfiles")
+        var loaded = stored.flatMap { try? JSONDecoder().decode([NamedProfile].self, from: $0) } ?? []
+        if let stored, loaded.isEmpty {
+            // Saving below replaces what couldn't be read; keep a copy instead of losing the profiles.
+            defaults.set(stored, forKey: "terminalProfiles.unreadable-\(Int(Date().timeIntervalSince1970))")
+            NSLog("Herb's Terminal: saved profiles couldn't be read; a copy was kept and Basic starts fresh.")
+        }
         if loaded.isEmpty { loaded = [NamedProfile(name: "Basic", settings: Self.legacySettings(defaults))] }
         profiles = loaded
         let savedDefault = defaults.string(forKey: "defaultProfileID").flatMap(UUID.init(uuidString:))
@@ -244,7 +250,7 @@ final class TerminalProfile: ObservableObject {
 
 extension ProfileSettings {
     /// A see-through terminal needs a non-opaque window; an opaque one keeps the cheaper default.
-    func applyTransparency(to window: NSWindow) {
+    @MainActor func applyTransparency(to window: NSWindow) {
         window.isOpaque = !isTranslucent
         window.backgroundColor = isTranslucent ? .clear : .windowBackgroundColor
     }

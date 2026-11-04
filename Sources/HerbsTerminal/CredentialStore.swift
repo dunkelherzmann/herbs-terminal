@@ -37,6 +37,10 @@ enum LoginProtection: String {
 final class CredentialStore: ObservableObject {
     static let opened = Result { try CredentialStore() }
     static var shared: CredentialStore? { try? opened.get() }
+    /// Stands in when the login database can't be opened: kept in memory only, never written anywhere.
+    static func unavailable() -> CredentialStore {
+        try! CredentialStore(databaseURL: URL(fileURLWithPath: ":memory:"), vault: CryptoVault(keyProvider: StaticKeyProvider(key: .init(size: .bits256))))
+    }
     /// Only for a database that can't be opened at all; locked logins are reported by `isLocked`.
     static var unavailableReason: String? {
         if case .failure(let error) = opened { error.localizedDescription } else { nil }
@@ -65,10 +69,8 @@ final class CredentialStore: ObservableObject {
         if let databaseURL {
             fileURL = databaseURL
         } else {
-            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-                .appendingPathComponent("Herb's Terminal", isDirectory: true)
-            try FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
-            fileURL = appSupport.appendingPathComponent("logins.sqlite3")
+            try FileManager.default.createDirectory(at: RenameMigration.supportFolder(), withIntermediateDirectories: true)
+            fileURL = RenameMigration.loginDatabase()
         }
 
         var dbPointer: OpaquePointer?
@@ -285,6 +287,18 @@ final class CredentialStore: ObservableObject {
             payload = try vault.encrypt(login.password)
         } else {
             payload = EncryptedPayload(ciphertext: Data(login.password.utf8), nonce: Data(), tag: Data())
+        }
+        // Host names ignore case, as `SSHLogin.id` does; the newest spelling replaces any other.
+        var clear: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "DELETE FROM logins WHERE LOWER(host) = LOWER(?1) AND host <> ?1 AND port = ?2 AND username = ?3;", -1, &clear, nil) == SQLITE_OK else {
+            throw StoreError("Failed to prepare save: \(String(cString: sqlite3_errmsg(db)))")
+        }
+        defer { sqlite3_finalize(clear) }
+        sqlite3_bind_text(clear, 1, (login.host as NSString).utf8String, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_int(clear, 2, Int32(login.port))
+        sqlite3_bind_text(clear, 3, (login.username as NSString).utf8String, -1, SQLITE_TRANSIENT)
+        guard sqlite3_step(clear) == SQLITE_DONE else {
+            throw StoreError("Failed to save login: \(String(cString: sqlite3_errmsg(db)))")
         }
         let sql = """
         INSERT INTO logins (host, port, username, ciphertext, nonce, tag, scheme)

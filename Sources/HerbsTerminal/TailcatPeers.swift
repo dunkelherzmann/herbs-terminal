@@ -60,7 +60,16 @@ final class TailcatPeerStore: ObservableObject {
         self.secrets = secrets
         self.file = file ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("HerbsTerminal/tailcat-peers.json")
-        peers = (try? JSONDecoder().decode([TailcatPeer].self, from: Data(contentsOf: self.file))) ?? []
+        if let data = try? Data(contentsOf: self.file) {
+            if let decoded = try? JSONDecoder().decode([TailcatPeer].self, from: data) {
+                peers = decoded
+            } else {
+                // The next save would replace it; set the unreadable file aside instead.
+                let aside = self.file.deletingPathExtension().appendingPathExtension("unreadable-\(Int(Date().timeIntervalSince1970)).json")
+                try? FileManager.default.moveItem(at: self.file, to: aside)
+                NSLog("Herb's Terminal: saved Tailcat peers couldn't be read; kept at \(aside.lastPathComponent).")
+            }
+        }
     }
 
     func add(name: String, username: String, address: String, persistent: Bool) throws {

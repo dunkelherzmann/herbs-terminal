@@ -257,7 +257,7 @@ func hasChildProcess(of pid: pid_t, named name: String) -> Bool {
     for child in children where child > 0 {
         var buffer = [CChar](repeating: 0, count: 256)
         proc_name(child, &buffer, UInt32(buffer.count))
-        if String(cString: buffer) == name { return true }
+        if String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self) == name { return true }
     }
     return false
 }

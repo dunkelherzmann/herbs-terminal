@@ -18,7 +18,7 @@ final class SSHConnectViewModel: ObservableObject {
     /// Set when the login database couldn't be opened; saving is then disabled, never redirected.
     let lockedReason: String? = CredentialStore.unavailableReason
 
-    init(store: CredentialStore = .shared ?? (try! CredentialStore(databaseURL: URL(fileURLWithPath: "/tmp/fallback.db"), vault: CryptoVault(keyProvider: StaticKeyProvider(key: .init(size: .bits256)))))) {
+    init(store: CredentialStore = .shared ?? .unavailable()) {
         self.store = store
     }
 
@@ -56,7 +56,11 @@ final class SSHConnectViewModel: ObservableObject {
 
     func exportCSV(to url: URL) throws {
         let data = try store.exportCSV()
-        try data.write(to: url, options: .atomic)
+        // The export holds passwords: readable by this account only, from the moment it exists.
+        try? FileManager.default.removeItem(at: url)
+        guard FileManager.default.createFile(atPath: url.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
+            throw FileIssue("Couldn't write \(url.lastPathComponent).")
+        }
     }
 }
 
@@ -286,6 +290,7 @@ struct SSHConnectView: View {
                         Image(systemName: "chevron.down").font(.caption2)
                     }
                 }
+                .disabled(viewModel.lockedReason != nil)
                 .hint("Manage Logins\nSet the Administrator Password, or import and export login data (host,port,username,password).")
 
                 Spacer()

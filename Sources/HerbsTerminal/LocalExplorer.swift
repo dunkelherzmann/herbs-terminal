@@ -65,7 +65,7 @@ enum LocalPlaces {
                                                           options: [.skipHiddenVolumes]) ?? []
         return urls.filter { $0.path != "/" }.map { url in
             let name = (try? url.resourceValues(forKeys: [.volumeLocalizedNameKey]).volumeLocalizedName) ?? url.lastPathComponent
-            return Place(name: name ?? url.lastPathComponent, symbol: "externaldrive", path: url.path)
+            return Place(name: name, symbol: "externaldrive", path: url.path)
         }
     }
 }
@@ -110,6 +110,7 @@ struct LocalExplorer: View {
                         Label("Bookmark", systemImage: bookmarks.contains(path) ? "bookmark.fill" : "bookmark")
                     }
                     .keyboardShortcut("d", modifiers: [.command, .option])
+                .accessibilityValue(bookmarks.contains(path) ? "On" : "Off")
                     .hint(bookmarks.contains(path) ? "Remove Bookmark (⌥⌘D)\nTake this folder out of the side pane's Bookmarks."
                                                    : "Bookmark This Folder (⌥⌘D)\nAdd it to the side pane's Bookmarks.")
                     if let administratorToggle {
@@ -117,6 +118,7 @@ struct LocalExplorer: View {
                             Label("Administrator mode", systemImage: isAdministrator ? "lock.open.fill" : "lock")
                                 .foregroundStyle(isAdministrator ? Color.red : Color.primary)
                         }
+                        .accessibilityValue(isAdministrator ? "On" : "Off")
                         .hint(isAdministrator ? "Leave Administrator Mode\nGo back to working with your own account's access."
                                               : "Administrator Mode\nWork as root with sudo: open and change any file. Asks for the sudo password.")
                     }

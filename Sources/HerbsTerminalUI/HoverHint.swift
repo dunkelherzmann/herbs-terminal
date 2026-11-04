@@ -20,7 +20,8 @@ private struct HoverHint: ViewModifier {
             }
             .simultaneousGesture(TapGesture().onEnded { HintBubble.shared.hide(nil) })
             .onDisappear { HintBubble.shared.hide(text) }
-            .accessibilityHint(text)
+            // The first line repeats the control's name, which VoiceOver already reads.
+            .accessibilityHint(text.split(separator: "\n", maxSplits: 1).last.map(String.init) ?? text)
     }
 }
 
