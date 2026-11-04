@@ -70,6 +70,7 @@ func theFallbackStoreWorksInMemoryOnly() throws {
     let fallback = CredentialStore.unavailable()
     try fallback.save(SSHLogin(host: "h", port: 22, username: "u", password: "p"))
     #expect(fallback.logins.count == 1)
+    #expect(!FileManager.default.fileExists(atPath: FileManager.default.currentDirectoryPath + "/:memory:"))
 }
 
 @Test

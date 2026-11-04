@@ -74,12 +74,14 @@ final class CredentialStore: ObservableObject {
         }
 
         var dbPointer: OpaquePointer?
-        if sqlite3_open_v2(fileURL.path, &dbPointer, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) != SQLITE_OK {
+        // SQLite's in-memory database is named by the bare string; a file URL would make it a real file.
+        let path = fileURL.lastPathComponent == ":memory:" ? ":memory:" : fileURL.path
+        if sqlite3_open_v2(path, &dbPointer, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) != SQLITE_OK {
             let errorMsg = dbPointer.flatMap { String(cString: sqlite3_errmsg($0)) } ?? "Unknown error"
             throw StoreError("Unable to open credentials database: \(errorMsg)")
         }
         self.db = dbPointer
-        chmod(fileURL.path, 0o600)
+        if path != ":memory:" { chmod(path, 0o600) }
 
         try createTable()
         if vault != nil {
