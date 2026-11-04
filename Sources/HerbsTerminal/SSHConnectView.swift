@@ -83,27 +83,33 @@ struct SSHConnectView: View {
                         Text(item.label).tag(item.id as SSHLogin.ID?)
                     }
                 }
+                .help("Saved Logins\nFill in host, port, username and password from the encrypted login store.")
             }
 
             Form {
                 TextField("Host or IP Address:", text: $viewModel.host)
                     .textFieldStyle(.roundedBorder)
+                    .help("Host\nThe server's name, IP address or ~/.ssh/config alias.")
 
                 HStack {
                     TextField("Port:", value: $viewModel.port, format: .number)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 80)
+                        .help("Port\nThe server's SSH port; usually 22.")
                     Spacer()
                 }
 
                 TextField("Username:", text: $viewModel.username)
                     .textFieldStyle(.roundedBorder)
+                    .help("Username\nThe account to sign in as on the server.")
 
                 SecureField("Password:", text: $viewModel.password)
                     .textFieldStyle(.roundedBorder)
+                    .help("Password\nLeave empty to use your SSH keys or agent.")
 
                 Toggle("Save credentials to encrypted store", isOn: $viewModel.saveToLogins)
                     .padding(.top, 4)
+                    .help("Save credentials\nKeep this login in HerbsTerminal's encrypted store for next time.")
             }
 
             if let error = viewModel.errorMessage {
@@ -117,11 +123,13 @@ struct SSHConnectView: View {
                     Button("Import CSV…") { importCSV() }
                     Button("Export CSV…") { viewModel.showingExportConfirm = true }
                 }
+                .help("CSV Logins\nImport or export saved logins as host,port,username,password.")
 
                 Spacer()
 
                 Button("Cancel", role: .cancel) { onDismiss() }
                     .keyboardShortcut(.cancelAction)
+                    .help("Cancel (Esc)\nClose without connecting.")
 
                 Button("Connect") {
                     do {
@@ -134,6 +142,7 @@ struct SSHConnectView: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
+                .help("Connect (Return)\nOpen the remote shell in this tab; the explorer follows the host.")
             }
         }
         .padding(20)

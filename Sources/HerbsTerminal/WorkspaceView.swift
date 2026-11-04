@@ -35,9 +35,20 @@ final class Workspace: ObservableObject {
         let ep = RemoteEndpoint(host: login.host, port: login.port, username: login.username)
         tab.state.endpoint = .remote(ep)
         tab.state.remoteDirectory = "/"
+        tab.state.remoteHistory = NavigationHistory("/")
         tab.state.remoteViewModel = RemoteExplorerViewModel(endpoint: ep)
         tab.shell.connectSSH(login)
     }
+
+    /// Bigger / Smaller like Terminal's View menu: this tab only, until Default Font Size or a profile change.
+    func zoom(_ delta: CGFloat) {
+        let view = selected.shell.view
+        let range = TerminalProfile.sizeRange
+        let size = min(range.upperBound, max(range.lowerBound, Double(view.font.pointSize) + Double(delta)))
+        view.font = NSFontManager.shared.convert(view.font, toSize: CGFloat(size))
+    }
+
+    func resetZoom() { selected.shell.view.font = TerminalProfile.shared.font }
 
     func close(_ tab: TerminalTab) {
         guard tabs.count > 1, let index = tabs.firstIndex(where: { $0 === tab }) else { return }
@@ -69,44 +80,16 @@ private struct ActiveWorkspace: View {
     var body: some View {
         let tab = workspace.selected
         VStack(spacing: 0) {
-            SessionToolbar(layout: $state.layout, title: legend.title, subtitle: legend.subtitle,
-                           newTab: workspace.add,
-                           multiHost: { tab.state.notice = "Multi-host commands" },
-                           tailcat: { tab.state.notice = "Tailcat pairing" },
-                           remoteControl: { tab.state.notice = "Remote control" },
-                           search: { tab.state.find() }) {
-                Button("New Tab", action: workspace.add)
-                Button("New Window") { openWindow(id: "session") }
-                Button("Connect via SSH…") { workspace.showingSSHConnect = true }
-                    .keyboardShortcut("k", modifiers: [.command])
-                Menu("Open Tabs") {
-                    ForEach(workspace.tabs) { item in
-                        Button("Terminal \(item.number)") { workspace.selected = item }
-                    }
-                }
-                Divider()
-                Button("Find in Terminal…") { tab.state.find() }
-                Menu("Zoom") {
-                    Button("Zoom In") { zoom(1) }
-                    Button("Zoom Out") { zoom(-1) }
-                    Button("Actual Size") { tab.shell.view.font = TerminalTypeface.regular }
-                }
-                ThemeMenu()
-                Picker("Appearance", selection: $appearance) {
-                    ForEach(["System", "Light", "Dark"], id: \.self) { Text($0) }
-                }
-                Button("Toggle Full Screen") { NSApp.keyWindow?.toggleFullScreen(nil) }
-                Divider()
-                Button("About HerbsTerminal") { NSApp.orderFrontStandardAboutPanel(nil) }
-            }
             if workspace.tabs.count > 1 {
                 ScrollView(.horizontal) {
                     HStack {
                         ForEach(workspace.tabs) { item in
                             HStack(spacing: 6) {
                                 Button("Terminal \(item.number)") { workspace.selected = item }
+                                    .help("Terminal \(item.number)\nSwitch to this tab's shell and explorer.")
                                 Button { workspace.close(item) } label: { Image(systemName: "xmark") }
                                     .accessibilityLabel("Close Terminal \(item.number)")
+                                    .help("Close Terminal \(item.number)\nEnd this tab's shell and release its resources.")
                             }
                             .padding(6).background(item === tab ? Color.accentColor.opacity(0.18) : .clear,
                                                    in: RoundedRectangle(cornerRadius: 4))
@@ -115,6 +98,42 @@ private struct ActiveWorkspace: View {
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
             SessionView(state: tab.state, shell: tab.shell).id(tab.id)
+        }
+        // The toolbar sits in the titlebar as a safe-area inset, so content below sees exactly its height
+        // as the top inset; a leftover titlebar inset made sidebars and fills paint over the toolbar.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            SessionToolbar(layout: $state.layout, title: legend.title, subtitle: legend.subtitle,
+                           newTab: workspace.add,
+                           connect: { workspace.showingSSHConnect = true },
+                           multiHost: { tab.state.notice = "Multi-host commands" },
+                           tailcat: { tab.state.notice = "Tailcat pairing" },
+                           remoteControl: { tab.state.notice = "Remote control" },
+                           search: { tab.state.find() }) {
+                Button("New Tab", action: workspace.add).help("Open another local terminal in this window.")
+                Button("New Window") { openWindow(id: "session") }.help("Open a new HerbsTerminal window.")
+                Button("Connect via SSH…") { workspace.showingSSHConnect = true }
+                    .help("Open a remote shell in this tab (⌘K).")
+                Menu("Open Tabs") {
+                    ForEach(workspace.tabs) { item in
+                        Button("Terminal \(item.number)") { workspace.selected = item }
+                    }
+                }
+                Divider()
+                Button("Find in Terminal…") { tab.state.findInTerminal() }.help("Search this tab's scrollback.")
+                Menu("Zoom") {
+                    Button("Bigger") { workspace.zoom(1) }.help("Larger text in this tab (⌘+).")
+                    Button("Smaller") { workspace.zoom(-1) }.help("Smaller text in this tab (⌘−).")
+                    Button("Default Font Size") { workspace.resetZoom() }.help("Back to the Settings font size (⌘0).")
+                }
+                ThemeMenu()
+                Picker("Appearance", selection: $appearance) {
+                    ForEach(["System", "Light", "Dark"], id: \.self) { Text($0) }
+                }
+                Button("Toggle Full Screen") { NSApp.keyWindow?.toggleFullScreen(nil) }.help("Fill the screen with this window.")
+                Divider()
+                SettingsLink { Text("Settings…") }.help("Font, size, cursor, window size and color themes (⌘,).")
+                Button("About HerbsTerminal") { NSApp.orderFrontStandardAboutPanel(nil) }
+            }
         }
         .task(id: tab.id) {
             while !Task.isCancelled {
@@ -134,14 +153,22 @@ private struct ActiveWorkspace: View {
                 }
             )
         }
+        .focusedSceneValue(\.workspace, workspace)
         .ignoresSafeArea(.container, edges: .top)
         .preferredColorScheme(appearance == "System" ? nil : appearance == "Dark" ? .dark : .light)
 
     }
 
-    private func zoom(_ delta: CGFloat) {
-        let view = workspace.selected.shell.view
-        let size = min(40, max(6, view.font.pointSize + delta))
-        view.font = NSFontManager.shared.convert(view.font, toSize: size)
+
+}
+
+struct WorkspaceFocusKey: FocusedValueKey {
+    typealias Value = Workspace
+}
+
+extension FocusedValues {
+    var workspace: Workspace? {
+        get { self[WorkspaceFocusKey.self] }
+        set { self[WorkspaceFocusKey.self] = newValue }
     }
 }

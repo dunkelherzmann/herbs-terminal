@@ -3,10 +3,13 @@ import SwiftUI
 @main
 struct HerbsTerminalApp: App {
     @NSApplicationDelegateAdaptor(LaunchDelegate.self) private var delegate
+    @ObservedObject private var profile = TerminalProfile.shared
     var body: some Scene {
         WindowGroup("HerbsTerminal", id: "session") { WorkspaceView() }
             .windowStyle(.hiddenTitleBar)
-            .defaultSize(width: 960, height: 580)
+            .defaultSize(width: profile.windowWidth, height: profile.windowHeight)
+            .commands { TerminalCommands() }
+        Settings { SettingsView() }
     }
 }
 

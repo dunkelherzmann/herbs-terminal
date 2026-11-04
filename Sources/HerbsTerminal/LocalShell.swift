@@ -4,10 +4,18 @@ import SwiftTerm
 @MainActor
 final class LocalShell: ObservableObject {
     let view = LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 500),
-                                        font: TerminalTypeface.regular, options: TerminalOptions())
+                                        font: TerminalProfile.shared.font, options: TerminalOptions())
     let legend = SessionLegend()
 
-    init() { view.processDelegate = legend }
+    init() {
+        view.processDelegate = legend
+        applyProfile(TerminalProfile.shared)
+    }
+
+    func applyProfile(_ profile: TerminalProfile) {
+        view.font = profile.font
+        view.getTerminal().setCursorStyle(profile.cursorStyle)
+    }
 
     private var started = false
 
@@ -53,6 +61,7 @@ final class LocalShell: ObservableObject {
 
 struct ShellPane: NSViewRepresentable {
     @Environment(\.colorScheme) private var colorScheme
+    @ObservedObject private var profile = TerminalProfile.shared
     let session: LocalShell
     let theme: TerminalTheme?
 
@@ -64,10 +73,16 @@ struct ShellPane: NSViewRepresentable {
     final class Coordinator {
         var scheme: ColorScheme?
         var theme: TerminalTheme?
+        var profile: String?
     }
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func updateNSView(_ nsView: LocalProcessTerminalView, context: Context) {
+        // A profile edit resets this tab's Bigger/Smaller zoom, as in Terminal.
+        if context.coordinator.profile != profile.signature {
+            if context.coordinator.profile != nil { session.applyProfile(profile) }
+            context.coordinator.profile = profile.signature
+        }
         guard context.coordinator.scheme != colorScheme || context.coordinator.theme !== theme else { return }
         context.coordinator.scheme = colorScheme
         context.coordinator.theme = theme

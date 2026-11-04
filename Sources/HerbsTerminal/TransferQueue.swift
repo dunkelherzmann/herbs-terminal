@@ -69,6 +69,11 @@ final class TransferQueue: ObservableObject {
 
     func updateProgress(id: UUID, bytesTransferred: Int64) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        // A late report from a background transfer must not revive a finished item.
+        switch items[index].state {
+        case .pending, .inProgress: break
+        default: return
+        }
         let total = items[index].totalBytes
         items[index].state = .inProgress(bytesTransferred: bytesTransferred, totalBytes: total)
     }
