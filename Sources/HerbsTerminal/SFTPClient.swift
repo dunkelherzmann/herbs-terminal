@@ -78,18 +78,25 @@ struct RemoteEndpoint: Equatable, Sendable {
     let host: String
     let port: Int
     let username: String
+    /// Set for peers reached over Tailcat instead of a direct address.
+    var proxyCommand: String?
 
     var label: String { "\(username)@\(host)" }
 
-    init(host: String, port: Int = 22, username: String) {
+    init(host: String, port: Int = 22, username: String, proxyCommand: String? = nil) {
         self.host = host
         self.port = port
         self.username = username
+        self.proxyCommand = proxyCommand
     }
 
+    /// ssh arguments that reach this endpoint through the tab's shared connection. `extra` comes first
+    /// because ssh keeps the first value it sees for an option.
     func sshArguments(_ extra: [String] = []) -> [String] {
         var args = ["-p", String(port)]
         args.append(contentsOf: extra)
+        args += ["-o", "ControlPath=\(SSHControl.controlPath)"]
+        if let proxyCommand { args += ["-o", "ProxyCommand=\(proxyCommand)"] }
         args.append("\(username)@\(host)")
         return args
     }

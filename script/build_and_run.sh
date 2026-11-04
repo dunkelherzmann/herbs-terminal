@@ -14,7 +14,10 @@ APP_MACOS="$APP_CONTENTS/MacOS"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 
-pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+# --bundle only assembles and signs the app, leaving a running copy alone.
+if [[ "$MODE" != "--bundle" ]]; then
+  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+fi
 
 cd "$ROOT_DIR"
 swift build --build-system native --product HerbsTerminal
@@ -27,6 +30,10 @@ chmod +x "$APP_BINARY"
 mkdir -p "$APP_CONTENTS/Resources"
 cp "$ROOT_DIR/Assets/HerbsTerminal.icns" "$APP_CONTENTS/Resources/HerbsTerminal.icns"
 cp -R "$(dirname "$BUILD_BINARY")/SwiftTerm_SwiftTerm.bundle" "$APP_CONTENTS/Resources/"
+# Helpers the app runs itself, so it never depends on copies installed elsewhere on the system.
+mkdir -p "$APP_CONTENTS/Helpers"
+cp "$ROOT_DIR/Vendor/tailcat/tailcat" "$APP_CONTENTS/Helpers/tailcat"
+cp "$ROOT_DIR/Vendor/tailcat/LICENSE" "$APP_CONTENTS/Resources/tailcat-LICENSE.txt"
 
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -47,9 +54,17 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$MIN_SYSTEM_VERSION</string>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>HerbsTerminal connects to SSH, SFTP and remote desktop services on computers in your local network.</string>
 </dict>
 </plist>
 PLIST
+
+# Sign the assembled bundle under its bundle identifier. Without this the linker's ad-hoc signature
+# names the binary "HerbsTerminal-<hash>", macOS Local Network privacy can't match it to org.herbsterminal.app,
+# and ssh to LAN addresses fails with "No route to host".
+codesign --force --sign - --identifier "$BUNDLE_ID.tailcat" "$APP_CONTENTS/Helpers/tailcat"
+codesign --force --sign - --identifier "$BUNDLE_ID" "$APP_BUNDLE"
 
 open_app() {
   /usr/bin/open -n "$APP_BUNDLE"
@@ -58,6 +73,8 @@ open_app() {
 case "$MODE" in
   run)
     open_app
+    ;;
+  --bundle)
     ;;
   --debug|debug)
     lldb -- "$APP_BINARY"
@@ -76,7 +93,7 @@ case "$MODE" in
     pgrep -x "$APP_NAME" >/dev/null
     ;;
   *)
-    echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2
+    echo "usage: $0 [run|--bundle|--debug|--logs|--telemetry|--verify]" >&2
     exit 2
     ;;
 esac

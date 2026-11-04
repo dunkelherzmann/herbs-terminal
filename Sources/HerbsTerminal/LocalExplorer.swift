@@ -1,8 +1,10 @@
 import SwiftUI
+import HerbsTerminalUI
 
 private struct Entry: Identifiable, Sendable {
     let url: URL
     let isDirectory: Bool
+    var size: Int64?
     var id: URL { url }
 }
 
@@ -18,9 +20,10 @@ private final class DirectoryListing: ObservableObject {
         error = nil
         do {
             let items = try await Task.detached {
-                try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey],
+                try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey, .fileSizeKey],
                                                             options: showHidden ? [] : [.skipsHiddenFiles]).map { url in
-                    Entry(url: url, isDirectory: opensAsFolder(url))
+                    Entry(url: url, isDirectory: opensAsFolder(url),
+                          size: (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init))
                 }.sorted {
                     if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
                     return $0.url.lastPathComponent.localizedStandardCompare($1.url.lastPathComponent) == .orderedAscending
@@ -84,7 +87,13 @@ struct LocalExplorer: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            sidebar.frame(width: 170)
+            PlacesSidebar(sections: [
+                PlacesSection(title: "Places", places: LocalPlaces.standard()),
+                PlacesSection(title: "Devices", places: listing.devices),
+                PlacesSection(title: "Bookmarks", places: bookmarks.map {
+                    Place(name: URL(fileURLWithPath: $0).lastPathComponent, symbol: "folder", path: $0)
+                }, removable: true),
+            ], current: path, open: navigate, remove: toggleBookmark)
             Divider()
             VStack(alignment: .leading, spacing: 0) {
                 LocationBar(path: path, history: $history, home: home, showHidden: $showHidden,
@@ -94,9 +103,10 @@ struct LocalExplorer: View {
                         Label("Bookmark", systemImage: bookmarks.contains(path) ? "bookmark.fill" : "bookmark")
                     }
                     .keyboardShortcut("d")
-                    .help(bookmarks.contains(path) ? "Remove Bookmark (⌘D)\nTake this folder out of the side pane's Bookmarks."
+                    .hint(bookmarks.contains(path) ? "Remove Bookmark (⌘D)\nTake this folder out of the side pane's Bookmarks."
                                                    : "Bookmark This Folder (⌘D)\nAdd it to the side pane's Bookmarks.")
                     FileActionsMenu(actions: actions)
+                    .hint("File Actions\nUpload, download, undo, cut, copy, paste, delete, select all and find.")
                 }
                 Divider()
                 if filter.active { FilterBar(filter: filter); Divider() }
@@ -116,43 +126,11 @@ struct LocalExplorer: View {
         }
     }
 
-    // Rows are buttons rather than List selection: a folder outside Places must clear the highlight,
-    // and a selection binding that names no row leaves the old row selected and swallows clicks.
-    private var sidebar: some View {
-        List {
-            Section("Places") { ForEach(LocalPlaces.standard()) { row($0) } }
-            if !listing.devices.isEmpty {
-                Section("Devices") { ForEach(listing.devices) { row($0) } }
-            }
-            if !bookmarks.isEmpty {
-                Section("Bookmarks") {
-                    ForEach(bookmarks, id: \.self) { mark in
-                        row(Place(name: URL(fileURLWithPath: mark).lastPathComponent, symbol: "folder", path: mark))
-                            .contextMenu { Button("Remove Bookmark") { toggleBookmark(mark) } }
-                    }
-                }
-            }
-        }
-        .listStyle(.sidebar)
-    }
-
-    private func row(_ place: Place) -> some View {
-        Button { navigate(to: place.path) } label: {
-            Label(place.name, systemImage: place.symbol)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .listRowBackground(place.path == path ? RoundedRectangle(cornerRadius: 5).fill(.primary.opacity(0.12)).padding(.horizontal, 10) : nil)
-        .help("\(place.name)\nOpen \(place.path)")
-    }
-
     private var files: some View {
         List(visibleEntries, selection: $selection.ids) { entry in
-            Label(entry.url.lastPathComponent, systemImage: entry.isDirectory ? "folder" : "doc")
-                .opacity(entry.url.lastPathComponent.hasPrefix(".") ? 0.6 : 1)
+            FileRow(name: entry.url.lastPathComponent, isFolder: entry.isDirectory, size: entry.size)
                 .tag(entry.url)
-                .help(entry.isDirectory ? "Folder\nDouble-click or press Return to open it." : "File\nDouble-click or press Return to open it with its Mac app.")
+                .hint(entry.isDirectory ? "Folder\nDouble-click or press Return to open it." : "File\nDouble-click or press Return to open it with its Mac app.")
         }
         .contextMenu(forSelectionType: URL.self) { urls in
             if let url = urls.first {

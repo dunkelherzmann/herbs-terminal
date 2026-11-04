@@ -1,4 +1,5 @@
 import SwiftUI
+import HerbsTerminalUI
 
 /// What the File Actions menu can do in one explorer; a nil action shows as disabled.
 struct FileActions {
@@ -51,7 +52,7 @@ struct FileActionsMenu: NSViewRepresentable {
         let image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: "File actions")
         let button = NSButton(image: image ?? NSImage(), target: context.coordinator, action: #selector(Coordinator.show(_:)))
         button.bezelStyle = .accessoryBarAction
-        button.toolTip = "File Actions\nUpload, download, undo, cut, copy, paste, delete, select all and find."
+        button.setAccessibilityHelp("Upload, download, undo, cut, copy, paste, delete, select all and find.")
         button.setAccessibilityLabel("File actions")
         return button
     }
@@ -138,10 +139,10 @@ struct FilterBar: View {
                 .onAppear { DispatchQueue.main.async { focused = true } }
             Button { filter.close() } label: { Image(systemName: "xmark.circle.fill") }
                 .buttonStyle(.plain).foregroundStyle(.secondary)
-                .help("Close Find\nShow every item in this folder again (Esc).")
+                .hint("Close Find\nShow every item in this folder again (Esc).")
         }
         .padding(.horizontal, 10).padding(.vertical, 5)
-        .help("Find\nShow only items whose name contains this text.")
+        .hint("Find\nShow only items whose name contains this text.")
     }
 }
 
@@ -185,25 +186,25 @@ struct TransfersStrip: View {
                 Spacer()
                 Button("Clear Finished") { queue.clearFinished() }
                     .buttonStyle(.link).font(.caption)
-                    .help("Clear Finished\nRemove completed, failed and cancelled transfers from this list.")
+                    .hint("Clear Finished\nRemove completed, failed and cancelled transfers from this list.")
             }
             ForEach(queue.items.suffix(4)) { item in
                 HStack(spacing: 6) {
                     Image(systemName: item.isUpload ? "arrow.up.circle" : "arrow.down.circle")
-                        .help(item.isUpload ? "Upload from this Mac to the remote host." : "Download from the remote host to this Mac.")
+                        .hint(item.isUpload ? "Upload from this Mac to the remote host." : "Download from the remote host to this Mac.")
                     Text(item.name).lineLimit(1).truncationMode(.middle).frame(width: 140, alignment: .leading)
-                        .help(item.route)
+                        .hint(item.route)
                     switch item.state {
                     case .failed(let message):
-                        Text(message).foregroundStyle(.red).lineLimit(1).help(message)
+                        Text(message).foregroundStyle(.red).lineLimit(1).hint(message)
                     case .completed:
                         Text("Done").foregroundStyle(.secondary)
                     case .cancelled:
                         Text("Cancelled").foregroundStyle(.secondary)
                     default:
-                        ProgressView(value: item.progressFraction).help(ByteCountFormatter.string(fromByteCount: item.totalBytes, countStyle: .file))
+                        ProgressView(value: item.progressFraction).hint(ByteCountFormatter.string(fromByteCount: item.totalBytes, countStyle: .file))
                         Button { cancel(item.id) } label: { Image(systemName: "xmark.circle") }
-                            .buttonStyle(.plain).help("Cancel\nStop this transfer and discard the partial copy.")
+                            .buttonStyle(.plain).hint("Cancel\nStop this transfer and discard the partial copy.")
                     }
                 }
                 .font(.caption)

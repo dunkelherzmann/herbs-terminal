@@ -1,10 +1,13 @@
+import Carbon
 import SwiftUI
+import HerbsTerminalUI
 
 /// HerbsTerminal ▸ Settings… (⌘,): the profile every terminal tab follows, like Ptyxis or iTerm2 preferences.
 struct SettingsView: View {
     var body: some View {
         TabView {
             TextSettings().tabItem { Label("Text", systemImage: "textformat") }
+            ShellSettings().tabItem { Label("Terminal", systemImage: "terminal") }
             WindowSettings().tabItem { Label("Window", systemImage: "macwindow") }
             ColorSettings().tabItem { Label("Colors", systemImage: "paintpalette") }
         }
@@ -24,24 +27,24 @@ private struct TextSettings: View {
                 Divider()
                 ForEach(TerminalProfile.monospacedFamilies, id: \.self) { Text($0).tag($0) }
             }
-            .help("Font\nThe monospaced typeface used by every terminal tab.")
+            .hint("Font\nThe monospaced typeface used by every terminal tab.")
             HStack {
                 TextField("Size:", value: $profile.fontSize, format: .number.precision(.fractionLength(0...1)))
                     .frame(width: 140)
                 Stepper("", value: $profile.fontSize, in: TerminalProfile.sizeRange, step: 1).labelsHidden()
                 Text("pt").foregroundStyle(.secondary)
             }
-            .help("Font size\nPoints, \(Int(TerminalProfile.sizeRange.lowerBound))–\(Int(TerminalProfile.sizeRange.upperBound)). ⌘+ / ⌘− / ⌘0 zoom one tab temporarily.")
+            .hint("Font size\nPoints, \(Int(TerminalProfile.sizeRange.lowerBound))–\(Int(TerminalProfile.sizeRange.upperBound)). ⌘+ / ⌘− / ⌘0 zoom one tab temporarily.")
             Picker("Cursor:", selection: $profile.cursor) {
                 ForEach(CursorShape.allCases) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented)
-            .help("Cursor shape\nHow the text cursor is drawn in the terminal.")
+            .hint("Cursor shape\nHow the text cursor is drawn in the terminal.")
             Toggle("Blinking cursor", isOn: $profile.cursorBlinks)
-                .help("Blinking cursor\nBlink the cursor while the terminal has focus.")
+                .hint("Blinking cursor\nBlink the cursor while the terminal has focus.")
             preview
             Button("Restore Defaults") { profile.resetText() }
-                .help("Restore Defaults\nGo back to the stock Terminal Basic font, size and cursor.")
+                .hint("Restore Defaults\nGo back to the stock Terminal Basic font, size and cursor.")
         }
     }
 
@@ -55,7 +58,35 @@ private struct TextSettings: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(10)
             .background(Color(nsColor: background), in: RoundedRectangle(cornerRadius: 6))
-            .help("Preview\nHow terminal text looks with this font and color theme.")
+            .hint("Preview\nHow terminal text looks with this font and color theme.")
+    }
+}
+
+private struct ShellSettings: View {
+    @ObservedObject private var profile = TerminalProfile.shared
+
+    var body: some View {
+        Form {
+            Toggle("Use Option as Meta key", isOn: $profile.optionAsMeta)
+                .hint("Option as Meta\nOption+key sends Esc+key (for Emacs and shell word movement) instead of typing special characters.")
+            HStack {
+                TextField("Scrollback:", value: $profile.scrollbackLines, format: .number)
+                    .frame(width: 180)
+                Text("lines").foregroundStyle(.secondary)
+            }
+            .hint("Scrollback\nHow many lines each tab keeps above the screen (100–1,000,000).")
+            Picker("Bell:", selection: $profile.bell) {
+                ForEach(TerminalBell.allCases) { Text($0.title).tag($0) }
+            }
+            .hint("Bell\nWhat happens when a program rings the terminal bell.")
+            Picker("New tabs open in:", selection: $profile.newTabsInSameFolder) {
+                Text("Same folder as the current tab").tag(true)
+                Text("Home folder").tag(false)
+            }
+            .hint("New tabs\nWhere a new local tab's shell starts.")
+            Toggle("Ask before closing a tab with running processes", isOn: $profile.askBeforeClosing)
+                .hint("Ask before closing\nConfirm before ending a program or SSH session by closing its tab.")
+        }
     }
 }
 
@@ -65,19 +96,19 @@ private struct WindowSettings: View {
     var body: some View {
         Form {
             TextField("Width:", value: $profile.windowWidth, format: .number)
-                .help("Window width\nPoints. New windows open at this size.")
+                .hint("Window width\nPoints. New windows open at this size.")
             TextField("Height:", value: $profile.windowHeight, format: .number)
-                .help("Window height\nPoints. New windows open at this size.")
+                .hint("Window height\nPoints. New windows open at this size.")
             HStack {
                 Button("Apply to Open Windows") { applyToOpenWindows() }
-                    .help("Apply to Open Windows\nResize every open terminal window to this size now.")
+                    .hint("Apply to Open Windows\nResize every open terminal window to this size now.")
                 Button("Use Front Window's Size") { useFrontWindow() }
-                    .help("Use Front Window's Size\nCopy the size of the most recently used terminal window.")
+                    .hint("Use Front Window's Size\nCopy the size of the most recently used terminal window.")
                 Button("Reset") {
                     profile.windowWidth = TerminalProfile.defaultWindow.width
                     profile.windowHeight = TerminalProfile.defaultWindow.height
                 }
-                .help("Reset\nGo back to 960 × 580 points.")
+                .hint("Reset\nGo back to 960 × 580 points.")
             }
         }
     }
@@ -109,7 +140,7 @@ private struct ColorSettings: View {
                 ForEach(["System", "Light", "Dark"], id: \.self) { Text($0) }
             }
             .pickerStyle(.segmented)
-            .help("Appearance\nLight or dark window chrome; System follows macOS.")
+            .hint("Appearance\nLight or dark window chrome; System follows macOS.")
             List(selection: $library.selection) {
                 row("macOS Terminal Basic", theme: nil).tag("")
                 ForEach(library.allNames, id: \.self) { name in
@@ -122,13 +153,13 @@ private struct ColorSettings: View {
                 }
             }
             .frame(height: 260)
-            .help("Color theme\nClick a theme to apply it to every terminal tab.")
+            .hint("Color theme\nClick a theme to apply it to every terminal tab.")
             HStack {
                 Button("Import iTerm2 Preset…") { ThemeMenu.importPreset() }
-                    .help("Import iTerm2 Preset\nAdd colors from an .itermcolors file.")
+                    .hint("Import iTerm2 Preset\nAdd colors from an .itermcolors file.")
                 Button("Remove") { library.removeImported(library.selection) }
                     .disabled(!library.isImported(library.selection))
-                    .help("Remove\nDelete the selected imported preset. Built-in themes cannot be removed.")
+                    .hint("Remove\nDelete the selected imported preset. Built-in themes cannot be removed.")
             }
         }
     }
@@ -164,11 +195,39 @@ enum SwiftTermPalette {
                                            (73, 46, 225), (211, 56, 211), (51, 187, 200), (203, 204, 205)]
 }
 
-/// View ▸ Bigger / Smaller / Default Font Size, with Terminal's shortcuts, plus the SSH sheet.
+/// Menu-bar commands with macOS Terminal's shortcuts: View ▸ Bigger / Smaller / Default Font Size,
+/// Edit ▸ Clear to Start / Clear Scrollback, and a Shell menu for tabs, SSH, reset and secure entry.
 struct TerminalCommands: Commands {
     @FocusedValue(\.workspace) private var workspace
+    @ObservedObject private var secureInput = SecureInput.shared
 
     var body: some Commands {
+        CommandGroup(after: .pasteboard) {
+            Divider()
+            Button("Clear to Start") { workspace?.selected.shell.view.clearToStart() }
+                .keyboardShortcut("k").disabled(workspace == nil)
+            Button("Clear Scrollback") { workspace?.selected.shell.view.clearHistory() }
+                .keyboardShortcut("k", modifiers: [.command, .option]).disabled(workspace == nil)
+        }
+        CommandMenu("Shell") {
+            Button("New Tab") { workspace?.add() }.keyboardShortcut("t").disabled(workspace == nil)
+            Button("New Remote Connection…") { workspace?.showingSSHConnect = true }
+                .keyboardShortcut("k", modifiers: [.command, .shift]).disabled(workspace == nil)
+            Button("Disconnect") { workspace?.disconnect() }
+                .disabled({ if case .connected = workspace?.selected.state.connection { false } else { true } }())
+            Divider()
+            Button("Show Previous Tab") { workspace?.selectTab(offset: -1) }
+                .keyboardShortcut("[", modifiers: [.command, .shift]).disabled((workspace?.tabs.count ?? 0) < 2)
+            Button("Show Next Tab") { workspace?.selectTab(offset: 1) }
+                .keyboardShortcut("]", modifiers: [.command, .shift]).disabled((workspace?.tabs.count ?? 0) < 2)
+            Divider()
+            Button("Reset") { workspace?.selected.shell.view.reset(hard: false) }
+                .keyboardShortcut("r", modifiers: [.command, .option]).disabled(workspace == nil)
+            Button("Hard Reset") { workspace?.selected.shell.view.reset(hard: true) }
+                .keyboardShortcut("r", modifiers: [.command, .option, .control]).disabled(workspace == nil)
+            Divider()
+            Toggle("Secure Keyboard Entry", isOn: $secureInput.enabled)
+        }
         CommandGroup(before: .toolbar) {
             Button("Bigger") { workspace?.zoom(1) }.keyboardShortcut("+")
                 .disabled(workspace == nil)
@@ -177,6 +236,18 @@ struct TerminalCommands: Commands {
             Button("Default Font Size") { workspace?.resetZoom() }.keyboardShortcut("0")
                 .disabled(workspace == nil)
             Divider()
+        }
+    }
+}
+
+/// Shell ▸ Secure Keyboard Entry, as in Terminal: stops other apps from reading what you type.
+@MainActor
+final class SecureInput: ObservableObject {
+    static let shared = SecureInput()
+    @Published var enabled = false {
+        didSet {
+            guard enabled != oldValue else { return }
+            if enabled { EnableSecureEventInput() } else { DisableSecureEventInput() }
         }
     }
 }

@@ -195,6 +195,10 @@ func profileDefaultsToBasicAndClampsSize() throws {
     #expect(reloaded.font.pointSize == 14)
     #expect(reloaded.cursorStyle == .steadyBar)
     #expect(TerminalProfile.monospacedFamilies.contains("Menlo"))
+    // Terminal's defaults: Option types characters, the bell beeps, and closing asks first.
+    #expect(!profile.optionAsMeta && profile.bell == .audible && profile.askBeforeClosing && profile.newTabsInSameFolder)
+    profile.scrollbackLines = 5
+    #expect(profile.scrollbackLines == 100)
 }
 
 @Test @MainActor
@@ -206,4 +210,20 @@ func builtInThemesAreSelectableAndPersist() throws {
     #expect(library.current?.palette.count == 16)
     #expect(ThemeLibrary(defaults: defaults).selection == "Nord")
     #expect(!library.isImported("Nord"))
+}
+
+@Test @MainActor
+func remoteSymlinksToFoldersListAsFolders() async throws {
+    let root = try scratch()
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root.appendingPathComponent("real"), withIntermediateDirectories: true)
+    try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("Documents"),
+                                               withDestinationURL: root.appendingPathComponent("real"))
+    try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("dangling"),
+                                               withDestinationURL: root.appendingPathComponent("missing"))
+    let vm = RemoteExplorerViewModel(endpoint: RemoteEndpoint(host: "local", username: "me"),
+                                     service: try localSFTP(), makeClient: { try localSFTP() })
+    await vm.load(path: root.path)
+    #expect(vm.entries.first { $0.name == "Documents" }?.attributes.directory == true)
+    #expect(vm.entries.first { $0.name == "dangling" }?.attributes.link == true)
 }

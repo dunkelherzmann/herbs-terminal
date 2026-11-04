@@ -26,6 +26,20 @@ final class TerminalProfile: ObservableObject {
     }
     @Published var cursor: CursorShape { didSet { defaults.set(cursor.rawValue, forKey: "terminalCursor") } }
     @Published var cursorBlinks: Bool { didSet { defaults.set(cursorBlinks, forKey: "terminalCursorBlinks") } }
+    /// Off by default, as in Terminal: Option types special characters unless this is on.
+    @Published var optionAsMeta: Bool { didSet { defaults.set(optionAsMeta, forKey: "terminalOptionAsMeta") } }
+    @Published var scrollbackLines: Int {
+        didSet {
+            let clamped = min(1_000_000, max(100, scrollbackLines))
+            if clamped != scrollbackLines { scrollbackLines = clamped; return }
+            defaults.set(scrollbackLines, forKey: "terminalScrollback")
+        }
+    }
+    @Published var bell: TerminalBell { didSet { defaults.set(bell.rawValue, forKey: "terminalBell") } }
+    /// Ask before closing a tab whose shell is running another program or a remote session.
+    @Published var askBeforeClosing: Bool { didSet { defaults.set(askBeforeClosing, forKey: "terminalAskBeforeClosing") } }
+    /// New tabs start in the current tab's folder (Terminal's "Same working directory") or in home.
+    @Published var newTabsInSameFolder: Bool { didSet { defaults.set(newTabsInSameFolder, forKey: "terminalNewTabSameFolder") } }
     @Published var windowWidth: Double { didSet { defaults.set(windowWidth, forKey: "windowWidth") } }
     @Published var windowHeight: Double { didSet { defaults.set(windowHeight, forKey: "windowHeight") } }
 
@@ -35,6 +49,11 @@ final class TerminalProfile: ObservableObject {
         fontSize = defaults.object(forKey: "terminalFontSize") as? Double ?? Double(TerminalTypeface.regular.pointSize)
         cursor = defaults.string(forKey: "terminalCursor").flatMap(CursorShape.init(rawValue:)) ?? .block
         cursorBlinks = defaults.object(forKey: "terminalCursorBlinks") as? Bool ?? true
+        optionAsMeta = defaults.object(forKey: "terminalOptionAsMeta") as? Bool ?? false
+        scrollbackLines = defaults.object(forKey: "terminalScrollback") as? Int ?? 10_000
+        bell = defaults.string(forKey: "terminalBell").flatMap(TerminalBell.init(rawValue:)) ?? .audible
+        askBeforeClosing = defaults.object(forKey: "terminalAskBeforeClosing") as? Bool ?? true
+        newTabsInSameFolder = defaults.object(forKey: "terminalNewTabSameFolder") as? Bool ?? true
         windowWidth = defaults.object(forKey: "windowWidth") as? Double ?? Self.defaultWindow.width
         windowHeight = defaults.object(forKey: "windowHeight") as? Double ?? Self.defaultWindow.height
     }
@@ -60,7 +79,7 @@ final class TerminalProfile: ObservableObject {
     }
 
     /// Changes whenever something a terminal view draws with changes.
-    var signature: String { "\(fontFamily)|\(fontSize)|\(cursor.rawValue)|\(cursorBlinks)" }
+    var signature: String { "\(fontFamily)|\(fontSize)|\(cursor.rawValue)|\(cursorBlinks)|\(optionAsMeta)|\(scrollbackLines)|\(bell.rawValue)" }
 
     func resetText() {
         fontFamily = ""

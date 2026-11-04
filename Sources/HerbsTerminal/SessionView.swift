@@ -6,6 +6,14 @@ enum SessionEndpoint: Equatable {
     case remote(RemoteEndpoint)
 }
 
+/// What the tab's shell is actually connected to, as verified through the shared SSH connection.
+enum ConnectionState: Equatable {
+    case local
+    case connecting(RemoteEndpoint)
+    case connected(RemoteEndpoint)
+    case failed(String)
+}
+
 @MainActor
 final class WindowState: ObservableObject {
     @Published var layout = SessionLayout.terminal
@@ -21,9 +29,11 @@ final class WindowState: ObservableObject {
         if layout == .explorer { layout = .terminal }
         findRequest += 1
     }
-    @Published var notice: String?
     @Published var directory = FileManager.default.homeDirectoryForCurrentUser
     @Published var endpoint: SessionEndpoint = .local
+    @Published var connection: ConnectionState = .local
+    @Published var connectedAt: Date?
+    @Published var remoteHome = "/"
     @Published var localHistory = NavigationHistory(FileManager.default.homeDirectoryForCurrentUser.path)
     @Published var remoteDirectory: String = "/"
     @Published var remoteHistory = NavigationHistory("/")
@@ -55,6 +65,8 @@ struct SessionView: View {
                     .frame(minWidth: 280)
             }
             if state.layout != .terminal {
+              VStack(spacing: 0) {
+                ConnectionBanner(state: state)
                 switch state.endpoint {
                 case .local:
                     LocalExplorer(directory: $state.directory, history: $state.localHistory,
@@ -69,9 +81,11 @@ struct SessionView: View {
                             return vm
                         }(),
                         findRequest: state.explorerFindRequest,
-                        localFolder: state.directory
+                        localFolder: state.directory,
+                        home: state.remoteHome
                     ).frame(minWidth: 260)
                 }
+              }
             }
         }
         .frame(minWidth: 640, minHeight: 360)
@@ -82,13 +96,40 @@ struct SessionView: View {
                 shell.view.performFindPanelAction(item)
             }
         }
-        .alert("Feature in development", isPresented: Binding(
-            get: { state.notice != nil }, set: { if !$0 { state.notice = nil } }
-        )) {
-            Button("OK") { state.notice = nil }
-        } message: {
-            Text((state.notice ?? "This feature") + " is not available in the local workspace build.")
-        }
 
+    }
+}
+
+/// Tells the explorer's user when the files shown are not (yet, or any longer) the tab's remote host.
+private struct ConnectionBanner: View {
+    @ObservedObject var state: WindowState
+
+    var body: some View {
+        switch state.connection {
+        case .connecting(let endpoint):
+            banner {
+                ProgressView().controlSize(.small)
+                Text("Connecting to \(endpoint.label)… Showing local files until the login succeeds.")
+            }
+            .hint("Connecting\nAnswer any password or host-key prompt in the terminal.")
+        case .failed(let message):
+            banner {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Text(message)
+                Spacer()
+                Button("Dismiss") { state.connection = .local }
+                    .hint("Dismiss\nHide this message.")
+            }
+        default:
+            EmptyView()
+        }
+    }
+
+    private func banner<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        HStack(spacing: 8) { content() }
+            .font(.caption)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.yellow.opacity(0.12))
     }
 }

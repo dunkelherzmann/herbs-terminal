@@ -1,4 +1,5 @@
 import SwiftUI
+import HerbsTerminalUI
 
 @MainActor
 final class RemoteExplorerViewModel: ObservableObject {
@@ -38,7 +39,12 @@ final class RemoteExplorerViewModel: ObservableObject {
 
         do {
             let items = try await Task.detached {
-                let listed = try svc.list(path)
+                // Symbolic links list with the link's own attributes; follow them, as Thunar does, so a
+                // link to a folder shows and opens as a folder. A dangling link stays as it is.
+                let listed = try svc.list(path).map { entry in
+                    guard entry.attributes.link, let target = try? svc.stat(remoteJoin(path, entry.name), follow: true) else { return entry }
+                    return RemoteEntry(name: entry.name, attributes: target)
+                }
                 return listed.filter { item in
                     hidden || !item.name.hasPrefix(".")
                 }.sorted {
@@ -221,17 +227,39 @@ struct RemoteExplorer: View {
     @ObservedObject var viewModel: RemoteExplorerViewModel
     var findRequest = 0
     var localFolder: URL = FileManager.default.homeDirectoryForCurrentUser
+    var home = "/"
     @StateObject private var selection = ListSelection<String>()
     @StateObject private var filter = ExplorerFilter()
+    @AppStorage("remoteExplorerBookmarks") private var bookmarkStore = ""
+
+    private var bookmarks: BookmarkList {
+        BookmarkList(raw: bookmarkStore, scope: "\(viewModel.endpoint.label):\(viewModel.endpoint.port)")
+    }
 
     var body: some View {
+      HStack(spacing: 0) {
+        PlacesSidebar(sections: [
+            PlacesSection(title: viewModel.endpoint.label, places: [
+                Place(name: "Home", symbol: "house", path: home),
+                Place(name: "File System", symbol: "internaldrive", path: "/"),
+            ]),
+            PlacesSection(title: "Bookmarks", places: bookmarks.paths.map {
+                Place(name: ($0 as NSString).lastPathComponent.isEmpty ? "/" : ($0 as NSString).lastPathComponent, symbol: "folder", path: $0)
+            }, removable: true),
+        ], current: normalizePath(currentPath), open: navigate, remove: toggleBookmark)
+        Divider()
         VStack(alignment: .leading, spacing: 0) {
-            LocationBar(path: currentPath, history: $history, home: nil, showHidden: $viewModel.showHidden,
+            LocationBar(path: currentPath, history: $history, home: home, showHidden: $viewModel.showHidden,
                         go: { currentPath = $0 },
                         reload: { Task { await viewModel.load(path: currentPath) } }) {
-                Text(viewModel.endpoint.label).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    .help("Remote host\nFiles here are on \(viewModel.endpoint.label), the host this tab's shell is connected to.")
+                Button { toggleBookmark(history.current) } label: {
+                    Label("Bookmark", systemImage: bookmarks.contains(normalizePath(currentPath)) ? "bookmark.fill" : "bookmark")
+                }
+                .keyboardShortcut("d")
+                .hint(bookmarks.contains(normalizePath(currentPath)) ? "Remove Bookmark (⌘D)\nTake this folder out of the side pane's Bookmarks."
+                                                                     : "Bookmark This Folder (⌘D)\nAdd it to this host's Bookmarks in the side pane.")
                 FileActionsMenu(actions: actions)
+                    .hint("File Actions\nUpload, download, undo, cut, copy, paste, delete, select all and find.")
             }
 
             Divider()
@@ -246,25 +274,14 @@ struct RemoteExplorer: View {
                     Button("Retry") {
                         Task { await viewModel.load(path: currentPath) }
                     }
-                    .help("Retry\nList this remote folder again.")
+                    .hint("Retry\nList this remote folder again.")
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List(visibleEntries, selection: $selection.ids) { entry in
-                    HStack {
-                        Label(entry.name, systemImage: entry.attributes.directory ? "folder" : "doc")
-                            .opacity(entry.name.hasPrefix(".") ? 0.6 : 1)
-
-                        Spacer()
-
-                        if !entry.attributes.directory, let size = entry.attributes.size {
-                            Text(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
+                    FileRow(name: entry.name, isFolder: entry.attributes.directory, size: entry.attributes.size.map(Int64.init))
                     .tag(entry.id)
-                    .help(entry.attributes.directory ? "Remote folder\nDouble-click or press Return to open it."
+                    .hint(entry.attributes.directory ? "Remote folder\nDouble-click or press Return to open it."
                                                      : "Remote file\nSelect it and choose Download from File Actions to copy it to this Mac.")
                 }
                 .contextMenu(forSelectionType: String.self) { names in
@@ -291,6 +308,7 @@ struct RemoteExplorer: View {
                 TransfersStrip(queue: viewModel.queue, cancel: viewModel.cancelTransfer)
             }
         }
+      }
         .onChange(of: currentPath) { history.visit(currentPath); filter.close() }
         .onChange(of: viewModel.showHidden) { Task { await viewModel.load(path: currentPath) } }
         .onChange(of: findRequest) { filter.active = true }
@@ -325,6 +343,17 @@ struct RemoteExplorer: View {
             selectAll: { selection.ids = Set(visibleEntries.map(\.name)) },
             deleteHelp: "Permanently delete the selected items from the remote host, after confirming.",
             find: { filter.active = true })
+    }
+
+    private func navigate(to target: String) {
+        history.visit(target)
+        currentPath = target
+    }
+
+    private func toggleBookmark(_ path: String) {
+        var list = bookmarks
+        list.toggle(normalizePath(path))
+        bookmarkStore = list.raw
     }
 
     private func entry(named name: String?) -> RemoteEntry? {

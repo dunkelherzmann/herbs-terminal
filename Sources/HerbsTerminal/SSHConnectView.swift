@@ -1,4 +1,5 @@
 import SwiftUI
+import HerbsTerminalUI
 import UniformTypeIdentifiers
 
 @MainActor
@@ -14,6 +15,8 @@ final class SSHConnectViewModel: ObservableObject {
     @Published var noticeMessage: String? = nil
 
     let store: CredentialStore
+    /// Set when the login database couldn't be opened; saving is then disabled, never redirected.
+    let lockedReason: String? = CredentialStore.unavailableReason
 
     init(store: CredentialStore = .shared ?? (try! CredentialStore(databaseURL: URL(fileURLWithPath: "/tmp/fallback.db"), vault: CryptoVault(keyProvider: StaticKeyProvider(key: .init(size: .bits256)))))) {
         self.store = store
@@ -39,7 +42,7 @@ final class SSHConnectViewModel: ObservableObject {
                              password: password)
         try login.validate()
 
-        if saveToLogins {
+        if saveToLogins, lockedReason == nil, store.protection != .unset {
             try store.save(login)
         }
 
@@ -57,10 +60,143 @@ final class SSHConnectViewModel: ObservableObject {
     }
 }
 
+/// The dialogs around the Administrator Password. They are AppKit alerts so they can stack over the sheet.
+@MainActor
+enum LoginVaultPrompts {
+    /// The first-use explanation. Returns true once a protection has been chosen.
+    @discardableResult
+    static func explainSetup(_ store: CredentialStore) -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Create an Administrator Password"
+        alert.informativeText = """
+        HerbsTerminal keeps saved logins inside the app. To encrypt them, create an Administrator Password; you'll \
+        enter it once each time you open HerbsTerminal to unlock your saved logins.
+
+        Without one, saved logins (including their passwords) are stored as plain text inside HerbsTerminal, which \
+        is a security risk: anyone or anything that can read your files could read them.
+        """
+        alert.addButton(withTitle: "Create Administrator Password…")
+        alert.addButton(withTitle: "Store as Plain Text")
+        alert.addButton(withTitle: "Not Now").keyEquivalent = "\u{1B}"
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            return createOrModify(store)
+        case .alertSecondButtonReturn:
+            // The risky choice is never one click away.
+            let confirm = NSAlert()
+            confirm.alertStyle = .critical
+            confirm.messageText = "Store saved logins as plain text?"
+            confirm.informativeText = "Passwords you save will be readable by anyone or anything that can read your files. You can create an Administrator Password later in Manage Logins."
+            confirm.addButton(withTitle: "Cancel")
+            confirm.addButton(withTitle: "Store as Plain Text")
+            guard confirm.runModal() == .alertSecondButtonReturn else { return false }
+            do { try store.choosePlainText(); return true } catch { show(error); return false }
+        default:
+            return false
+        }
+    }
+
+    /// Creates the Administrator Password, or changes it after checking the current one.
+    @discardableResult
+    static func createOrModify(_ store: CredentialStore) -> Bool {
+        let modifying = store.protection == .adminPassword
+        var message: String?
+        while true {
+            let alert = NSAlert()
+            alert.messageText = modifying ? "Modify Administrator Password" : "Create Administrator Password"
+            alert.informativeText = (message.map { $0 + "\n\n" } ?? "")
+                + (modifying ? "Saved logins are re-encrypted with the new password."
+                             : "Saved logins will be encrypted with this password. HerbsTerminal can't recover it if you forget it; you would have to delete and re-enter your logins.")
+            let current = secureField("Current password")
+            let new = secureField("New password (at least 8 characters)")
+            let confirm = secureField("Confirm new password")
+            alert.accessoryView = stack(modifying ? [current, new, confirm] : [new, confirm])
+            alert.window.initialFirstResponder = modifying ? current : new
+            alert.addButton(withTitle: modifying ? "Change Password" : "Create Password")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return false }
+            guard new.stringValue == confirm.stringValue else { message = "The new passwords don't match."; continue }
+            do {
+                try store.setAdminPassword(new.stringValue, current: modifying ? current.stringValue : nil)
+                return true
+            } catch {
+                message = error.localizedDescription
+            }
+        }
+    }
+
+    /// Asks for the Administrator Password to unlock saved logins for this session.
+    @discardableResult
+    static func unlock(_ store: CredentialStore) -> Bool {
+        var message: String?
+        while store.isLocked {
+            let alert = NSAlert()
+            alert.messageText = "Unlock Saved Logins"
+            alert.informativeText = message ?? "Enter the Administrator Password to use your saved logins."
+            let field = secureField("Administrator Password")
+            alert.accessoryView = stack([field])
+            alert.window.initialFirstResponder = field
+            alert.addButton(withTitle: "Unlock")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return false }
+            do { try store.unlock(field.stringValue) } catch { message = error.localizedDescription }
+        }
+        return true
+    }
+
+    /// Export writes readable passwords, so it needs the Administrator Password, or a confirmation without one.
+    static func confirmExport(_ store: CredentialStore) -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Export Login Data?"
+        alert.informativeText = "The exported file contains every saved username and password as readable plain text. Keep it somewhere safe and delete it when you're done."
+        let field = secureField("Administrator Password")
+        if store.protection == .adminPassword {
+            alert.accessoryView = stack([field])
+            alert.window.initialFirstResponder = field
+        }
+        alert.addButton(withTitle: "Export")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return false }
+        guard store.protection != .adminPassword || store.verify(field.stringValue) else {
+            show(StoreError("That Administrator Password is not correct."))
+            return false
+        }
+        return true
+    }
+
+    static func show(_ error: Error) {
+        NSAlert(error: error).runModal()
+    }
+
+    private static func secureField(_ placeholder: String) -> NSSecureTextField {
+        let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        field.placeholderString = placeholder
+        return field
+    }
+
+    private static func stack(_ fields: [NSView]) -> NSView {
+        let stack = NSStackView(views: fields)
+        stack.orientation = .vertical
+        stack.spacing = 8
+        stack.frame = NSRect(x: 0, y: 0, width: 260, height: CGFloat(fields.count) * 32)
+        return stack
+    }
+}
+
 struct SSHConnectView: View {
     @ObservedObject var viewModel: SSHConnectViewModel
+    @ObservedObject private var observedStore: CredentialStore
     let onConnect: (SSHLogin) -> Void
     let onDismiss: () -> Void
+
+    init(viewModel: SSHConnectViewModel, onConnect: @escaping (SSHLogin) -> Void, onDismiss: @escaping () -> Void) {
+        self.viewModel = viewModel
+        self.observedStore = viewModel.store
+        self.onConnect = onConnect
+        self.onDismiss = onDismiss
+    }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -83,33 +219,60 @@ struct SSHConnectView: View {
                         Text(item.label).tag(item.id as SSHLogin.ID?)
                     }
                 }
-                .help("Saved Logins\nFill in host, port, username and password from the encrypted login store.")
+                .hint("Saved Logins\nFill in host, port, username and password from a login saved in HerbsTerminal.")
+            }
+
+            if let reason = viewModel.lockedReason {
+                notice("exclamationmark.triangle.fill", "Saved logins are unavailable: \(reason)")
+            }
+            if store.isLocked {
+                HStack {
+                    notice("lock.fill", "Saved logins are locked with your Administrator Password.")
+                    Button("Unlock…") { LoginVaultPrompts.unlock(store) }
+                        .hint("Unlock\nEnter the Administrator Password to use saved logins this session.")
+                }
+            } else if store.protection == .plainText {
+                notice("lock.open.fill", "Saved logins are stored as plain text. Create an Administrator Password in Manage Logins to encrypt them.")
+            }
+            if store.legacyCount > 0 {
+                HStack {
+                    notice("key.fill", "\(store.legacyCount) login\(store.legacyCount == 1 ? "" : "s") saved by an earlier HerbsTerminal still use the macOS Keychain.")
+                    Button("Recover…") { recoverLegacy() }
+                        .hint("Recover\nAsk macOS once for the old Keychain key and move these logins into HerbsTerminal's own store.")
+                    Button("Discard…") { discardLegacy() }
+                        .hint("Discard\nPermanently delete these old logins from HerbsTerminal.")
+                }
             }
 
             Form {
                 TextField("Host or IP Address:", text: $viewModel.host)
                     .textFieldStyle(.roundedBorder)
-                    .help("Host\nThe server's name, IP address or ~/.ssh/config alias.")
+                    .hint("Host\nThe server's name, IP address or ~/.ssh/config alias.")
 
                 HStack {
                     TextField("Port:", value: $viewModel.port, format: .number)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 80)
-                        .help("Port\nThe server's SSH port; usually 22.")
+                        .hint("Port\nThe server's SSH port; usually 22.")
                     Spacer()
                 }
 
                 TextField("Username:", text: $viewModel.username)
                     .textFieldStyle(.roundedBorder)
-                    .help("Username\nThe account to sign in as on the server.")
+                    .hint("Username\nThe account to sign in as on the server.")
 
                 SecureField("Password:", text: $viewModel.password)
                     .textFieldStyle(.roundedBorder)
-                    .help("Password\nLeave empty to use your SSH keys or agent.")
+                    .hint("Password\nLeave empty to use your SSH keys or agent.")
 
-                Toggle("Save credentials to encrypted store", isOn: $viewModel.saveToLogins)
+                Toggle(store.protection == .plainText ? "Save credentials (plain text, not encrypted)"
+                       : store.protection == .adminPassword ? "Save credentials (encrypted with Administrator Password)"
+                       : "Save credentials in HerbsTerminal",
+                       isOn: $viewModel.saveToLogins)
+                    .disabled(viewModel.lockedReason != nil || store.isLocked)
                     .padding(.top, 4)
-                    .help("Save credentials\nKeep this login in HerbsTerminal's encrypted store for next time.")
+                    .hint(store.protection == .plainText ? "Save credentials\nKeep this login inside HerbsTerminal as plain text."
+                                                         : "Save credentials\nKeep this login inside HerbsTerminal, encrypted with your Administrator Password.")
             }
 
             if let error = viewModel.errorMessage {
@@ -119,19 +282,25 @@ struct SSHConnectView: View {
             }
 
             HStack {
-                Menu("CSV Logins") {
-                    Button("Import CSV…") { importCSV() }
-                    Button("Export CSV…") { viewModel.showingExportConfirm = true }
+                Button { manageLogins() } label: {
+                    HStack(spacing: 4) {
+                        Text("Manage Logins")
+                        Image(systemName: "chevron.down").font(.caption2)
+                    }
                 }
-                .help("CSV Logins\nImport or export saved logins as host,port,username,password.")
+                .hint("Manage Logins\nSet the Administrator Password, or import and export login data (host,port,username,password).")
 
                 Spacer()
 
                 Button("Cancel", role: .cancel) { onDismiss() }
                     .keyboardShortcut(.cancelAction)
-                    .help("Cancel (Esc)\nClose without connecting.")
+                    .hint("Cancel (Esc)\nClose without connecting.")
 
                 Button("Connect") {
+                    // First SSH use with saving on: explain protection before anything is written.
+                    if viewModel.saveToLogins, store.protection == .unset, !LoginVaultPrompts.explainSetup(store) {
+                        viewModel.saveToLogins = false
+                    }
                     do {
                         let login = try viewModel.handleConnect()
                         viewModel.errorMessage = nil
@@ -142,16 +311,17 @@ struct SSHConnectView: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-                .help("Connect (Return)\nOpen the remote shell in this tab; the explorer follows the host.")
+                .hint("Connect (Return)\nOpen the remote shell in this tab; the explorer follows the host.")
             }
         }
         .padding(20)
         .frame(minWidth: 420)
-        .confirmationDialog("Export Plaintext Passwords?", isPresented: $viewModel.showingExportConfirm) {
-            Button("Export CSV", role: .destructive) { exportCSV() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Exporting credentials will save all usernames and passwords as unencrypted plaintext in the CSV file.")
+        .onAppear {
+            // The first time SSH is used, explain the Administrator Password; later, offer to unlock.
+            DispatchQueue.main.async {
+                if store.protection == .unset { LoginVaultPrompts.explainSetup(store) }
+                else if store.isLocked { LoginVaultPrompts.unlock(store) }
+            }
         }
         .alert("Notice", isPresented: Binding(
             get: { viewModel.noticeMessage != nil },
@@ -163,9 +333,58 @@ struct SSHConnectView: View {
         }
     }
 
+    private var store: CredentialStore { viewModel.store }
+
+    private func notice(_ symbol: String, _ text: String) -> some View {
+        Label { Text(text).fixedSize(horizontal: false, vertical: true) } icon: {
+            Image(systemName: symbol).foregroundStyle(.orange)
+        }
+        .font(.caption)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Manage Logins: explains the Administrator Password the first time, then offers its menu.
+    private func manageLogins() {
+        if store.protection == .unset, !LoginVaultPrompts.explainSetup(store) { return }
+        let menu = NSMenu()
+        menu.addItem(ActionMenuItem(store.protection == .adminPassword ? "Modify Admin Password…" : "Create Admin Password…") {
+            LoginVaultPrompts.createOrModify(store)
+        })
+        menu.addItem(ActionMenuItem("Import Login Data…") { importCSV() })
+        menu.addItem(ActionMenuItem("Export Login Data…", enabled: !store.logins.isEmpty) {
+            if LoginVaultPrompts.confirmExport(store) { exportCSV() }
+        })
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+
+    private func recoverLegacy() {
+        if store.protection == .unset, !LoginVaultPrompts.explainSetup(store) { return }
+        if store.isLocked, !LoginVaultPrompts.unlock(store) { return }
+        do {
+            let count = try store.recoverLegacy()
+            viewModel.noticeMessage = "Recovered \(count) login\(count == 1 ? "" : "s"). They no longer depend on the macOS Keychain."
+        } catch {
+            viewModel.errorMessage = "Couldn't recover the old logins: \(error.localizedDescription) They were left unchanged."
+        }
+    }
+
+    private func discardLegacy() {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Delete \(store.legacyCount) old saved login\(store.legacyCount == 1 ? "" : "s")?"
+        alert.informativeText = "They were encrypted with a key in the macOS Keychain and can't be read without it. This can't be undone."
+        // Cancel is the default, so Return or a stray click never deletes.
+        alert.addButton(withTitle: "Cancel")
+        let delete = alert.addButton(withTitle: "Delete")
+        delete.hasDestructiveAction = true
+        guard alert.runModal() == .alertSecondButtonReturn else { return }
+        do { try store.discardLegacy() } catch { viewModel.errorMessage = error.localizedDescription }
+    }
+
     private func importCSV() {
+        if store.isLocked, !LoginVaultPrompts.unlock(store) { return }
         let panel = NSOpenPanel()
-        panel.title = "Import SSH Logins CSV"
+        panel.title = "Import Login Data"
         panel.allowedContentTypes = [UTType.commaSeparatedText]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -180,14 +399,14 @@ struct SSHConnectView: View {
 
     private func exportCSV() {
         let panel = NSSavePanel()
-        panel.title = "Export SSH Logins CSV"
+        panel.title = "Export Login Data"
         panel.allowedContentTypes = [UTType.commaSeparatedText]
         panel.nameFieldStringValue = "herbsterminal_logins.csv"
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         do {
             try viewModel.exportCSV(to: url)
-            viewModel.noticeMessage = "Credentials exported successfully."
+            viewModel.noticeMessage = "Login data exported. The file contains readable passwords; delete it when you're done."
         } catch {
             viewModel.errorMessage = error.localizedDescription
         }

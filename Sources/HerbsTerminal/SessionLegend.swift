@@ -41,7 +41,7 @@ final class SessionLegend: ObservableObject, @preconcurrency LocalProcessTermina
                 if proc_name(foreground, &name, UInt32(name.count)) > 0 {
                     let program = String(decoding: name.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
                     if !["sh", "bash", "zsh", "fish", "ksh", "tcsh", "csh"].contains(program) {
-                        next += " — " + (commandLine(foreground) ?? program)
+                        next += " — " + redactCredentials(commandLine(foreground) ?? program)
                     }
                 }
             }
@@ -111,4 +111,19 @@ final class SessionLegend: ObservableObject, @preconcurrency LocalProcessTermina
         if let view = source as? LocalProcessTerminalView { refresh(view) }
     }
     func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
+}
+
+/// Hides secrets a command line may carry before it is shown as the window title: `user:password@host`
+/// in a destination or URL, and the values of `-p`/`--password`/`*_TOKEN=`-style arguments.
+func redactCredentials(_ commandLine: String) -> String {
+    var text = commandLine
+    let patterns = [
+        #"([A-Za-z][A-Za-z0-9+.-]*://)?([^\s:/@]+):[^\s@/]+@"#: "$1$2:•••@",
+        #"(?i)(--?(?:pass(?:word)?|token|secret|api[-_]?key)[= ])\S+"#: "$1•••",
+        #"(?i)\b([A-Z0-9_]*(?:PASS(?:WORD)?|TOKEN|SECRET|KEY)=)\S+"#: "$1•••",
+    ]
+    for (pattern, template) in patterns {
+        text = text.replacingOccurrences(of: pattern, with: template, options: .regularExpression)
+    }
+    return text
 }

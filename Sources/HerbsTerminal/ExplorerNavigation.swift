@@ -1,4 +1,5 @@
 import SwiftUI
+import HerbsTerminalUI
 
 /// Thunar-style back/forward history for one explorer pane, keyed by POSIX path.
 struct NavigationHistory: Equatable {
@@ -102,19 +103,19 @@ struct LocationBar<Trailing: View>: View {
     var body: some View {
         HStack(spacing: 4) {
             Button { if let p = history.goBack() { go(p) } } label: { Label("Back", systemImage: "chevron.left") }
-                .keyboardShortcut("[").disabled(!history.canGoBack).help("Back (⌘[)\nReturn to the folder you were in before.")
+                .keyboardShortcut("[").disabled(!history.canGoBack).hint("Back (⌘[)\nReturn to the folder you were in before.")
             Button { if let p = history.goForward() { go(p) } } label: { Label("Forward", systemImage: "chevron.right") }
-                .keyboardShortcut("]").disabled(!history.canGoForward).help("Forward (⌘])\nGo forward again after using Back.")
+                .keyboardShortcut("]").disabled(!history.canGoForward).hint("Forward (⌘])\nGo forward again after using Back.")
             // Shortcut actions can outlive a render, so read the live history rather than `path`.
             Button { visit(parentPath(history.current)) } label: { Label("Parent folder", systemImage: "arrow.up") }
-                .keyboardShortcut(.upArrow).disabled(path == "/").help("Open Parent (⌘↑)\nGo up to the folder that contains this one.")
+                .keyboardShortcut(.upArrow).disabled(path == "/").hint("Open Parent (⌘↑)\nGo up to the folder that contains this one.")
             if let home {
                 Button { visit(home) } label: { Label("Home folder", systemImage: "house") }
-                    .keyboardShortcut("h", modifiers: [.command, .shift]).help("Home (⇧⌘H)\nGo to your home folder.")
+                    .keyboardShortcut("h", modifiers: [.command, .shift]).hint("Home (⇧⌘H)\nGo to your home folder.")
             }
             if field.editing {
                 TextField("Location", text: $field.text)
-                    .help("Location\nPress Return to go there, Esc to cancel.")
+                    .hint("Location\nPress Return to go there, Esc to cancel.")
                     .textFieldStyle(.roundedBorder)
                     .focused($fieldFocused)
                     .onSubmit {
@@ -139,7 +140,7 @@ struct LocationBar<Trailing: View>: View {
                                 .fontWeight(segment.path == normalizePath(path) ? .semibold : .regular)
                                 .padding(.horizontal, 4).padding(.vertical, 2)
                                 .background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 4))
-                                .help("\(segment.path)\nClick to open this folder.")
+                                .hint("\(segment.path)\nClick to open this folder.")
                         }
                     }
                 }
@@ -150,12 +151,12 @@ struct LocationBar<Trailing: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             Button { startEditing() } label: { Label("Edit location", systemImage: "character.cursor.ibeam") }
-                .keyboardShortcut("l").help("Open Location (⌘L)\nType a path to go to: absolute, ~/… or relative to this folder.")
+                .keyboardShortcut("l").hint("Open Location (⌘L)\nType a path to go to: absolute, ~/… or relative to this folder.")
             Button { reload() } label: { Label("Reload", systemImage: "arrow.clockwise") }
-                .keyboardShortcut("r").help("Reload (⌘R)\nList this folder again to pick up changes.")
+                .keyboardShortcut("r").hint("Reload (⌘R)\nList this folder again to pick up changes.")
             Toggle(isOn: $showHidden) { Label("Show hidden files", systemImage: "eye") }
                 .toggleStyle(.button).keyboardShortcut(".", modifiers: [.command, .shift])
-                .help(showHidden ? "Hide Hidden Files (⇧⌘.)\nStop showing items whose names start with a dot."
+                .hint(showHidden ? "Hide Hidden Files (⇧⌘.)\nStop showing items whose names start with a dot."
                                   : "Show Hidden Files (⇧⌘.)\nAlso list items whose names start with a dot.")
             trailing
         }
@@ -170,5 +171,93 @@ struct LocationBar<Trailing: View>: View {
 
     private func startEditing() {
         field.editing = true
+    }
+}
+
+struct PlacesSection: Identifiable {
+    let title: String
+    let places: [Place]
+    var removable = false
+    var id: String { title }
+}
+
+/// Thunar's side pane, shared by the local and remote explorers.
+// Rows are buttons rather than List selection: a folder outside Places must clear the highlight,
+// and a selection binding that names no row leaves the old row selected and swallows clicks.
+struct PlacesSidebar: View {
+    let sections: [PlacesSection]
+    let current: String
+    let open: (String) -> Void
+    var remove: (String) -> Void = { _ in }
+
+    var body: some View {
+        List {
+            ForEach(sections) { section in
+                if !section.places.isEmpty {
+                    Section(section.title) {
+                        ForEach(section.places) { place in
+                            row(place).contextMenu {
+                                if section.removable { Button("Remove Bookmark") { remove(place.path) } }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .frame(width: 170)
+    }
+
+    private func row(_ place: Place) -> some View {
+        Button { open(place.path) } label: {
+            Label(place.name, systemImage: place.symbol)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(place.path == current ? RoundedRectangle(cornerRadius: 5).fill(.primary.opacity(0.12)).padding(.horizontal, 10) : nil)
+        .hint("\(place.name)\nOpen \(place.path)")
+    }
+}
+
+/// One explorer file row, the same locally and remotely: icon, name, and size for files.
+struct FileRow: View {
+    let name: String
+    let isFolder: Bool
+    let size: Int64?
+
+    var body: some View {
+        HStack {
+            Label(name, systemImage: isFolder ? "folder" : "doc")
+                .opacity(name.hasPrefix(".") ? 0.6 : 1)
+            Spacer()
+            if !isFolder, let size {
+                Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+/// Bookmarks kept as newline-separated paths in one defaults string, optionally scoped to a remote host.
+struct BookmarkList {
+    var raw: String
+    let scope: String
+
+    var paths: [String] {
+        raw.split(separator: "\n").compactMap { line in
+            let parts = line.split(separator: "\t", maxSplits: 1).map(String.init)
+            if scope.isEmpty { return parts.count == 1 ? parts[0] : nil }
+            return parts.count == 2 && parts[0] == scope ? parts[1] : nil
+        }
+    }
+
+    func contains(_ path: String) -> Bool { paths.contains(path) }
+
+    mutating func toggle(_ path: String) {
+        let line = scope.isEmpty ? path : scope + "\t" + path
+        var lines = raw.split(separator: "\n").map(String.init)
+        if let index = lines.firstIndex(of: line) { lines.remove(at: index) } else { lines.append(line) }
+        raw = lines.joined(separator: "\n")
     }
 }
