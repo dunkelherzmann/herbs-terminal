@@ -11,6 +11,8 @@ struct SavedTab: Codable, Equatable {
     var explorerPath: String
     /// The tab's profile; absent in sessions saved before named profiles.
     var profile: String?
+    /// The tab's split panes; absent for a single pane.
+    var panes: SavedPane?
 }
 
 struct SavedWindow: Codable, Equatable {
@@ -30,7 +32,8 @@ enum SessionRestore {
             SavedWindow(tabs: workspace.tabs.map { tab in
                 SavedTab(directory: tab.shell.currentDirectory ?? tab.shell.startDirectory,
                          layout: tab.state.layout.savedName, title: tab.customTitle,
-                         explorerPath: tab.state.directory.path, profile: tab.shell.profileID?.uuidString)
+                         explorerPath: tab.state.directory.path, profile: tab.shell.profileID?.uuidString,
+                         panes: tab.shells.count > 1 ? tab.root.saved : nil)
             }, selected: workspace.tabs.firstIndex { $0 === workspace.selected } ?? 0)
         }
         if let data = try? JSONEncoder().encode(windows) { defaults.set(data, forKey: key) }

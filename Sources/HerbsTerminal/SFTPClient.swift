@@ -126,7 +126,8 @@ final class SFTPClient {
         try self.init(executable: "/usr/bin/ssh", arguments: endpoint.sshArguments(["-o", "ProxyCommand=/usr/bin/false", "-o", "BatchMode=yes", "-T", "-s"]) + ["sftp"])
     }
 
-    init(executable: String, arguments: [String]) throws {
+    /// `preamble` is written before the SFTP handshake, e.g. the password line `sudo -S` reads.
+    init(executable: String, arguments: [String], preamble: Data? = nil) throws {
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         process.standardInput = input
@@ -134,6 +135,7 @@ final class SFTPClient {
         process.standardError = FileHandle.nullDevice
         try process.run()
         do {
+            if let preamble { try input.fileHandleForWriting.write(contentsOf: preamble) }
             var initPacket = Packet()
             initPacket.number(UInt8(1)); initPacket.number(UInt32(3))
             try send(initPacket)

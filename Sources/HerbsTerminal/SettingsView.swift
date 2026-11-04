@@ -284,9 +284,9 @@ struct TerminalCommands: Commands {
     var body: some Commands {
         CommandGroup(after: .pasteboard) {
             Divider()
-            Button("Clear to Start") { workspace?.selected.shell.view.clearToStart() }
+            Button("Clear to Start") { workspace?.selected.focusedShell.view.clearToStart() }
                 .keyboardShortcut("k").disabled(workspace == nil)
-            Button("Clear Scrollback") { workspace?.selected.shell.view.clearHistory() }
+            Button("Clear Scrollback") { workspace?.selected.focusedShell.view.clearHistory() }
                 .keyboardShortcut("k", modifiers: [.command, .option]).disabled(workspace == nil)
         }
         CommandGroup(before: .windowList) {
@@ -299,6 +299,17 @@ struct TerminalCommands: Commands {
         }
         CommandMenu("Shell") {
             Button("New Tab") { workspace?.add() }.keyboardShortcut("t").disabled(workspace == nil)
+            Button("Split Vertically") { workspace?.split(.horizontal) }
+                .keyboardShortcut("d").disabled(workspace == nil)
+            Button("Split Horizontally") { workspace?.split(.vertical) }
+                .keyboardShortcut("d", modifiers: [.command, .shift]).disabled(workspace == nil)
+            Button("Close Pane") { workspace?.closePane() }
+                .keyboardShortcut("w", modifiers: [.command, .option]).disabled(workspace == nil)
+            Button("Select Next Pane") { workspace?.focusPane(offset: 1) }
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .option]).disabled((workspace?.selected.shells.count ?? 0) < 2)
+            Button("Select Previous Pane") { workspace?.focusPane(offset: -1) }
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .option]).disabled((workspace?.selected.shells.count ?? 0) < 2)
+            Divider()
             Toggle("MultiExec", isOn: Binding(get: { workspace?.multiExec ?? false }, set: { workspace?.multiExec = $0 }))
                 .keyboardShortcut("m", modifiers: [.command, .shift]).disabled(workspace == nil)
             Button("Run Command on Hosts…") { workspace?.panel = .multiHost }.disabled(workspace == nil)
@@ -330,9 +341,9 @@ struct TerminalCommands: Commands {
             Button("Move Tab Left") { workspace?.moveSelected(by: -1) }.disabled((workspace?.tabs.count ?? 0) < 2)
             Button("Move Tab Right") { workspace?.moveSelected(by: 1) }.disabled((workspace?.tabs.count ?? 0) < 2)
             Divider()
-            Button("Reset") { workspace?.selected.shell.view.reset(hard: false) }
+            Button("Reset") { workspace?.selected.focusedShell.view.reset(hard: false) }
                 .keyboardShortcut("r", modifiers: [.command, .option]).disabled(workspace == nil)
-            Button("Hard Reset") { workspace?.selected.shell.view.reset(hard: true) }
+            Button("Hard Reset") { workspace?.selected.focusedShell.view.reset(hard: true) }
                 .keyboardShortcut("r", modifiers: [.command, .option, .control]).disabled(workspace == nil)
             Divider()
             Toggle("Secure Keyboard Entry", isOn: $secureInput.enabled)

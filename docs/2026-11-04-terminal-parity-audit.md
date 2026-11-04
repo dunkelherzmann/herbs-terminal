@@ -1,5 +1,7 @@
 # Herb's Terminal parity audit: macOS Terminal, Ptyxis, iTerm2
 
+> **Superseded** by [2026-11-04-feature-audit.md](2026-11-04-feature-audit.md), which adds MobaXterm and the owner's own feature requests.
+
 **Audited 4 November 2026 against commit `8ad61d4`; updated the same day after the first gap-closing pass** (rename to Herb's Terminal, tabs, session restore, transparency, close/quit confirmation, new folder/rename, transfer retry). The requirement in [SPECIFICATION.md](../SPECIFICATION.md) is that Herb's Terminal at minimum matches the everyday functionality of macOS Terminal and Ptyxis. iTerm2 is included as the upper bound for power features, not as a requirement.
 
 **Method.** Herb's Terminal was checked by reading the code, running the 55-test suite, and driving the app (menus, right-click, toolbar, panels, a live SSH session to a ZimaOS host). The reference apps were compared from their documented feature sets: macOS Terminal 2.14 on macOS 15/26, Ptyxis 46–48 (GNOME, VTE), and iTerm2 3.5/3.6. "Partial" means part of the behavior is present and the missing part is named.

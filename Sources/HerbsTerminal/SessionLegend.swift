@@ -111,8 +111,12 @@ final class SessionLegend: ObservableObject, @preconcurrency LocalProcessTermina
     func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
         if let view = source as? LocalProcessTerminalView { refresh(view) }
     }
+    /// Called when the shell exits; a split pane closes itself.
+    var onExit: (() -> Void)?
+
     func processTerminated(source: TerminalView, exitCode: Int32?) {
         exited = true
+        DispatchQueue.main.async { [weak self] in self?.onExit?() }
         if let view = source as? LocalProcessTerminalView { refresh(view) }
     }
     /// Shows "columns × rows" briefly when the terminal is resized, as Terminal does in its title.

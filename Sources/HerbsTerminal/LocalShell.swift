@@ -2,7 +2,8 @@ import SwiftUI
 import SwiftTerm
 
 @MainActor
-final class LocalShell: ObservableObject {
+final class LocalShell: ObservableObject, Identifiable {
+    let id = UUID()
     let view = HerbsTerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 500),
                                  font: TerminalProfile.shared.defaultProfile.settings.font,
                                  options: TerminalOptions(scrollback: TerminalProfile.shared.defaultProfile.settings.scrollbackLines))

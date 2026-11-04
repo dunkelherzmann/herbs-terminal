@@ -77,6 +77,9 @@ struct LocalExplorer: View {
     var findRequest = 0
     /// The Places side pane's width; 0 hides it when the pane is too narrow, so nothing is clipped.
     var sidebarWidth: CGFloat = 170
+    /// Turns Administrator mode on or off; nil hides the lock button.
+    var administratorToggle: (() -> Void)?
+    var isAdministrator = false
     @StateObject private var listing = DirectoryListing()
     @StateObject private var filter = ExplorerFilter()
     @StateObject private var selection = ListSelection<URL>()
@@ -106,9 +109,17 @@ struct LocalExplorer: View {
                     Button { toggleBookmark(history.current) } label: {
                         Label("Bookmark", systemImage: bookmarks.contains(path) ? "bookmark.fill" : "bookmark")
                     }
-                    .keyboardShortcut("d")
-                    .hint(bookmarks.contains(path) ? "Remove Bookmark (⌘D)\nTake this folder out of the side pane's Bookmarks."
-                                                   : "Bookmark This Folder (⌘D)\nAdd it to the side pane's Bookmarks.")
+                    .keyboardShortcut("d", modifiers: [.command, .option])
+                    .hint(bookmarks.contains(path) ? "Remove Bookmark (⌥⌘D)\nTake this folder out of the side pane's Bookmarks."
+                                                   : "Bookmark This Folder (⌥⌘D)\nAdd it to the side pane's Bookmarks.")
+                    if let administratorToggle {
+                        Button(action: administratorToggle) {
+                            Label("Administrator mode", systemImage: isAdministrator ? "lock.open.fill" : "lock")
+                                .foregroundStyle(isAdministrator ? Color.red : Color.primary)
+                        }
+                        .hint(isAdministrator ? "Leave Administrator Mode\nGo back to working with your own account's access."
+                                              : "Administrator Mode\nWork as root with sudo: open and change any file. Asks for the sudo password.")
+                    }
                     FileActionsMenu(actions: actions)
                     .hint("File Actions\nUpload, download, undo, cut, copy, paste, delete, select all and find.")
                 }
@@ -116,6 +127,11 @@ struct LocalExplorer: View {
                 if filter.active { FilterBar(filter: filter); Divider() }
                 if let error = listing.error {
                     Text(error).padding()
+                    if let administratorToggle, isPermissionError(error) {
+                        Button("Open with Administrator Mode…", action: administratorToggle)
+                            .padding(.horizontal)
+                            .hint("Administrator Mode\nOpen this folder as root with sudo. Asks for your Mac password.")
+                    }
                     Spacer()
                 } else {
                     files

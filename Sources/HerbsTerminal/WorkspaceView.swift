@@ -2,21 +2,42 @@ import SwiftUI
 import HerbsTerminalUI
 
 @MainActor
-final class TerminalTab: Identifiable {
+final class TerminalTab: Identifiable, ObservableObject {
     let id = UUID()
     let number: Int
     let state = WindowState()
-    let shell: LocalShell
+    /// The tab's first pane: its SSH connection, the explorer and the title follow this shell. If it is
+    /// closed while other panes remain, the next pane takes over.
+    private(set) var shell: LocalShell
+    /// The tab's split panes; a single leaf until the tab is split.
+    let root: PaneNode
+    /// The pane that has keyboard focus; zoom, Clear, Reset and Find act on it.
+    @Published var focusedShell: LocalShell
     var monitor: Task<Void, Never>?
     var typedSSHWatch: Task<Void, Never>?
     /// Set by Rename Tab; otherwise tabs are numbered.
     var customTitle: String?
     var title: String { customTitle ?? "Terminal \(number)" }
+    var shells: [LocalShell] { root.leaves }
 
-    init(number: Int, directory: String? = nil, profile: UUID? = nil) {
+    init(number: Int, directory: String? = nil, profile: UUID? = nil, panes: SavedPane? = nil) {
         self.number = number
-        shell = LocalShell(profileID: profile)
-        if let directory { shell.startDirectory = directory }
+        let main = LocalShell(profileID: profile)
+        if let directory { main.startDirectory = directory }
+        shell = main
+        focusedShell = main
+        if let panes, panes.children?.isEmpty == false {
+            var first: LocalShell? = main
+            root = PaneNode.restore(panes, first: &first, profile: profile)
+        } else {
+            root = PaneNode(shell: main)
+        }
+    }
+
+    /// Hands the connection and explorer to another pane when the first one closes.
+    func promote(_ next: LocalShell) {
+        shell = next
+        objectWillChange.send()
     }
 }
 
@@ -37,29 +58,32 @@ final class Workspace: ObservableObject {
     static var all: [Workspace] { registry.compactMap(\.value) }
     private struct WeakWorkspace { weak var value: Workspace? }
 
-    /// MultiExec, like MobaXterm's: every tab side by side, and what you type in an included tab goes to all
-    /// included tabs.
+    /// MultiExec, like MobaXterm's: every pane of every tab in a grid, and what you type in an included
+    /// pane goes to all included panes.
     @Published var multiExec = false { didSet { updateBroadcast() } }
-    /// Tabs left out of MultiExec input; they still show in the grid and take their own typing.
+    /// Panes (by shell) left out of MultiExec input; they still show in the grid and take their own typing.
     @Published var excludedFromMultiExec: Set<UUID> = [] { didSet { updateBroadcast() } }
 
-    var multiExecTargets: [TerminalTab] { tabs.filter { !excludedFromMultiExec.contains($0.id) } }
+    var allShells: [LocalShell] { tabs.flatMap(\.shells) }
+    var multiExecTargets: [LocalShell] { allShells.filter { !excludedFromMultiExec.contains($0.id) } }
 
-    func setIncluded(_ tab: TerminalTab, _ included: Bool) {
-        if included { excludedFromMultiExec.remove(tab.id) } else { excludedFromMultiExec.insert(tab.id) }
+    func setIncluded(_ shell: LocalShell, _ included: Bool) {
+        if included { excludedFromMultiExec.remove(shell.id) } else { excludedFromMultiExec.insert(shell.id) }
     }
 
-    /// Wires each included tab to send its user input on to the other included tabs' shells.
+    func setIncluded(_ tab: TerminalTab, _ included: Bool) { tab.shells.forEach { setIncluded($0, included) } }
+
+    /// Wires each included pane to send its user input on to the other included panes' shells.
     func updateBroadcast() {
-        for tab in tabs {
-            guard multiExec, !excludedFromMultiExec.contains(tab.id) else {
-                tab.shell.view.broadcast = nil
+        for shell in allShells {
+            guard multiExec, !excludedFromMultiExec.contains(shell.id) else {
+                shell.view.broadcast = nil
                 continue
             }
-            tab.shell.view.broadcast = { [weak self, weak tab] data in
-                guard let self, let tab else { return }
-                for other in self.multiExecTargets where other !== tab {
-                    other.shell.view.process.send(data: data)
+            shell.view.broadcast = { [weak self, weak shell] data in
+                guard let self, let shell else { return }
+                for other in self.multiExecTargets where other !== shell {
+                    other.view.process.send(data: data)
                 }
             }
         }
@@ -85,7 +109,7 @@ final class Workspace: ObservableObject {
         let restored = (saved?.tabs ?? []).enumerated().map { index, tab -> TerminalTab in
             let item = TerminalTab(number: index + 1,
                                    directory: FileManager.default.fileExists(atPath: tab.directory) ? tab.directory : nil,
-                                   profile: tab.profile.flatMap(UUID.init(uuidString:)))
+                                   profile: tab.profile.flatMap(UUID.init(uuidString:)), panes: tab.panes)
             item.customTitle = tab.title
             item.state.layout = SessionLayout(savedName: tab.layout)
             if FileManager.default.fileExists(atPath: tab.explorerPath) {
@@ -167,10 +191,31 @@ final class Workspace: ObservableObject {
     /// The workspace part of the terminal's right-click menu, and typed-ssh following.
     private func configure(_ tab: TerminalTab) {
         watchTypedSSH(tab)
-        tab.shell.view.extraMenuItems = { [weak self, weak tab] in
-            guard let self, let tab else { return [] }
+        tab.shells.forEach { configurePane($0, in: tab) }
+    }
+
+    /// A pane's right-click menu, focus tracking, and closing it when its shell exits.
+    private func configurePane(_ shell: LocalShell, in tab: TerminalTab) {
+        shell.view.onFocus = { [weak tab, weak shell] in
+            guard let tab, let shell, tab.focusedShell !== shell else { return }
+            tab.focusedShell = shell
+        }
+        shell.legend.onExit = { [weak self, weak tab, weak shell] in
+            guard let self, let tab, let shell, tab.shells.count > 1 else { return }
+            self.closePane(shell, in: tab, confirm: false)
+        }
+        shell.view.extraMenuItems = { [weak self, weak tab, weak shell] in
+            guard let self, let tab, let shell else { return [] }
             let state = tab.state
-            var items = [
+            var items: [NSMenuItem] = [
+                ActionMenuItem("Split Vertically", key: "d") { self.split(.horizontal, from: shell, in: tab) },
+                ActionMenuItem("Split Horizontally", key: "d", modifiers: [.command, .shift]) { self.split(.vertical, from: shell, in: tab) },
+            ]
+            if tab.shells.count > 1 {
+                items.append(ActionMenuItem("Close Pane", key: "w", modifiers: [.command, .option]) { self.closePane(shell, in: tab, confirm: true) })
+            }
+            items += [
+                NSMenuItem.separator(),
                 ActionMenuItem("New Tab", key: "t") { self.add() },
                 ActionMenuItem(state.layout == .split ? "Hide Split View" : "Split View") {
                     state.layout = state.layout == .split ? .terminal : .split
@@ -190,6 +235,72 @@ final class Workspace: ObservableObject {
             ]
             return items
         }
+    }
+
+    // MARK: Split panes
+
+    /// Splits `shell`'s pane (default: the focused pane of the selected tab). The new pane gets the same
+    /// profile and, per Settings, the same folder.
+    func split(_ axis: PaneNode.Axis, from shell: LocalShell? = nil, in tab: TerminalTab? = nil) {
+        let tab = tab ?? selected
+        let source = shell ?? tab.focusedShell
+        guard let leaf = tab.root.leaf(for: source) else { return }
+        let pane = LocalShell(profileID: source.profileID)
+        if TerminalProfile.shared.newTabsInSameFolder, let folder = source.currentDirectory { pane.startDirectory = folder }
+        pane.view.focusWhenShown = true
+        leaf.split(axis, adding: PaneNode(shell: pane))
+        configurePane(pane, in: tab)
+        tab.focusedShell = pane
+        updateBroadcast()
+        tab.objectWillChange.send()
+    }
+
+    /// Closes one pane; the last pane closes the tab instead.
+    func closePane(_ shell: LocalShell? = nil, in tab: TerminalTab? = nil, confirm: Bool = true) {
+        let tab = tab ?? selected
+        let shell = shell ?? tab.focusedShell
+        guard tab.shells.count > 1 else { close(tab); return }
+        if confirm, TerminalProfile.shared.askBeforeClosing, let program = shell.foregroundProgram {
+            guard Self.confirmProcess(program, scope: "this pane") else { return }
+        }
+        guard let leaf = tab.root.leaf(for: shell) else { return }
+        let order = tab.shells
+        let index = order.firstIndex { $0 === shell } ?? 0
+        leaf.removeFromParent()
+        let remaining = tab.shells
+        if shell === tab.shell, let next = remaining.first {
+            // The connection belonged to this pane's shell; the next pane starts local.
+            tab.monitor?.cancel()
+            Self.detach(tab, message: nil)
+            tab.promote(next)
+        }
+        tab.focusedShell = remaining[min(index, remaining.count - 1)]
+        excludedFromMultiExec.remove(shell.id)
+        shell.view.broadcast = nil
+        shell.close()
+        updateBroadcast()
+        tab.objectWillChange.send()
+        let focus = tab.focusedShell
+        DispatchQueue.main.async { focus.view.window?.makeFirstResponder(focus.view) }
+    }
+
+    /// Next / previous pane in display order.
+    func focusPane(offset: Int) {
+        let tab = selected
+        let order = tab.shells
+        guard order.count > 1, let index = order.firstIndex(where: { $0 === tab.focusedShell }) else { return }
+        let next = order[(index + offset + order.count) % order.count]
+        tab.focusedShell = next
+        next.view.window?.makeFirstResponder(next.view)
+    }
+
+    private static func confirmProcess(_ program: String, scope: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Do you want to terminate running processes in \(scope)?"
+        alert.informativeText = "Closing \(scope) will terminate: \(program)."
+        alert.addButton(withTitle: "Terminate")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     func connectSSH(_ login: SSHLogin) {
@@ -268,7 +379,12 @@ final class Workspace: ObservableObject {
         }
     }
 
-    private static func detach(_ tab: TerminalTab, message: String?) {
+    static func detach(_ tab: TerminalTab, message: String?) {
+        // A root session on the host ends with the connection it ran over.
+        if case .remote = tab.state.adminTarget {
+            tab.state.adminViewModel = nil
+            tab.state.adminTarget = nil
+        }
         tab.state.endpoint = .local
         tab.state.remoteViewModel = nil
         tab.state.connection = message.map(ConnectionState.failed) ?? .local
@@ -280,9 +396,13 @@ final class Workspace: ObservableObject {
     /// Terminal's rule: ask before ending tabs that run something other than their login shell.
     static func confirmClosing(_ tabs: [TerminalTab], scope: String = "this tab") -> Bool {
         guard TerminalProfile.shared.askBeforeClosing else { return true }
-        let running = tabs.compactMap { tab -> String? in
-            if case .connected(let endpoint) = tab.state.connection { return "ssh (\(endpoint.label))" }
-            return tab.shell.foregroundProgram
+        let running = tabs.flatMap { tab -> [String] in
+            var programs = tab.shells.compactMap(\.foregroundProgram)
+            if case .connected(let endpoint) = tab.state.connection {
+                programs.removeAll { $0 == "ssh" }
+                programs.append("ssh (\(endpoint.label))")
+            }
+            return programs
         }
         guard !running.isEmpty else { return true }
         let alert = NSAlert()
@@ -307,10 +427,10 @@ final class Workspace: ObservableObject {
     /// Bigger / Smaller change the selected tab's profile, so the size is kept across sessions and every
     /// tab with that profile follows. Default Font Size (⌘0) clears the zoom.
     func zoom(_ delta: CGFloat) {
-        TerminalProfile.shared.update(selected.shell.profileID) { $0.zoom += Double(delta) }
+        TerminalProfile.shared.update(selected.focusedShell.profileID) { $0.zoom += Double(delta) }
     }
 
-    func resetZoom() { TerminalProfile.shared.update(selected.shell.profileID) { $0.zoom = 0 } }
+    func resetZoom() { TerminalProfile.shared.update(selected.focusedShell.profileID) { $0.zoom = 0 } }
 
     /// Width added for Split View, given back when it closes.
     private var splitWidthAdded: CGFloat = 0
@@ -368,8 +488,8 @@ final class Workspace: ObservableObject {
 
     /// Shell ▸ Use Profile: switch the selected tab to another profile.
     func useProfile(_ id: UUID) {
-        selected.shell.profileID = id
-        if let window { selected.shell.settings.applyTransparency(to: window) }
+        selected.focusedShell.profileID = id
+        if let window { selected.focusedShell.settings.applyTransparency(to: window) }
         objectWillChange.send()
     }
 
@@ -380,10 +500,12 @@ final class Workspace: ObservableObject {
         tabs.remove(at: index)
         tab.monitor?.cancel()
         tab.typedSSHWatch?.cancel()
-        excludedFromMultiExec.remove(tab.id)
-        tab.shell.view.broadcast = nil
+        for shell in tab.shells {
+            excludedFromMultiExec.remove(shell.id)
+            shell.view.broadcast = nil
+            shell.close()
+        }
         updateBroadcast()
-        tab.shell.close()
     }
 }
 
@@ -421,7 +543,7 @@ private struct ActiveWorkspace: View {
                         }.buttonStyle(.plain)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }
-                SessionView(state: tab.state, shell: tab.shell).id(tab.id)
+                SessionView(state: tab.state, shell: tab.shell, tab: tab).id(tab.id)
             }
         }
         // The toolbar sits in the titlebar as a safe-area inset, so content below sees exactly its height
@@ -705,7 +827,8 @@ struct MultiExecGrid: View {
         VStack(spacing: 0) {
             bar
             GeometryReader { geometry in
-                let count = workspace.tabs.count
+                let cells = workspace.tabs.flatMap { tab in tab.shells.map { (tab, $0) } }
+                let count = cells.count
                 let columns = max(1, Int(Double(count).squareRoot().rounded(.up)))
                 let rows = max(1, Int((Double(count) / Double(columns)).rounded(.up)))
                 let gap: CGFloat = 6
@@ -717,7 +840,7 @@ struct MultiExecGrid: View {
                             ForEach(0..<columns, id: \.self) { column in
                                 let index = row * columns + column
                                 if index < count {
-                                    cell(workspace.tabs[index], number: index + 1).frame(width: width, height: height)
+                                    cell(cells[index].0, cells[index].1, number: index + 1).frame(width: width, height: height)
                                 } else {
                                     Color.clear.frame(width: width, height: height)
                                 }
@@ -733,7 +856,7 @@ struct MultiExecGrid: View {
     private var bar: some View {
         HStack(spacing: 10) {
             Image(systemName: "square.3.layers.3d").foregroundStyle(.orange)
-            Text("MultiExec: typing goes to \(workspace.multiExecTargets.count) of \(workspace.tabs.count) terminal\(workspace.tabs.count == 1 ? "" : "s")")
+            Text("MultiExec: typing goes to \(workspace.multiExecTargets.count) of \(workspace.allShells.count) terminal\(workspace.allShells.count == 1 ? "" : "s")")
                 .font(.callout.weight(.semibold))
             Spacer()
             Button("New Tab") { workspace.add() }
@@ -751,49 +874,51 @@ struct MultiExecGrid: View {
         .background(.orange.opacity(0.14))
     }
 
-    private func cell(_ tab: TerminalTab, number: Int) -> some View {
-        let included = !workspace.excludedFromMultiExec.contains(tab.id)
-        let focused = tab === workspace.selected
-        let settings = profiles.settings(for: tab.shell.profileID)
+    private func cell(_ tab: TerminalTab, _ shell: LocalShell, number: Int) -> some View {
+        let included = !workspace.excludedFromMultiExec.contains(shell.id)
+        let focused = tab === workspace.selected && tab.focusedShell === shell
+        let settings = profiles.settings(for: shell.profileID)
         let background = themes.theme(named: settings.theme)?.colors["Background Color"] ?? TerminalTypeface.background(dark: colorScheme == .dark)
         return VStack(spacing: 0) {
-            ShellPane(session: tab.shell)
+            ShellPane(session: shell)
                 .padding(.leading, 6).padding(.top, 4)
                 .background(Color(nsColor: background))
-            MultiExecCaption(workspace: workspace, tab: tab, number: number, included: included)
+            MultiExecCaption(workspace: workspace, tab: tab, shell: shell, number: number, included: included)
         }
         .overlay(RoundedRectangle(cornerRadius: 3)
             .stroke(focused ? Color.accentColor : included ? Color.orange.opacity(0.55) : Color.secondary.opacity(0.3),
                     lineWidth: focused ? 2 : 1))
         .contentShape(Rectangle())
-        .simultaneousGesture(TapGesture().onEnded { workspace.selected = tab })
+        .simultaneousGesture(TapGesture().onEnded { workspace.selected = tab; tab.focusedShell = shell })
     }
 }
 
 private struct MultiExecCaption: View {
     @ObservedObject var workspace: Workspace
     let tab: TerminalTab
+    let shell: LocalShell
     let number: Int
     let included: Bool
     @ObservedObject private var legend: SessionLegend
 
-    init(workspace: Workspace, tab: TerminalTab, number: Int, included: Bool) {
+    init(workspace: Workspace, tab: TerminalTab, shell: LocalShell, number: Int, included: Bool) {
         self.workspace = workspace
         self.tab = tab
+        self.shell = shell
         self.number = number
         self.included = included
-        legend = tab.shell.legend
+        legend = shell.legend
     }
 
     var body: some View {
         HStack(spacing: 6) {
-            Toggle("", isOn: Binding(get: { included }, set: { workspace.setIncluded(tab, $0) }))
+            Toggle("", isOn: Binding(get: { included }, set: { workspace.setIncluded(shell, $0) }))
                 .toggleStyle(.checkbox).labelsHidden()
                 .hint(included ? "Included\nTyping in MultiExec goes to this terminal. Uncheck to leave it out."
                                : "Left out\nThis terminal only takes what you type into it. Check to include it.")
-            Image(systemName: { if case .connected = tab.state.connection { "network" } else { "terminal" } }())
+            Image(systemName: { if shell === tab.shell, case .connected = tab.state.connection { "network" } else { "terminal" } }())
                 .foregroundStyle(.secondary)
-            Text("\(number). \(tab.customTitle ?? legend.title)")
+            Text("\(number). \(paneTitle)")
                 .lineLimit(1).truncationMode(.middle)
             Spacer()
         }
@@ -801,5 +926,13 @@ private struct MultiExecCaption: View {
         .padding(.horizontal, 8).padding(.vertical, 4)
         .frame(maxWidth: .infinity)
         .background(.bar)
+    }
+
+    /// The tab's name, plus the pane's position when the tab is split.
+    private var paneTitle: String {
+        let base = tab.customTitle ?? legend.title
+        let panes = tab.shells
+        guard panes.count > 1, let index = panes.firstIndex(where: { $0 === shell }) else { return base }
+        return "\(base) (pane \(index + 1))"
     }
 }

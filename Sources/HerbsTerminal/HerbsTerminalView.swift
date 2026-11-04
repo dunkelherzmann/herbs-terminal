@@ -7,6 +7,16 @@ final class HerbsTerminalView: LocalProcessTerminalView {
     /// Workspace commands (new tab, explorer, SSH…) appended below the editing items of the context menu.
     var extraMenuItems: () -> [NSMenuItem] = { [] }
     var bellMode: TerminalBell = .audible
+    /// Tells the tab which pane has keyboard focus.
+    var onFocus: (() -> Void)?
+
+    // SwiftTerm's becomeFirstResponder can't be overridden here, so a click marks the pane focused;
+    // keyboard pane switching sets the focus itself.
+    override func mouseDown(with event: NSEvent) {
+        onFocus?()
+        super.mouseDown(with: event)
+    }
+
     /// MultiExec: receives what the user types or pastes here, to send to the other included tabs.
     var broadcast: ((ArraySlice<UInt8>) -> Void)?
     private var quiet = false
@@ -31,14 +41,22 @@ final class HerbsTerminalView: LocalProcessTerminalView {
         send(txt: text)
     }
 
+    /// A new split pane takes keyboard focus once it is in the window.
+    var focusWhenShown = false
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         registerForDraggedTypes([.fileURL])
+        if focusWhenShown, let window {
+            focusWhenShown = false
+            DispatchQueue.main.async { window.makeFirstResponder(self) }
+        }
     }
 
     // MARK: Context menu
 
     override func menu(for event: NSEvent) -> NSMenu? {
+        onFocus?()
         let menu = NSMenu()
         menu.addItem(withTitle: "Copy", action: #selector(copy(_:)), keyEquivalent: "c").target = self
         menu.addItem(withTitle: "Paste", action: #selector(paste(_:)), keyEquivalent: "v").target = self

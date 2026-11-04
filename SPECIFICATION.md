@@ -2,7 +2,7 @@
 
 **Scope reviewed 4 November 2026, against the build after commit `8ad61d4`.** Herb's Terminal (formerly HerbsTerminal) is a native, terminal-first workspace for an administrator using an Apple Silicon Mac to manage local files and remote Windows, Linux, and macOS machines. Its defining behavior is that the explorer follows the host and account of the active terminal. An administrator who connects once can use the shell, transfer files, and, where available, open the remote desktop from that tab.
 
-At minimum Herb's Terminal must match the everyday functionality of the stock macOS Terminal and Ptyxis, plus the features below. The feature-by-feature comparison with Terminal, Ptyxis and iTerm2 is in [docs/2026-11-04-terminal-parity-audit.md](docs/2026-11-04-terminal-parity-audit.md).
+At minimum Herb's Terminal must match the everyday functionality of the stock macOS Terminal and Ptyxis, plus the features below. The current audit, against the owner's feature requests and against macOS Terminal, Ptyxis, MobaXterm and iTerm2, is [docs/2026-11-04-feature-audit.md](docs/2026-11-04-feature-audit.md).
 
 A **requirement** describes the intended product. **Status** says what the current build delivers: **Delivered** (built and verified in the app or by tests), **Partial** (built, but a stated part is missing or unverified), or **Open** (not built). A visible button alone does not count as delivery.
 
@@ -15,7 +15,7 @@ The operator application targets **macOS 15 and later on Apple Silicon**. Window
 
 | Area | Status | Summary |
 |---|---|---|
-| Terminal and workspace | Partial | Named profiles, tabs (rename, reorder, ⌘1–9), layouts, session restore, transparency, saved zoom, close/quit confirmation, right-click menu, Terminal shortcuts; no split panes |
+| Terminal and workspace | Partial | Named profiles, split panes, tabs (rename, reorder, ⌘1–9), layouts, session restore, transparency, saved zoom, close/quit confirmation, right-click menu, Terminal shortcuts; no tab moving or overview |
 | Local explorer | Delivered | Thunar-style navigation, file actions, new folder/file, rename |
 | Appearance | Delivered | Terminal Basic default, six built-in themes, iTerm2 import, light/dark |
 | SSH and remote files | Partial | GUI and typed `ssh` both attach the explorer after a verified login; new folder, rename, transfer retry; no remote editing in the UI, no reconnect |
@@ -44,6 +44,7 @@ The operator application targets **macOS 15 and later on Apple Silicon**. Window
 - Dropping files or folders on the terminal types their shell-quoted paths. *Delivered.*
 - **Named profiles**, as in Terminal and Ptyxis. Each tab uses one; new tabs keep the current tab's profile. A profile holds font, size, zoom, cursor, color theme, background opacity and blur, Option as Meta, scrollback, bell, a startup command and a start folder. Shell ▸ New Tab with Profile and Use Profile; Settings ▸ Profiles adds, duplicates, renames, deletes and sets the default. Settings from before profiles became the "Basic" profile. *Delivered.*
 - **Main Menu ▸ Terminal Theme** sets the current tab's profile theme, imports an iTerm2 preset into it, and **Restore Defaults** (with a confirmation) returns that profile's font, size, zoom, cursor, colors and transparency, and the app appearance, to stock Terminal Basic. *Delivered.*
+- **Split panes**, as in iTerm2: Shell ▸ Split Vertically ⌘D (side by side) and Split Horizontally ⇧⌘D (stacked), also on the terminal's right-click menu; each pane is its own shell with the current pane's profile and folder, and panes can be split again. Close Pane ⌥⌘W, Select Next/Previous Pane ⌥⌘→ / ⌥⌘←; typing `exit` closes a pane; the focused pane is outlined, and zoom, Clear, Reset and Find act on it. Closing a tab or quitting asks when any pane is busy. Session restore keeps the layout and each pane's folder; MultiExec shows and types into every pane. The tab's SSH connection and explorer follow its first pane, and pass to the next pane if it closes. Panes share space equally (no dragging yet). The explorer's Bookmark shortcut moved to ⌥⌘D. *Delivered.*
 - **Split View widens the window** by up to 520 points so the terminal keeps its width, staying on screen, and gives the width back when Split View closes. *Delivered.*
 - **Settings (⌘,)**: Profiles, then Text, Terminal and Colors for the profile being edited, and Window. *Delivered:*
   - Text: any installed monospaced font, size 6–72 pt, background opacity (20–100%) and blur, cursor block/underline/bar, blink, live preview.
@@ -52,7 +53,7 @@ The operator application targets **macOS 15 and later on Apple Silicon**. Window
   - Colors: appearance (System/Light/Dark), macOS Terminal Basic plus six built-in palettes (Solarized Dark/Light, Tango Dark/Light, Gruvbox Dark, Nord), `.itermcolors` import and removal.
 - Match the macOS Terminal **Basic** profile by default (SF Mono Terminal 11 pt, stock light/dark colors and ANSI palette), inset 8 pt leading and 6 pt top in the terminal's own background color. *Delivered.*
 - `.itermcolors` import applies foreground, background, cursor, cursor text, selection, selected text and the 16 ANSI colors; malformed files are rejected without losing the current selection; the choice persists and applies across tabs and windows. *Delivered.*
-- **Open:** split panes within a tab, moving a tab to another window, a tab overview, marks and bookmarks, an inspector, editable key bindings, and cmd-click opening of URLs and files (SwiftTerm's default link handling is in place but unverified). See the audit for priorities.
+- **Open:** resizing panes by dragging, moving a tab to another window, a tab overview, marks and bookmarks, an inspector, editable key bindings, and cmd-click opening of URLs and files (SwiftTerm's default link handling is in place but unverified). See the audit for priorities.
 
 ## 3. Connect once and follow the active host
 
@@ -86,7 +87,7 @@ The explorer follows Thunar's model, locally and remotely: a Places side pane, b
 | Create and rename | New Folder and New File (right-click an empty area), Rename (right-click an item); free "untitled" names; undoable locally ("Undo New Folder", "Undo Rename"), rename undoable remotely. | Delivered |
 | Transfer | Upload and download files and folder trees with a progress strip, cancel and Retry (failed or cancelled items rerun from the start); uploads land under a temporary name and are renamed into place; name clashes get new names. | Partial: no drag-and-drop, no resume after interruption |
 | Edit remotely | Open a working copy in the chosen Mac editor and send changes back; detect concurrent remote edits; keep a recoverable draft; preserve bytes, line endings and permissions. | **Open:** staging and conflict checks exist in code but aren't reachable from the UI |
-| Permissions | Use the authenticated file account; a privileged edit is a separate, explicitly authorized action. | Partial: no privileged workflow |
+| Permissions and sudo | Use the authenticated file account by default. **Administrator mode** (the lock button in either explorer) is the separate, explicit authorization: after the sudo password it starts the system SFTP server under sudo, on this Mac (`/usr/libexec/sftp-server`) or on the host over the tab's shared SSH connection (the host's own sftp-server), and every explorer action (browse, new folder/file, rename, cut/copy/paste, delete, upload, download) runs as root until it is left. A red bar marks it. The password goes to `sudo -S` once on standard input, is checked on its own first so a wrong one can't hang the session, and isn't stored; password-free sudo isn't asked. It ends with the SSH session it ran over. | Delivered; tested with a stand-in for sudo, not yet with a real sudo password |
 | Windows targets | Windows drive paths, case rules, PowerShell hosts. | Untested |
 
 ## 5. Saved logins
@@ -131,7 +132,7 @@ The shell and transfers keep running; forwards are listed and closable, and end 
 
 ## 9. Release acceptance matrix
 
-Run `script/test.sh` (72 tests, including real SFTP transfers through `/usr/libexec/sftp-server`, the password helper, the login vault and Tailcat parsing) and `script/build_and_run.sh --verify`. Remote milestones need live endpoints.
+Run `script/test.sh` (79 tests, including real SFTP transfers through `/usr/libexec/sftp-server`, the password helper, the login vault and Tailcat parsing) and `script/build_and_run.sh --verify`. Remote milestones need live endpoints.
 
 | Gate | Scenario and pass condition | Status |
 |---|---|---|

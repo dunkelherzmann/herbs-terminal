@@ -21,13 +21,28 @@ final class RemoteExplorerViewModel: ObservableObject {
     private var flags: [UUID: CancelFlag] = [:]
     private var retries: [UUID: () async -> Void] = [:]
 
+    /// Administrator mode: every listing and action uses this one root session, one at a time.
+    private let shared: SFTPClient?
+    private let sharedLock = NSLock()
+    var isAdministrator: Bool { shared != nil }
+
     init(endpoint: RemoteEndpoint, service: (any RemoteFileService)? = nil,
          makeClient: (@Sendable () throws -> SFTPClient)? = nil, queue: TransferQueue = .shared) {
         self.endpoint = endpoint
         self.queue = queue
+        self.shared = nil
         self.service = service ?? (try? SFTPClient(endpoint: endpoint)) ?? FallbackRemoteService()
         // One SFTP channel per background operation, multiplexed over the tab's SSH connection.
         self.makeClient = makeClient ?? { try SFTPClient(endpoint: endpoint) }
+    }
+
+    /// An explorer over a root SFTP session started through sudo (see `PrivilegedAccess`).
+    init(administrator client: SFTPClient, endpoint: RemoteEndpoint, queue: TransferQueue = .shared) {
+        self.endpoint = endpoint
+        self.queue = queue
+        self.shared = client
+        self.service = client
+        self.makeClient = { client }
     }
 
     func load(path: String) async {
@@ -37,22 +52,25 @@ final class RemoteExplorerViewModel: ObservableObject {
 
         let svc = self.service
         let hidden = self.showHidden
+        let lock = shared == nil ? nil : sharedLock
 
         do {
             let items = try await Task.detached {
-                // Symbolic links list with the link's own attributes; follow them, as Thunar does, so a
-                // link to a folder shows and opens as a folder. A dangling link stays as it is.
-                let listed = try svc.list(path).map { entry in
-                    guard entry.attributes.link, let target = try? svc.stat(remoteJoin(path, entry.name), follow: true) else { return entry }
-                    return RemoteEntry(name: entry.name, attributes: target)
-                }
-                return listed.filter { item in
-                    hidden || !item.name.hasPrefix(".")
-                }.sorted {
-                    if $0.attributes.directory != $1.attributes.directory {
-                        return $0.attributes.directory
+                try serialized(lock) {
+                    // Symbolic links list with the link's own attributes; follow them, as Thunar does, so a
+                    // link to a folder shows and opens as a folder. A dangling link stays as it is.
+                    let listed = try svc.list(path).map { entry in
+                        guard entry.attributes.link, let target = try? svc.stat(remoteJoin(path, entry.name), follow: true) else { return entry }
+                        return RemoteEntry(name: entry.name, attributes: target)
                     }
-                    return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+                    return listed.filter { item in
+                        hidden || !item.name.hasPrefix(".")
+                    }.sorted {
+                        if $0.attributes.directory != $1.attributes.directory {
+                            return $0.attributes.directory
+                        }
+                        return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+                    }
                 }
             }.value
 
@@ -232,7 +250,11 @@ final class RemoteExplorerViewModel: ObservableObject {
 
     private func withClient<T: Sendable>(_ body: @escaping @Sendable (SFTPClient) throws -> T) async throws -> T {
         let make = makeClient
-        return try await Task.detached { try body(try make()) }.value
+        let lock = shared == nil ? nil : sharedLock
+        return try await Task.detached {
+            if let lock { return try lock.withLock { try body(try make()) } }
+            return try body(try make())
+        }.value
     }
 
     private func transfer(_ id: UUID, _ body: @escaping @Sendable (SFTPClient, ProgressMeter, CancelFlag) throws -> Void) async {
@@ -273,6 +295,9 @@ struct RemoteExplorer: View {
     var home = "/"
     /// The Places side pane's width; 0 hides it when the pane is too narrow, so nothing is clipped.
     var sidebarWidth: CGFloat = 170
+    /// Turns Administrator mode on or off; nil hides the lock button.
+    var administratorToggle: (() -> Void)?
+    var isAdministrator = false
     @StateObject private var selection = ListSelection<String>()
     @StateObject private var filter = ExplorerFilter()
     @AppStorage("remoteExplorerBookmarks") private var bookmarkStore = ""
@@ -302,9 +327,17 @@ struct RemoteExplorer: View {
                 Button { toggleBookmark(history.current) } label: {
                     Label("Bookmark", systemImage: bookmarks.contains(normalizePath(currentPath)) ? "bookmark.fill" : "bookmark")
                 }
-                .keyboardShortcut("d")
-                .hint(bookmarks.contains(normalizePath(currentPath)) ? "Remove Bookmark (⌘D)\nTake this folder out of the side pane's Bookmarks."
-                                                                     : "Bookmark This Folder (⌘D)\nAdd it to this host's Bookmarks in the side pane.")
+                .keyboardShortcut("d", modifiers: [.command, .option])
+                .hint(bookmarks.contains(normalizePath(currentPath)) ? "Remove Bookmark (⌥⌘D)\nTake this folder out of the side pane's Bookmarks."
+                                                                     : "Bookmark This Folder (⌥⌘D)\nAdd it to this host's Bookmarks in the side pane.")
+                if let administratorToggle {
+                    Button(action: administratorToggle) {
+                        Label("Administrator mode", systemImage: isAdministrator ? "lock.open.fill" : "lock")
+                            .foregroundStyle(isAdministrator ? Color.red : Color.primary)
+                    }
+                    .hint(isAdministrator ? "Leave Administrator Mode\nGo back to working with your own account's access."
+                                          : "Administrator Mode\nWork as root with sudo: open and change any file. Asks for the sudo password.")
+                }
                 FileActionsMenu(actions: actions)
                     .hint("File Actions\nUpload, download, undo, cut, copy, paste, delete, select all and find.")
             }
@@ -322,6 +355,10 @@ struct RemoteExplorer: View {
                         Task { await viewModel.load(path: currentPath) }
                     }
                     .hint("Retry\nList this remote folder again.")
+                    if !isAdministrator, let administratorToggle, isPermissionError(error) {
+                        Button("Open with Administrator Mode…", action: administratorToggle)
+                            .hint("Administrator Mode\nOpen this folder as root with sudo on the host.")
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -493,4 +530,16 @@ struct RemoteExplorer: View {
         let folder = currentPath
         Task { await viewModel.delete(names, in: folder) }
     }
+}
+
+/// Runs `body` holding `lock` when there is one (Administrator mode's single root session).
+private func serialized<T>(_ lock: NSLock?, _ body: () throws -> T) rethrows -> T {
+    guard let lock else { return try body() }
+    return try lock.withLock(body)
+}
+
+/// "Permission denied" from the Mac or an SFTP server: the case Administrator mode solves.
+func isPermissionError(_ message: String) -> Bool {
+    let text = message.lowercased()
+    return text.contains("permission") || text.contains("not permitted") || text.contains("sftp 3:")
 }
