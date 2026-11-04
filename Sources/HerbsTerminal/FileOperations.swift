@@ -59,6 +59,28 @@ enum LocalFiles {
         return .moved(moves)
     }
 
+    /// New Folder / New File with a free "untitled" name, like Thunar and Finder.
+    static func create(folder: Bool, named name: String? = nil, in parent: URL) throws -> FileChange {
+        let target = destination(for: name ?? (folder ? "untitled folder" : "untitled"), in: parent)
+        if folder {
+            try FileManager.default.createDirectory(at: target, withIntermediateDirectories: false)
+        } else {
+            try Data().write(to: target, options: .withoutOverwriting)
+        }
+        return .created([target])
+    }
+
+    /// Rename is a move within the folder, so Undo puts the old name back.
+    static func rename(_ item: URL, to name: String) throws -> FileChange {
+        try validateFileName(name)
+        let target = item.deletingLastPathComponent().appendingPathComponent(name)
+        guard !FileManager.default.fileExists(atPath: target.path) else {
+            throw FileIssue("An item named “\(name)” already exists here.")
+        }
+        try FileManager.default.moveItem(at: item, to: target)
+        return .moved([.init(from: item, to: target)])
+    }
+
     static func trash(_ items: [URL]) throws -> FileChange {
         var moves: [FileChange.Move] = []
         for item in items {
@@ -108,10 +130,10 @@ final class FileOperationLog: ObservableObject {
     var undoTitle: String { undoStack.last.map { "Undo \($0.title)" } ?? "Undo" }
     var redoTitle: String { redoStack.last.map { "Redo \($0.title)" } ?? "Redo" }
 
-    func record(_ change: FileChange) {
+    func record(_ change: FileChange, as title: String? = nil) {
         if case .created(let urls) = change, urls.isEmpty { return }
         if case .moved(let moves) = change, moves.isEmpty { return }
-        undoStack.append(Step(change: change, title: change.title))
+        undoStack.append(Step(change: change, title: title ?? change.title))
         redoStack.removeAll()
     }
 
@@ -314,4 +336,25 @@ struct SFTPTransfer {
     private func checkCancelled() throws {
         if isCancelled() { throw FileIssue("Transfer cancelled.") }
     }
+}
+
+/// Asks for a file or folder name, pre-selecting the part before the extension as Finder does.
+@MainActor
+func askForName(title: String, message: String, initial: String) -> String? {
+    let alert = NSAlert()
+    alert.messageText = title
+    alert.informativeText = message
+    let field = NSTextField(string: initial)
+    field.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
+    alert.accessoryView = field
+    alert.window.initialFirstResponder = field
+    alert.addButton(withTitle: "OK")
+    alert.addButton(withTitle: "Cancel")
+    DispatchQueue.main.async {
+        let base = (initial as NSString).deletingPathExtension
+        field.currentEditor()?.selectedRange = NSRange(location: 0, length: (base.isEmpty ? initial : base).utf16.count)
+    }
+    guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+    let name = field.stringValue.trimmingCharacters(in: .whitespaces)
+    return name.isEmpty ? nil : name
 }

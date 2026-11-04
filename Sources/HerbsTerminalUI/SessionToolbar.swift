@@ -9,14 +9,17 @@ public struct SessionToolbar<Actions: View>: View {
     private let newTab, connect, multiHost, tailcat, remoteControl, search: () -> Void
     private let title, subtitle: String
     private let connectedTo: String?
+    private let restoreSize, saveSizeAsDefault: () -> Void
+    private let multiHostActive: Bool
     private let menu: Actions
     @StateObject private var metrics = HeaderMetrics()
     private let gap: CGFloat = 4
     private let buttonWidth: CGFloat = 30
 
     public init(layout: Binding<SessionLayout>, title: String = "Terminal", subtitle: String = "~", newTab: @escaping () -> Void,
-                connect: @escaping () -> Void = {}, connectedTo: String? = nil, multiHost: @escaping () -> Void, tailcat: @escaping () -> Void,
-                remoteControl: @escaping () -> Void, search: @escaping () -> Void,
+                connect: @escaping () -> Void = {}, connectedTo: String? = nil,
+                restoreSize: @escaping () -> Void = {}, saveSizeAsDefault: @escaping () -> Void = {}, multiHost: @escaping () -> Void, tailcat: @escaping () -> Void,
+                remoteControl: @escaping () -> Void, search: @escaping () -> Void, multiHostActive: Bool = false,
                 @ViewBuilder menu: () -> Actions) {
         _layout = layout
         self.title = title
@@ -24,6 +27,9 @@ public struct SessionToolbar<Actions: View>: View {
         self.newTab = newTab
         self.connect = connect
         self.connectedTo = connectedTo
+        self.multiHostActive = multiHostActive
+        self.restoreSize = restoreSize
+        self.saveSizeAsDefault = saveSizeAsDefault
         self.multiHost = multiHost
         self.tailcat = tailcat
         self.remoteControl = remoteControl
@@ -41,9 +47,16 @@ public struct SessionToolbar<Actions: View>: View {
                     }
                 }
                 .lineLimit(1).truncationMode(.middle)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2, perform: restoreSize)
+                .contextMenu {
+                    Button("Restore Default Size", action: restoreSize)
+                    Button("Make Current Size the Default", action: saveSizeAsDefault)
+                }
                 .frame(maxWidth: max(0, geometry.size.width - 510 - 2 * buttonWidth))
                 .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-                .hint("Active session\n" + [title, subtitle].joined(separator: " "))
+                .hint([title, subtitle].joined(separator: " ")
+                      + "\nDouble-click to return the window and text to their default size; right-click to make the current size the default.")
             }
             HStack(spacing: 0) {
                 HStack(spacing: gap) {
@@ -67,8 +80,9 @@ public struct SessionToolbar<Actions: View>: View {
                            help: "Split View\nShow the shell and the file explorer side by side.") {
                         layout = layout == .split ? .terminal : .split
                     }
-                    button("Multi-Host Commands", "square.3.layers.3d",
-                           help: "Multi-Host Commands\nRun one command on several saved hosts at once and compare the results.", multiHost)
+                    button("MultiExec", "square.3.layers.3d", active: multiHostActive,
+                           help: multiHostActive ? "Exit MultiExec (⇧⌘M)\nBack to one tab at a time; typing goes to the current tab only."
+                                                 : "MultiExec (⇧⌘M)\nShow every tab side by side and type into all of them at once.", multiHost)
                     button("Tailcat Peers", "point.3.connected.trianglepath.dotted",
                            help: "Tailcat Peers\nPair with machines that can't reach each other by IP, and connect through Tailcat.", tailcat)
                     button("Remote Control", "desktopcomputer",

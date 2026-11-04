@@ -3,7 +3,7 @@ import SwiftUI
 
 extension View {
     /// A bubble explaining a control: what it is on the first line, what it does below. It appears after a
-    /// short rest, also in the titlebar and while HerbsTerminal is in the background, where macOS tooltips are
+    /// short rest, also in the titlebar and while Herb's Terminal is in the background, where macOS tooltips are
     /// slow or hidden. VoiceOver reads the same text.
     public func hint(_ text: String) -> some View {
         modifier(HoverHint(text: text))

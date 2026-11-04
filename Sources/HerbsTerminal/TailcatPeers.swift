@@ -19,7 +19,7 @@ enum TailcatRoute: Equatable {
 }
 
 enum Tailcat {
-    /// The copy bundled in HerbsTerminal.app/Contents/Helpers. Copies on PATH or from Homebrew are never used,
+    /// The copy bundled in Herb's Terminal.app/Contents/Helpers. Copies on PATH or from Homebrew are never used,
     /// so behaviour doesn't change with whatever else is installed. Unbundled development builds and tests
     /// use the same pinned binary from the repository's Vendor folder.
     static let executable: String? = {
@@ -67,7 +67,7 @@ final class TailcatPeerStore: ObservableObject {
         let name = name.trimmingCharacters(in: .whitespaces), address = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, !username.isEmpty, !address.isEmpty else { throw FileIssue("Enter a name, a username and the peer's tailcat address.") }
         guard !address.contains(where: \.isWhitespace) else { throw FileIssue("A tailcat address has no spaces.") }
-        guard let secrets else { throw FileIssue("HerbsTerminal's login store is unavailable.") }
+        guard let secrets else { throw FileIssue("Herb's Terminal's login store is unavailable.") }
         peers.append(TailcatPeer(name: name, username: username, persistent: persistent, secret: try secrets.protect(address)))
         try save()
     }
@@ -81,15 +81,15 @@ final class TailcatPeerStore: ObservableObject {
     }
 
     func address(of peer: TailcatPeer) throws -> String {
-        guard let secrets else { throw FileIssue("HerbsTerminal's login store is unavailable.") }
+        guard let secrets else { throw FileIssue("Herb's Terminal's login store is unavailable.") }
         return try secrets.reveal(peer.secret)
     }
 
-    /// An endpoint whose ProxyCommand is HerbsTerminal's helper, which redeems a one-time token for the address
+    /// An endpoint whose ProxyCommand is Herb's Terminal's helper, which redeems a one-time token for the address
     /// and becomes the bundled tailcat. The address never appears in ssh's arguments or the shell history.
     func endpoint(for peer: TailcatPeer) throws -> RemoteEndpoint {
-        guard Tailcat.executable != nil else { throw FileIssue("This HerbsTerminal build is missing its bundled tailcat helper.") }
-        guard let broker = AskpassBroker.shared else { throw FileIssue("The HerbsTerminal secret helper is unavailable.") }
+        guard Tailcat.executable != nil else { throw FileIssue("This Herb's Terminal build is missing its bundled tailcat helper.") }
+        guard let broker = AskpassBroker.shared else { throw FileIssue("The Herb's Terminal secret helper is unavailable.") }
         let token = broker.issue(try address(of: peer))
         let proxy = "HERBSTERMINAL_HELPER=tailcat-proxy HERBSTERMINAL_SECRET_TOKEN=\(token) HERBSTERMINAL_SECRET_SOCKET=\(shellQuote(broker.socketPath)) "
             + "\(shellQuote(broker.helperPath)) %p"
@@ -140,7 +140,7 @@ final class TailcatShare: ObservableObject {
     var isSharing: Bool { process?.isRunning == true }
 
     func start(persistent: Bool) async {
-        guard let tailcat = Tailcat.executable else { error = "This HerbsTerminal build is missing its bundled tailcat helper."; return }
+        guard let tailcat = Tailcat.executable else { error = "This Herb's Terminal build is missing its bundled tailcat helper."; return }
         stop()
         starting = true
         defer { starting = false }
@@ -220,7 +220,7 @@ struct TailcatPeersView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Tailcat Peers").font(.headline)
             if Tailcat.executable == nil {
-                Text("This build is missing its bundled tailcat helper; rebuild HerbsTerminal with script/build_and_run.sh.")
+                Text("This build is missing its bundled tailcat helper; rebuild Herb's Terminal with script/build_and_run.sh.")
                     .foregroundStyle(.red)
             }
             Text("Reach machines that can't see each other by IP. Each peer runs `tailcat serve 22`; paste the address it prints. Addresses are secrets; they are encrypted with your Administrator Password when one is set.")
@@ -237,7 +237,7 @@ struct TailcatPeersView: View {
                 VStack(alignment: .leading) {
                     HStack {
                         TextField("Name", text: $form.name).frame(width: 130)
-                            .hint("Name\nHow this peer appears in HerbsTerminal.")
+                            .hint("Name\nHow this peer appears in Herb's Terminal.")
                         TextField("Username", text: $form.username).frame(width: 120)
                             .hint("Username\nThe SSH account to sign in as on the peer.")
                         SecureField("Tailcat address", text: $form.address)
@@ -302,7 +302,7 @@ struct TailcatPeersView: View {
             HStack {
                 Spacer()
                 Button("Done", action: dismiss).keyboardShortcut(.cancelAction)
-                    .hint("Done (Esc)\nClose this panel. Sharing keeps running until you stop it or quit HerbsTerminal.")
+                    .hint("Done (Esc)\nClose this panel. Sharing keeps running until you stop it or quit Herb's Terminal.")
             }
         }
         .padding(20)

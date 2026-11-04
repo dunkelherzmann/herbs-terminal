@@ -70,10 +70,10 @@ enum LoginVaultPrompts {
         alert.alertStyle = .warning
         alert.messageText = "Create an Administrator Password"
         alert.informativeText = """
-        HerbsTerminal keeps saved logins inside the app. To encrypt them, create an Administrator Password; you'll \
-        enter it once each time you open HerbsTerminal to unlock your saved logins.
+        Herb's Terminal keeps saved logins inside the app. To encrypt them, create an Administrator Password; you'll \
+        enter it once each time you open Herb's Terminal to unlock your saved logins.
 
-        Without one, saved logins (including their passwords) are stored as plain text inside HerbsTerminal, which \
+        Without one, saved logins (including their passwords) are stored as plain text inside Herb's Terminal, which \
         is a security risk: anyone or anything that can read your files could read them.
         """
         alert.addButton(withTitle: "Create Administrator Password…")
@@ -107,7 +107,7 @@ enum LoginVaultPrompts {
             alert.messageText = modifying ? "Modify Administrator Password" : "Create Administrator Password"
             alert.informativeText = (message.map { $0 + "\n\n" } ?? "")
                 + (modifying ? "Saved logins are re-encrypted with the new password."
-                             : "Saved logins will be encrypted with this password. HerbsTerminal can't recover it if you forget it; you would have to delete and re-enter your logins.")
+                             : "Saved logins will be encrypted with this password. Herb's Terminal can't recover it if you forget it; you would have to delete and re-enter your logins.")
             let current = secureField("Current password")
             let new = secureField("New password (at least 8 characters)")
             let confirm = secureField("Confirm new password")
@@ -219,7 +219,7 @@ struct SSHConnectView: View {
                         Text(item.label).tag(item.id as SSHLogin.ID?)
                     }
                 }
-                .hint("Saved Logins\nFill in host, port, username and password from a login saved in HerbsTerminal.")
+                .hint("Saved Logins\nFill in host, port, username and password from a login saved in Herb's Terminal.")
             }
 
             if let reason = viewModel.lockedReason {
@@ -236,11 +236,9 @@ struct SSHConnectView: View {
             }
             if store.legacyCount > 0 {
                 HStack {
-                    notice("key.fill", "\(store.legacyCount) login\(store.legacyCount == 1 ? "" : "s") saved by an earlier HerbsTerminal still use the macOS Keychain.")
-                    Button("Recover…") { recoverLegacy() }
-                        .hint("Recover\nAsk macOS once for the old Keychain key and move these logins into HerbsTerminal's own store.")
+                    notice("key.fill", "\(store.legacyCount) login\(store.legacyCount == 1 ? "" : "s") saved by an earlier version can't be read anymore. Re-enter them, then discard the old copies.")
                     Button("Discard…") { discardLegacy() }
-                        .hint("Discard\nPermanently delete these old logins from HerbsTerminal.")
+                        .hint("Discard\nPermanently delete the unreadable old logins.")
                 }
             }
 
@@ -267,12 +265,12 @@ struct SSHConnectView: View {
 
                 Toggle(store.protection == .plainText ? "Save credentials (plain text, not encrypted)"
                        : store.protection == .adminPassword ? "Save credentials (encrypted with Administrator Password)"
-                       : "Save credentials in HerbsTerminal",
+                       : "Save credentials in Herb's Terminal",
                        isOn: $viewModel.saveToLogins)
                     .disabled(viewModel.lockedReason != nil || store.isLocked)
                     .padding(.top, 4)
-                    .hint(store.protection == .plainText ? "Save credentials\nKeep this login inside HerbsTerminal as plain text."
-                                                         : "Save credentials\nKeep this login inside HerbsTerminal, encrypted with your Administrator Password.")
+                    .hint(store.protection == .plainText ? "Save credentials\nKeep this login inside Herb's Terminal as plain text."
+                                                         : "Save credentials\nKeep this login inside Herb's Terminal, encrypted with your Administrator Password.")
             }
 
             if let error = viewModel.errorMessage {
@@ -357,22 +355,11 @@ struct SSHConnectView: View {
         menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
     }
 
-    private func recoverLegacy() {
-        if store.protection == .unset, !LoginVaultPrompts.explainSetup(store) { return }
-        if store.isLocked, !LoginVaultPrompts.unlock(store) { return }
-        do {
-            let count = try store.recoverLegacy()
-            viewModel.noticeMessage = "Recovered \(count) login\(count == 1 ? "" : "s"). They no longer depend on the macOS Keychain."
-        } catch {
-            viewModel.errorMessage = "Couldn't recover the old logins: \(error.localizedDescription) They were left unchanged."
-        }
-    }
-
     private func discardLegacy() {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Delete \(store.legacyCount) old saved login\(store.legacyCount == 1 ? "" : "s")?"
-        alert.informativeText = "They were encrypted with a key in the macOS Keychain and can't be read without it. This can't be undone."
+        alert.informativeText = "They were encrypted with a key this version no longer has, so they can't be read. This can't be undone."
         // Cancel is the default, so Return or a stray click never deletes.
         alert.addButton(withTitle: "Cancel")
         let delete = alert.addButton(withTitle: "Delete")

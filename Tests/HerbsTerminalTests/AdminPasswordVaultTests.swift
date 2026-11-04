@@ -93,12 +93,11 @@ struct AdminPasswordVaultTests {
     }
 
     @Test
-    func loginsFromKeychainEraBuildsCanBeRecoveredOrDiscarded() throws {
+    func unreadableLoginsFromEarlierBuildsAreListedAndCanBeDiscarded() throws {
         let url = try scratchDatabase()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-        // An earlier build's row: AES-GCM with a key that lived in the Keychain, and no scheme column.
-        let oldKey = SymmetricKey(size: .bits256)
-        let payload = try CryptoVault(keyProvider: StaticKeyProvider(key: oldKey)).encrypt("legacy-secret")
+        // An earlier build's row: encrypted with a key the app no longer has, and no scheme column.
+        let payload = try CryptoVault(keyProvider: StaticKeyProvider(key: SymmetricKey(size: .bits256))).encrypt("legacy-secret")
         var db: OpaquePointer?
         sqlite3_open(url.path, &db)
         sqlite3_exec(db, "CREATE TABLE logins (host TEXT NOT NULL, port INTEGER NOT NULL, username TEXT NOT NULL, ciphertext BLOB NOT NULL, nonce BLOB NOT NULL, tag BLOB NOT NULL, PRIMARY KEY (host, port, username));", nil, nil, nil)
@@ -115,15 +114,11 @@ struct AdminPasswordVaultTests {
 
         let store = try open(url)
         #expect(store.legacyCount == 1 && store.logins.isEmpty)
-        #expect(throws: StoreError.self) { _ = try store.recoverLegacy(keyProvider: StaticKeyProvider(key: oldKey)) }
+        // Setting up the new vault leaves the old row alone.
         try store.setAdminPassword("admin password")
-        // A refused or wrong key leaves the row untouched.
-        #expect(throws: (any Error).self) { _ = try store.recoverLegacy(keyProvider: StaticKeyProvider(key: SymmetricKey(size: .bits256))) }
         #expect(store.legacyCount == 1)
-        #expect(try store.recoverLegacy(keyProvider: StaticKeyProvider(key: oldKey)) == 1)
-        #expect(store.legacyCount == 0 && store.logins.first?.password == "legacy-secret")
-
+        try store.save(SSHLogin(host: "new.host", port: 22, username: "me", password: "fresh"))
         try store.discardLegacy()
-        #expect(store.legacyCount == 0 && store.logins.count == 1)
+        #expect(store.legacyCount == 0 && store.logins.map(\.host) == ["new.host"])
     }
 }

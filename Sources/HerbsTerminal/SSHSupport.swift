@@ -4,16 +4,36 @@ import Foundation
 /// OpenSSH connection sharing. The tab's interactive ssh is the master; SFTP, transfers, port forwards for
 /// remote desktop and multi-host checks ride its socket instead of opening new logins.
 enum SSHControl {
-    static let directory: URL = {
-        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("HerbsTerminal/ssh", isDirectory: true)
-        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true,
-                                                 attributes: [.posixPermissions: 0o700])
-        return url
-    }()
+    /// Sockets live in a short private folder: a Unix socket path must stay under 104 bytes, and ssh adds a
+    /// 17-character temporary suffix to the 40-character %C hash while it sets the master up. A folder under
+    /// ~/Library/Caches is too long for that.
+    static let directory: URL = privateDirectory(base: "/tmp/herbs-\(getuid())")
 
-    /// %C hashes host, port and user, which keeps the socket path under the 104-byte limit.
+    /// %C hashes host, port and user, so the path length doesn't depend on the destination.
     static var controlPath: String { directory.path + "/cm-%C" }
+
+    /// Longest socket path ssh creates: the %C hash is 40 hex characters, plus ".XXXXXXXXXXXXXXXX".
+    static var longestSocketPath: Int { directory.path.utf8.count + "/cm-".utf8.count + 40 + 17 }
+
+    /// A folder only this user can use. /tmp is shared, so an existing entry is accepted only when it is a
+    /// real directory (not a symlink) owned by this user and closed to everyone else; otherwise a fresh
+    /// private name is used.
+    static func privateDirectory(base: String) -> URL {
+        func isSafe(_ path: String) -> Bool {
+            var info = stat()
+            guard lstat(path, &info) == 0 else { return false }
+            return (info.st_mode & S_IFMT) == S_IFDIR && info.st_uid == getuid() && (info.st_mode & 0o077) == 0
+        }
+        for candidate in [base] + (1...20).map({ "\(base)-\($0)" }) {
+            if mkdir(candidate, 0o700) == 0 || isSafe(candidate) {
+                if isSafe(candidate) { return URL(fileURLWithPath: candidate, isDirectory: true) }
+            }
+        }
+        // Last resort: a unique folder from mkdtemp, still short.
+        var template = Array("/tmp/herbs-XXXXXX".utf8CString)
+        if let made = mkdtemp(&template) { return URL(fileURLWithPath: String(cString: made), isDirectory: true) }
+        return URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+    }
 
     /// Options for the interactive login. ControlPersist=no ties the master to that session, so leaving
     /// ssh also detaches the explorer.
@@ -46,8 +66,8 @@ func shellQuote(_ word: String) -> String {
 }
 
 /// Hands a saved secret (a password, or a Tailcat address) to ssh once, so it never appears in a command
-/// line, the shell history or the terminal. ssh runs HerbsTerminal's own binary as SSH_ASKPASS (see
-/// `HerbsTerminalHelper`), which trades a one-time token for the secret over a private Unix socket. Any other
+/// line, the shell history or the terminal. ssh runs Herb's Terminal's own binary as SSH_ASKPASS (see
+/// `HelperMode`), which trades a one-time token for the secret over a private Unix socket. Any other
 /// prompt (host key, one-time code, a retry after a wrong password) is asked on the terminal as usual.
 final class AskpassBroker: @unchecked Sendable {
     static let shared = try? AskpassBroker()
@@ -78,7 +98,7 @@ final class AskpassBroker: @unchecked Sendable {
         Thread.detachNewThread { [self] in serve() }
     }
 
-    /// Sockets of HerbsTerminal processes that are gone, launchers older than a minute, and the shell helper
+    /// Sockets of Herb's Terminal processes that are gone, launchers older than a minute, and the shell helper
     /// that earlier builds wrote.
     private static func removeStaleFiles(in directory: URL) {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
@@ -168,8 +188,8 @@ private func unixAddress(_ path: String) -> sockaddr_un? {
     return address
 }
 
-/// Modes in which ssh runs HerbsTerminal's own executable, chosen by HERBSTERMINAL_HELPER before any UI starts.
-enum HerbsTerminalHelper {
+/// Modes in which ssh runs Herb's Terminal's own executable, chosen by HERBSTERMINAL_HELPER before any UI starts.
+enum HelperMode {
     /// Returns an exit status, or nil when this process is the app itself.
     static func run(environment: [String: String] = ProcessInfo.processInfo.environment,
                     arguments: [String] = CommandLine.arguments) -> Int32? {

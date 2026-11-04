@@ -19,6 +19,7 @@ final class RemoteExplorerViewModel: ObservableObject {
     private let service: any RemoteFileService
     private let makeClient: @Sendable () throws -> SFTPClient
     private var flags: [UUID: CancelFlag] = [:]
+    private var retries: [UUID: () async -> Void] = [:]
 
     init(endpoint: RemoteEndpoint, service: (any RemoteFileService)? = nil,
          makeClient: (@Sendable () throws -> SFTPClient)? = nil, queue: TransferQueue = .shared) {
@@ -84,27 +85,69 @@ final class RemoteExplorerViewModel: ObservableObject {
     // MARK: Transfers and file actions
 
     func upload(_ urls: [URL], into folder: String) async {
-        for url in urls {
-            let total = await Task.detached { SFTPTransfer.size(of: url) }.value
-            let id = queue.enqueueUpload(localURL: url, remotePath: remoteJoin(folder, url.lastPathComponent), totalBytes: total)
-            await transfer(id) { client, meter, flag in
-                let transfer = SFTPTransfer(client: client, progress: meter.add, isCancelled: { flag.isSet })
-                try transfer.upload(url, to: try transfer.destination(for: url.lastPathComponent, in: folder))
-            }
-        }
+        for url in urls { await uploadOne(url, into: folder) }
         await load(path: currentPath)
     }
 
-    func download(_ names: [String], from folder: String, to local: URL) async {
-        for name in names {
-            let remote = remoteJoin(folder, name)
-            let target = LocalFiles.destination(for: name, in: local)
-            let total = (try? await withClient { try SFTPTransfer(client: $0).size(of: remote) }) ?? 0
-            let id = queue.enqueueDownload(remotePath: remote, localURL: target, totalBytes: total)
-            await transfer(id) { client, meter, flag in
-                try SFTPTransfer(client: client, progress: meter.add, isCancelled: { flag.isSet }).download(remote, to: target)
-            }
+    private func uploadOne(_ url: URL, into folder: String) async {
+        let total = await Task.detached { SFTPTransfer.size(of: url) }.value
+        let id = queue.enqueueUpload(localURL: url, remotePath: remoteJoin(folder, url.lastPathComponent), totalBytes: total)
+        retries[id] = { [weak self] in await self?.uploadOne(url, into: folder); await self?.load(path: self?.currentPath ?? folder) }
+        await transfer(id) { client, meter, flag in
+            let transfer = SFTPTransfer(client: client, progress: meter.add, isCancelled: { flag.isSet })
+            try transfer.upload(url, to: try transfer.destination(for: url.lastPathComponent, in: folder))
         }
+    }
+
+    func download(_ names: [String], from folder: String, to local: URL) async {
+        for name in names { await downloadOne(name, from: folder, to: local) }
+    }
+
+    private func downloadOne(_ name: String, from folder: String, to local: URL) async {
+        let remote = remoteJoin(folder, name)
+        let target = LocalFiles.destination(for: name, in: local)
+        let total = (try? await withClient { try SFTPTransfer(client: $0).size(of: remote) }) ?? 0
+        let id = queue.enqueueDownload(remotePath: remote, localURL: target, totalBytes: total)
+        retries[id] = { [weak self] in await self?.downloadOne(name, from: folder, to: local) }
+        await transfer(id) { client, meter, flag in
+            try SFTPTransfer(client: client, progress: meter.add, isCancelled: { flag.isSet }).download(remote, to: target)
+        }
+    }
+
+    /// Runs a failed or cancelled transfer again from the start, as a new queue item. Uploads are staged
+    /// under a temporary name, so nothing partial from the first attempt is left in place.
+    func retryTransfer(_ id: UUID) async {
+        guard let again = retries.removeValue(forKey: id) else { return }
+        queue.items.removeAll { $0.id == id }
+        await again()
+    }
+
+    func canRetry(_ id: UUID) -> Bool { retries[id] != nil }
+
+    func newFolder(named name: String, in folder: String) async {
+        do {
+            try await withClient { client in
+                let transfer = SFTPTransfer(client: client)
+                try validateFileName(name)
+                try client.mkdir(try transfer.destination(for: name, in: folder))
+            }
+        } catch { alert = error.localizedDescription }
+        await load(path: currentPath)
+    }
+
+    /// Rename on the host; undoable like a move.
+    func rename(_ name: String, to newName: String, in folder: String) async {
+        do {
+            try validateFileName(newName)
+            let from = remoteJoin(folder, name), to = remoteJoin(folder, newName)
+            try await withClient { client in
+                guard try client.existing(to) == nil else { throw FileIssue("An item named “\(newName)” already exists here.") }
+                try client.rename(from, to)
+            }
+            undoMoves.append([RemoteMove(from: from, to: to)])
+            redoMoves.removeAll()
+        } catch { alert = error.localizedDescription }
+        await load(path: currentPath)
     }
 
     func cancelTransfer(_ id: UUID) {
@@ -228,6 +271,8 @@ struct RemoteExplorer: View {
     var findRequest = 0
     var localFolder: URL = FileManager.default.homeDirectoryForCurrentUser
     var home = "/"
+    /// The Places side pane's width; 0 hides it when the pane is too narrow, so nothing is clipped.
+    var sidebarWidth: CGFloat = 170
     @StateObject private var selection = ListSelection<String>()
     @StateObject private var filter = ExplorerFilter()
     @AppStorage("remoteExplorerBookmarks") private var bookmarkStore = ""
@@ -238,6 +283,7 @@ struct RemoteExplorer: View {
 
     var body: some View {
       HStack(spacing: 0) {
+        if sidebarWidth > 0 {
         PlacesSidebar(sections: [
             PlacesSection(title: viewModel.endpoint.label, places: [
                 Place(name: "Home", symbol: "house", path: home),
@@ -246,8 +292,9 @@ struct RemoteExplorer: View {
             PlacesSection(title: "Bookmarks", places: bookmarks.paths.map {
                 Place(name: ($0 as NSString).lastPathComponent.isEmpty ? "/" : ($0 as NSString).lastPathComponent, symbol: "folder", path: $0)
             }, removable: true),
-        ], current: normalizePath(currentPath), open: navigate, remove: toggleBookmark)
+        ], current: normalizePath(currentPath), open: navigate, remove: toggleBookmark, width: sidebarWidth)
         Divider()
+        }
         VStack(alignment: .leading, spacing: 0) {
             LocationBar(path: currentPath, history: $history, home: home, showHidden: $viewModel.showHidden,
                         go: { currentPath = $0 },
@@ -285,6 +332,13 @@ struct RemoteExplorer: View {
                                                      : "Remote file\nSelect it and choose Download from File Actions to copy it to this Mac.")
                 }
                 .contextMenu(forSelectionType: String.self) { names in
+                    if names.isEmpty {
+                        Button("New Folder…") { newFolder() }
+                        Button("Paste") { paste() }
+                    }
+                    if names.count == 1, let name = names.first {
+                        Button("Rename…") { rename(name) }
+                    }
                     if let entry = entry(named: names.first) {
                         if entry.attributes.directory {
                             Button("Open") { open(entry) }
@@ -305,7 +359,8 @@ struct RemoteExplorer: View {
             }
             if !viewModel.queue.items.isEmpty {
                 Divider()
-                TransfersStrip(queue: viewModel.queue, cancel: viewModel.cancelTransfer)
+                TransfersStrip(queue: viewModel.queue, cancel: viewModel.cancelTransfer,
+                               retry: viewModel.canRetry) { id in Task { await viewModel.retryTransfer(id) } }
             }
         }
       }
@@ -365,6 +420,20 @@ struct RemoteExplorer: View {
         let target = remoteJoin(currentPath, entry.name)
         history.visit(target)
         currentPath = target
+    }
+
+    private func newFolder() {
+        guard let name = askForName(title: "New Folder", message: "Name for the new folder on \(viewModel.endpoint.label):",
+                                    initial: "untitled folder") else { return }
+        let folder = currentPath
+        Task { await viewModel.newFolder(named: name, in: folder) }
+    }
+
+    private func rename(_ name: String) {
+        guard let newName = askForName(title: "Rename", message: "New name for “\(name)”:", initial: name),
+              newName != name else { return }
+        let folder = currentPath
+        Task { await viewModel.rename(name, to: newName, in: folder) }
     }
 
     private func upload() {

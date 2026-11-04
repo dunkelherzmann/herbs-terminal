@@ -3,8 +3,8 @@ import Foundation
 import Testing
 @testable import HerbsTerminal
 
-@Suite("Keychain & Cryptographic Vault Tests")
-struct KeychainVaultTests {
+@Suite("Cryptographic Vault Tests")
+struct CryptoVaultTests {
 
     @Test
     func encryptAndDecryptRoundTrip() throws {
@@ -61,28 +61,5 @@ struct KeychainVaultTests {
         #expect(throws: (any Error).self) {
             try vault2.decrypt(encrypted)
         }
-    }
-
-    @Test
-    func keychainKeyProviderGeneratesAndRetrievesKey() throws {
-        let testService = "org.herbsterminal.test.\(UUID().uuidString)"
-        let testAccount = "test-key"
-        defer {
-            let deleteQuery: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: testService,
-                kSecAttrAccount as String: testAccount
-            ]
-            SecItemDelete(deleteQuery as CFDictionary)
-        }
-
-        let provider1 = KeychainKeyProvider(service: testService, account: testAccount)
-        let key1 = try provider1.encryptionKey()
-
-        // Second instance accessing same service and account should retrieve the same key
-        let provider2 = KeychainKeyProvider(service: testService, account: testAccount)
-        let key2 = try provider2.encryptionKey()
-
-        #expect(key1 == key2)
     }
 }

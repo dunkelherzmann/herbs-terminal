@@ -81,7 +81,8 @@ struct RemoteEndpoint: Equatable, Sendable {
     /// Set for peers reached over Tailcat instead of a direct address.
     var proxyCommand: String?
 
-    var label: String { "\(username)@\(host)" }
+    /// For display. A password typed into the user name (`user:pass@host`) is never shown.
+    var label: String { "\(username.split(separator: ":", maxSplits: 1).first.map(String.init) ?? username)@\(host)" }
 
     init(host: String, port: Int = 22, username: String, proxyCommand: String? = nil) {
         self.host = host

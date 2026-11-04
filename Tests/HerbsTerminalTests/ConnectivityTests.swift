@@ -9,27 +9,27 @@ func askpassHandsOverThePasswordOnceAndNeverForOtherPrompts() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("tx-\(UUID().uuidString.prefix(8))")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
-    let broker = try AskpassBroker(directory: directory, helperPath: "/Applications/HerbsTerminal.app/Contents/MacOS/HerbsTerminal")
+    let broker = try AskpassBroker(directory: directory, helperPath: "/Applications/Herb's Terminal.app/Contents/MacOS/HerbsTerminal")
     let secret = "p@ss, \"word\" 'x'"
     let environment = broker.environment(token: broker.issue(secret))
-    #expect(environment["SSH_ASKPASS"] == "/Applications/HerbsTerminal.app/Contents/MacOS/HerbsTerminal")
+    #expect(environment["SSH_ASKPASS"] == "/Applications/Herb's Terminal.app/Contents/MacOS/HerbsTerminal")
     #expect(environment["HERBSTERMINAL_HELPER"] == "askpass")
     #expect(!environment.values.contains(secret))
 
     var asked: [String] = []
     let terminal: (String, Bool) -> String? = { prompt, _ in asked.append(prompt); return nil }
     let token = environment["HERBSTERMINAL_SECRET_TOKEN"]!, socket = environment["HERBSTERMINAL_SECRET_SOCKET"]!
-    #expect(HerbsTerminalHelper.askpass(prompt: "me@host's password: ", token: token, socket: socket, terminal: terminal) == secret)
+    #expect(HelperMode.askpass(prompt: "me@host's password: ", token: token, socket: socket, terminal: terminal) == secret)
     // Single use: a retry after a wrong password is asked on the terminal instead.
-    #expect(HerbsTerminalHelper.askpass(prompt: "me@host's password: ", token: token, socket: socket, terminal: terminal) == nil)
+    #expect(HelperMode.askpass(prompt: "me@host's password: ", token: token, socket: socket, terminal: terminal) == nil)
     // A host-key question never receives the saved password.
     let fresh = broker.issue("secret")
-    #expect(HerbsTerminalHelper.askpass(prompt: "Are you sure you want to continue connecting (yes/no)? ", token: fresh,
+    #expect(HelperMode.askpass(prompt: "Are you sure you want to continue connecting (yes/no)? ", token: fresh,
                                    socket: socket, terminal: terminal) == nil)
     #expect(asked.count == 2)
     #expect(AskpassBroker.redeem(token: fresh, socket: socket) == "secret")
-    #expect(HerbsTerminalHelper.isSecretPrompt("Verification code: ") && !HerbsTerminalHelper.isSecretPrompt("(yes/no)? "))
-    #expect(HerbsTerminalHelper.run(environment: [:], arguments: ["HerbsTerminal"]) == nil)
+    #expect(HelperMode.isSecretPrompt("Verification code: ") && !HelperMode.isSecretPrompt("(yes/no)? "))
+    #expect(HelperMode.run(environment: [:], arguments: ["Herb's Terminal"]) == nil)
 }
 
 @Test @MainActor

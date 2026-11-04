@@ -178,6 +178,8 @@ final class ProgressMeter: @unchecked Sendable {
 struct TransfersStrip: View {
     @ObservedObject var queue: TransferQueue
     let cancel: (UUID) -> Void
+    var retry: (UUID) -> Bool = { _ in false }
+    var runRetry: (UUID) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -197,10 +199,12 @@ struct TransfersStrip: View {
                     switch item.state {
                     case .failed(let message):
                         Text(message).foregroundStyle(.red).lineLimit(1).hint(message)
+                        retryButton(item.id)
                     case .completed:
                         Text("Done").foregroundStyle(.secondary)
                     case .cancelled:
                         Text("Cancelled").foregroundStyle(.secondary)
+                        retryButton(item.id)
                     default:
                         ProgressView(value: item.progressFraction).hint(ByteCountFormatter.string(fromByteCount: item.totalBytes, countStyle: .file))
                         Button { cancel(item.id) } label: { Image(systemName: "xmark.circle") }
@@ -212,6 +216,15 @@ struct TransfersStrip: View {
         }
         .padding(8)
         .background(.bar)
+    }
+}
+
+extension TransfersStrip {
+    @ViewBuilder fileprivate func retryButton(_ id: UUID) -> some View {
+        if retry(id) {
+            Button("Retry") { runRetry(id) }.buttonStyle(.link).font(.caption)
+                .hint("Retry\nRun this transfer again from the start.")
+        }
     }
 }
 

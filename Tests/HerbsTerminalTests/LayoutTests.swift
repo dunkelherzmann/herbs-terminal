@@ -35,7 +35,7 @@ func terminalUsesFactoryBasicProfile() throws {
     #expect(shell.view.font.fontName == stock.fontName)
     #expect(shell.view.font.pointSize == stock.pointSize)
     for dark in [false, true] {
-        shell.applyColors(dark: dark)
+        shell.applyColors(dark: dark, settings: ProfileSettings())
         #expect(shell.view.nativeForegroundColor == (dark ? NSColor.white : NSColor.black))
         #expect(shell.view.nativeBackgroundColor == (dark ? NSColor.black : NSColor.white))
     }

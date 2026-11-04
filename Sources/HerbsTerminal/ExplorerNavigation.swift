@@ -189,6 +189,7 @@ struct PlacesSidebar: View {
     let current: String
     let open: (String) -> Void
     var remove: (String) -> Void = { _ in }
+    var width: CGFloat = 170
 
     var body: some View {
         List {
@@ -205,12 +206,13 @@ struct PlacesSidebar: View {
             }
         }
         .listStyle(.sidebar)
-        .frame(width: 170)
+        .frame(width: width)
     }
 
     private func row(_ place: Place) -> some View {
         Button { open(place.path) } label: {
             Label(place.name, systemImage: place.symbol)
+                .lineLimit(1).truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
         }
@@ -229,6 +231,7 @@ struct FileRow: View {
     var body: some View {
         HStack {
             Label(name, systemImage: isFolder ? "folder" : "doc")
+                .lineLimit(1).truncationMode(.middle)
                 .opacity(name.hasPrefix(".") ? 0.6 : 1)
             Spacer()
             if !isFolder, let size {

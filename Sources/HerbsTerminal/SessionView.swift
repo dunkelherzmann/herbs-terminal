@@ -44,6 +44,7 @@ final class WindowState: ObservableObject {
 struct SessionView: View {
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var themes = ThemeLibrary.shared
+    @ObservedObject private var profile = TerminalProfile.shared
     @StateObject private var state: WindowState
     @StateObject private var shell: LocalShell
 
@@ -53,39 +54,70 @@ struct SessionView: View {
         _shell = StateObject(wrappedValue: shell())
     }
 
-    var body: some View {
-        HSplitView {
-            if state.layout != .explorer {
-                ShellPane(session: shell, theme: themes.current)
-                    .padding(.leading, 8)
-                    .padding(.top, 6)
-                    // Keep the fill out of the titlebar safe area, or it paints over the session toolbar.
-                    .background(Color(nsColor: themes.current?.colors["Background Color"] ?? TerminalTypeface.background(dark: colorScheme == .dark)),
-                                ignoresSafeAreaEdges: [])
-                    .frame(minWidth: 280)
+    private var tabSettings: ProfileSettings { profile.settings(for: shell.profileID) }
+
+    private var terminalPane: some View {
+        ShellPane(session: shell)
+            .padding(.leading, 8)
+            .padding(.top, 6)
+            // Keep the fill out of the titlebar safe area, or it paints over the session toolbar.
+            .background(paneBackground.opacity(tabSettings.backgroundOpacity), ignoresSafeAreaEdges: [])
+            .background { if tabSettings.blurBackground { BehindWindowBlur() } }
+            .overlay { SizeBadge(legend: shell.legend) }
+    }
+
+    /// `sidebarWidth` 0 hides the Places side pane.
+    private func explorerPane(sidebarWidth: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            ConnectionBanner(state: state)
+            switch state.endpoint {
+            case .local:
+                LocalExplorer(directory: $state.directory, history: $state.localHistory,
+                              log: state.localLog, findRequest: state.explorerFindRequest, sidebarWidth: sidebarWidth)
+            case .remote(let ep):
+                RemoteExplorer(
+                    currentPath: $state.remoteDirectory,
+                    history: $state.remoteHistory,
+                    viewModel: state.remoteViewModel ?? {
+                        let vm = RemoteExplorerViewModel(endpoint: ep)
+                        state.remoteViewModel = vm
+                        return vm
+                    }(),
+                    findRequest: state.explorerFindRequest,
+                    localFolder: state.directory,
+                    home: state.remoteHome,
+                    sidebarWidth: sidebarWidth
+                )
             }
-            if state.layout != .terminal {
-              VStack(spacing: 0) {
-                ConnectionBanner(state: state)
-                switch state.endpoint {
-                case .local:
-                    LocalExplorer(directory: $state.directory, history: $state.localHistory,
-                                  log: state.localLog, findRequest: state.explorerFindRequest).frame(minWidth: 260)
-                case .remote(let ep):
-                    RemoteExplorer(
-                        currentPath: $state.remoteDirectory,
-                        history: $state.remoteHistory,
-                        viewModel: state.remoteViewModel ?? {
-                            let vm = RemoteExplorerViewModel(endpoint: ep)
-                            state.remoteViewModel = vm
-                            return vm
-                        }(),
-                        findRequest: state.explorerFindRequest,
-                        localFolder: state.directory,
-                        home: state.remoteHome
-                    ).frame(minWidth: 260)
+        }
+    }
+
+    private var paneBackground: Color {
+        let theme = themes.theme(named: tabSettings.theme)
+        return Color(nsColor: theme?.colors["Background Color"] ?? TerminalTypeface.background(dark: colorScheme == .dark))
+    }
+
+    /// Below this width the explorer drops its Places side pane rather than clipping its content; below
+    /// `compactSidebarWidth` the side pane is narrower.
+    static let sidebarMinimumWidth: CGFloat = 560
+    static let compactSidebarWidth: CGFloat = 700
+
+    var body: some View {
+        // Split View shows the terminal and the explorer side by side at equal widths.
+        GeometryReader { geometry in
+            let split = state.layout == .split
+            let explorerWidth = split ? (geometry.size.width - 1) / 2 : geometry.size.width
+            HStack(spacing: 0) {
+                if state.layout != .explorer {
+                    terminalPane.frame(width: split ? (geometry.size.width - 1) / 2 : geometry.size.width)
                 }
-              }
+                if split { Divider() }
+                if state.layout != .terminal {
+                    explorerPane(sidebarWidth: explorerWidth < Self.sidebarMinimumWidth ? 0
+                                 : explorerWidth < Self.compactSidebarWidth ? 140 : 170)
+                        .frame(width: explorerWidth)
+                        .clipped()
+                }
             }
         }
         .frame(minWidth: 640, minHeight: 360)
@@ -132,4 +164,16 @@ private struct ConnectionBanner: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.yellow.opacity(0.12))
     }
+}
+
+/// The blur behind a translucent terminal, like Terminal's "Blur" and Ptyxis's transparency.
+struct BehindWindowBlur: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.blendingMode = .behindWindow
+        view.material = .hudWindow
+        view.state = .active
+        return view
+    }
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }

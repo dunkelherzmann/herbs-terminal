@@ -3,12 +3,13 @@ set -euo pipefail
 
 MODE="${1:-run}"
 APP_NAME="HerbsTerminal"
+DISPLAY_NAME="Herb's Terminal"
 BUNDLE_ID="org.herbsterminal.app"
 MIN_SYSTEM_VERSION="15.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
-APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
+APP_BUNDLE="$DIST_DIR/$DISPLAY_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
 APP_BINARY="$APP_MACOS/$APP_NAME"
@@ -20,10 +21,10 @@ if [[ "$MODE" != "--bundle" ]]; then
 fi
 
 cd "$ROOT_DIR"
-swift build --build-system native --product HerbsTerminal
+swift build --build-system native --product "$APP_NAME"
 BUILD_BINARY="$(swift build --build-system native --show-bin-path)/$APP_NAME"
 
-rm -rf "$APP_BUNDLE"
+rm -rf "$APP_BUNDLE" "$DIST_DIR/HerbsTerminal.app"
 mkdir -p "$APP_MACOS"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
@@ -47,7 +48,9 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundleIdentifier</key>
   <string>$BUNDLE_ID</string>
   <key>CFBundleName</key>
-  <string>$APP_NAME</string>
+  <string>$DISPLAY_NAME</string>
+  <key>CFBundleDisplayName</key>
+  <string>$DISPLAY_NAME</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>LSMinimumSystemVersion</key>
@@ -55,13 +58,13 @@ cat >"$INFO_PLIST" <<PLIST
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
   <key>NSLocalNetworkUsageDescription</key>
-  <string>HerbsTerminal connects to SSH, SFTP and remote desktop services on computers in your local network.</string>
+  <string>Herb's Terminal connects to SSH, SFTP and remote desktop services on computers in your local network.</string>
 </dict>
 </plist>
 PLIST
 
 # Sign the assembled bundle under its bundle identifier. Without this the linker's ad-hoc signature
-# names the binary "HerbsTerminal-<hash>", macOS Local Network privacy can't match it to org.herbsterminal.app,
+# names the binary "HerbsTerminal-<hash>", macOS Local Network privacy can't match it to the bundle ID,
 # and ssh to LAN addresses fails with "No route to host".
 codesign --force --sign - --identifier "$BUNDLE_ID.tailcat" "$APP_CONTENTS/Helpers/tailcat"
 codesign --force --sign - --identifier "$BUNDLE_ID" "$APP_BUNDLE"

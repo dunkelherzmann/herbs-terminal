@@ -23,7 +23,7 @@ struct StoreError: LocalizedError {
 
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-/// How saved logins (and Tailcat addresses) are protected. HerbsTerminal never uses the macOS Keychain: with an
+/// How saved logins (and Tailcat addresses) are protected. Nothing is kept in system key stores: with an
 /// Administrator Password, secrets are AES-GCM encrypted with a key derived from it (PBKDF2-SHA256, random
 /// salt); the password itself is never stored. Without one they are kept as plain text, after a warning.
 enum LoginProtection: String {
@@ -52,7 +52,7 @@ final class CredentialStore: ObservableObject {
     @Published private(set) var protection: LoginProtection = .unset
     /// Rows encrypted with the Administrator Password while it hasn't been entered this session.
     @Published private(set) var lockedCount = 0
-    /// Rows from earlier builds, encrypted with a key that was kept in the macOS Keychain.
+    /// Rows from earlier builds, encrypted with a key this app no longer holds; they can only be discarded.
     @Published private(set) var legacyCount = 0
 
     var isLocked: Bool { protection == .adminPassword && vault == nil }
@@ -66,7 +66,7 @@ final class CredentialStore: ObservableObject {
             fileURL = databaseURL
         } else {
             let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-                .appendingPathComponent("HerbsTerminal", isDirectory: true)
+                .appendingPathComponent("Herb's Terminal", isDirectory: true)
             try FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
             fileURL = appSupport.appendingPathComponent("logins.sqlite3")
         }
@@ -107,10 +107,11 @@ final class CredentialStore: ObservableObject {
         );
         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value BLOB NOT NULL);
         """)
-        // Rows written before HerbsTerminal had its own vault were encrypted with a Keychain-held key.
+        // Rows written before the app had its own vault used a key it no longer holds.
         if !columnExists("scheme") {
-            try execute(sql: "ALTER TABLE logins ADD COLUMN scheme TEXT NOT NULL DEFAULT 'keychain';")
+            try execute(sql: "ALTER TABLE logins ADD COLUMN scheme TEXT NOT NULL DEFAULT 'legacy';")
         }
+        try execute(sql: "UPDATE logins SET scheme = 'legacy' WHERE scheme = 'keychain';")
     }
 
     private func execute(sql: String) throws {
@@ -128,7 +129,7 @@ final class CredentialStore: ObservableObject {
     /// The scheme new rows are written with.
     private var writeScheme: String { protection == .adminPassword ? "admin" : "plain" }
 
-    /// Keeps logins as plain text inside HerbsTerminal, after the user has read why that is a risk.
+    /// Keeps logins as plain text inside Herb's Terminal, after the user has read why that is a risk.
     func choosePlainText() throws {
         guard protection != .adminPassword else { throw StoreError("An Administrator Password is already set.") }
         try setMeta("protection", Data(LoginProtection.plainText.rawValue.utf8))
@@ -196,7 +197,7 @@ final class CredentialStore: ObservableObject {
         return (try? CryptoVault(keyProvider: StaticKeyProvider(key: key)).decrypt(payload)) == Self.checkPhrase
     }
 
-    /// Protects a secret kept elsewhere in HerbsTerminal (a Tailcat address) the same way as login passwords.
+    /// Protects a secret kept elsewhere in Herb's Terminal (a Tailcat address) the same way as login passwords.
     func protect(_ secret: String) throws -> Data {
         switch protection {
         case .adminPassword:
@@ -218,34 +219,9 @@ final class CredentialStore: ObservableObject {
 
     // MARK: Logins from earlier builds
 
-    /// Re-saves logins from earlier builds under the current protection. macOS asks once for the Keychain
-    /// key they were encrypted with; refusing leaves them untouched.
-    func recoverLegacy(keyProvider: any KeyProvider = KeychainKeyProvider()) throws -> Int {
-        guard protection != .unset else { throw StoreError("Choose how to protect saved logins first.") }
-        guard !isLocked else { throw StoreError("Unlock saved logins with the Administrator Password first.") }
-        let legacy = CryptoVault(keyProvider: keyProvider)
-        let rows = try readRows().filter { $0.scheme == "keychain" }
-        var recovered = 0
-        try execute(sql: "BEGIN IMMEDIATE TRANSACTION;")
-        do {
-            for row in rows {
-                let password = try legacy.decrypt(row.payload)
-                try write(SSHLogin(host: row.host, port: row.port, username: row.username, password: password),
-                          scheme: writeScheme, vault: vault)
-                recovered += 1
-            }
-            try execute(sql: "COMMIT;")
-        } catch {
-            try? execute(sql: "ROLLBACK;")
-            throw error
-        }
-        try reload()
-        return recovered
-    }
-
     /// Permanently deletes logins from earlier builds that can no longer be read.
     func discardLegacy() throws {
-        try execute(sql: "DELETE FROM logins WHERE scheme = 'keychain';")
+        try execute(sql: "DELETE FROM logins WHERE scheme = 'legacy';")
         try reload()
     }
 

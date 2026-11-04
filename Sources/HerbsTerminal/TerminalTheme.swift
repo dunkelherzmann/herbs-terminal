@@ -53,8 +53,7 @@ final class ThemeLibrary: ObservableObject {
     static let shared = ThemeLibrary()
     private let defaults: UserDefaults
     @Published private(set) var presets: [String: TerminalTheme]
-    @Published var selection: String { didSet { defaults.set(selection, forKey: "terminalTheme") } }
-    var current: TerminalTheme? { theme(named: selection) }
+    // Which theme a tab shows is part of its profile (ProfileSettings.theme); this holds the presets.
 
     func theme(named name: String) -> TerminalTheme? { presets[name] ?? Self.builtIn[name] }
 
@@ -96,7 +95,6 @@ final class ThemeLibrary: ObservableObject {
         saved[name] = nil
         defaults.set(saved, forKey: "terminalPresets")
         presets[name] = nil
-        if theme(named: selection) == nil { selection = "" }
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -104,18 +102,18 @@ final class ThemeLibrary: ObservableObject {
         let saved = defaults.dictionary(forKey: "terminalPresets") as? [String: Data] ?? [:]
         let loaded = saved.compactMapValues { try? TerminalTheme(data: $0) }
         presets = loaded
-        let name = defaults.string(forKey: "terminalTheme") ?? ""
-        selection = loaded[name] == nil && Self.builtIn[name] == nil ? "" : name
     }
 
-    func importFile(_ url: URL) throws {
+    /// Adds an .itermcolors preset and returns its name, for the caller to assign to a profile.
+    @discardableResult
+    func importFile(_ url: URL) throws -> String {
         let data = try Data(contentsOf: url)
-        let theme = try TerminalTheme(data: data)
+        _ = try TerminalTheme(data: data)
         let name = url.deletingPathExtension().lastPathComponent
         var saved = defaults.dictionary(forKey: "terminalPresets") as? [String: Data] ?? [:]
         saved[name] = data
         defaults.set(saved, forKey: "terminalPresets")
-        presets[name] = theme
-        selection = name
+        presets[name] = try TerminalTheme(data: data)
+        return name
     }
 }

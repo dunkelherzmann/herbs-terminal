@@ -10,6 +10,11 @@ final class SessionLegend: ObservableObject, @preconcurrency LocalProcessTermina
     private(set) var remoteLocation: String? = nil
     @Published private(set) var title: String
     @Published private(set) var subtitle = "~"
+    @Published private(set) var columns = 0
+    @Published private(set) var rows = 0
+    /// True for a moment after the terminal's size changes.
+    @Published private(set) var showingSize = false
+    private var hideSize: DispatchWorkItem?
 
     init() { title = initialTitle }
 
@@ -110,7 +115,18 @@ final class SessionLegend: ObservableObject, @preconcurrency LocalProcessTermina
         exited = true
         if let view = source as? LocalProcessTerminalView { refresh(view) }
     }
-    func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
+    /// Shows "columns × rows" briefly when the terminal is resized, as Terminal does in its title.
+    func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {
+        let first = columns == 0
+        columns = newCols
+        rows = newRows
+        guard !first else { return }   // not when the tab first opens
+        showingSize = true
+        hideSize?.cancel()
+        let hide = DispatchWorkItem { [weak self] in self?.showingSize = false }
+        hideSize = hide
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: hide)
+    }
 }
 
 /// Hides secrets a command line may carry before it is shown as the window title: `user:password@host`

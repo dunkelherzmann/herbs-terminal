@@ -3,40 +3,48 @@ import SwiftTerm
 
 @MainActor
 final class LocalShell: ObservableObject {
-    let view = HerbsTerminalTerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 500),
-                                    font: TerminalProfile.shared.font,
-                                    options: TerminalOptions(scrollback: TerminalProfile.shared.scrollbackLines))
-    /// Where the login shell starts; new tabs pass the current tab's folder.
+    let view = HerbsTerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 500),
+                                 font: TerminalProfile.shared.defaultProfile.settings.font,
+                                 options: TerminalOptions(scrollback: TerminalProfile.shared.defaultProfile.settings.scrollbackLines))
+    /// Where the login shell starts; new tabs pass the current tab's folder or their profile's.
     var startDirectory = FileManager.default.homeDirectoryForCurrentUser.path
+    /// The named profile this tab uses; nil follows the default profile.
+    @Published var profileID: UUID?
     let legend = SessionLegend()
 
-    init() {
+    var settings: ProfileSettings { TerminalProfile.shared.settings(for: profileID) }
+
+    init(profileID: UUID? = nil) {
+        self.profileID = profileID
         view.processDelegate = legend
-        applyProfile(TerminalProfile.shared)
+        applyProfile(settings)
     }
 
-    func applyProfile(_ profile: TerminalProfile) {
-        view.font = profile.font
-        view.getTerminal().setCursorStyle(profile.cursorStyle)
-        view.optionAsMetaKey = profile.optionAsMeta
-        view.getTerminal().changeScrollback(profile.scrollbackLines)
-        view.bellMode = profile.bell
+    func applyProfile(_ settings: ProfileSettings) {
+        view.font = settings.font
+        view.getTerminal().setCursorStyle(settings.cursorStyle)
+        view.optionAsMetaKey = settings.optionAsMeta
+        view.getTerminal().changeScrollback(settings.scrollbackLines)
+        view.bellMode = settings.bell
     }
 
     private var started = false
 
-    func applyColors(dark: Bool, theme: TerminalTheme? = nil) {
-        // Basic leaves unarchived colors to the light/dark defaults.
+    /// The profile's color theme over Basic's light/dark defaults, with its background opacity.
+    func applyColors(dark: Bool, settings: ProfileSettings, library: ThemeLibrary = .shared) {
+        let theme = library.theme(named: settings.theme)
         let colors = theme?.colors ?? [:]
         let foreground = colors["Foreground Color"] ?? TerminalTypeface.color("TextColor", fallback: dark ? .white : .black)
         view.nativeForegroundColor = foreground
-        view.nativeBackgroundColor = colors["Background Color"] ?? TerminalTypeface.background(dark: dark)
+        let background = colors["Background Color"] ?? TerminalTypeface.background(dark: dark)
+        view.nativeBackgroundColor = background.withAlphaComponent(background.alphaComponent * settings.backgroundOpacity)
         view.caretTextColor = colors["Cursor Text Color"]
         view.caretColor = colors["Cursor Color"] ?? TerminalTypeface.color("CursorColor", fallback: foreground)
         view.selectedTextBackgroundColor = colors["Selection Color"] ?? TerminalTypeface.color("SelectionColor", fallback: .selectedTextBackgroundColor)
         view.selectedTextForegroundColor = colors["Selected Text Color"] ?? foreground
         view.installColors(theme?.palette ?? SwiftTerm.Color.terminalAppColors)
     }
+
 
     func start() {
         guard !started else { return }
@@ -47,9 +55,15 @@ final class LocalShell: ObservableObject {
         environment["COLORTERM"] = "truecolor"
         environment["TERM_PROGRAM"] = "HerbsTerminal"
         environment["SHELL"] = shell
-        view.startProcess(executable: shell, environment: environment.map { "\($0.key)=\($0.value)" },
-                          execName: "-" + URL(fileURLWithPath: shell).lastPathComponent,
-                          currentDirectory: startDirectory)
+        var arguments: [String] = []
+        var execName = "-" + URL(fileURLWithPath: shell).lastPathComponent
+        if let integrated = ShellIntegration.launch(shell: shell, environment: environment) {
+            (environment, arguments, execName) = integrated
+        }
+        view.startProcess(executable: shell, args: arguments, environment: environment.map { "\($0.key)=\($0.value)" },
+                          execName: execName, currentDirectory: startDirectory)
+        let command = settings.startupCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !command.isEmpty { view.sendQuietly( command + "\n") }
     }
 
     /// The shell's current folder, read from the process itself (shells rarely report it to the terminal).
@@ -93,9 +107,9 @@ final class LocalShell: ObservableObject {
             let launcher = try Self.writeLauncher(label: endpoint.label, environment: environment, arguments: arguments)
             // Ctrl-U drops anything half-typed at the prompt; the leading space keeps the line out of
             // history in shells that ignore space-prefixed commands.
-            view.send(txt: "\u{15} " + shellQuote(launcher.path) + "\n")
+            view.sendQuietly( "\u{15} " + shellQuote(launcher.path) + "\n")
         } catch {
-            view.feed(text: "\r\nHerbsTerminal couldn't start ssh: \(error.localizedDescription)\r\n")
+            view.feed(text: "\r\nHerb's Terminal couldn't start ssh: \(error.localizedDescription)\r\n")
         }
     }
 
@@ -122,31 +136,31 @@ final class LocalShell: ObservableObject {
 
 struct ShellPane: NSViewRepresentable {
     @Environment(\.colorScheme) private var colorScheme
-    @ObservedObject private var profile = TerminalProfile.shared
-    let session: LocalShell
-    let theme: TerminalTheme?
+    @ObservedObject private var profiles = TerminalProfile.shared
+    @ObservedObject private var themes = ThemeLibrary.shared
+    @ObservedObject var session: LocalShell
 
-    func makeNSView(context: Context) -> HerbsTerminalTerminalView {
+    func makeNSView(context: Context) -> HerbsTerminalView {
         session.start()
         return session.view
     }
 
     final class Coordinator {
+        var applied: ProfileSettings?
         var scheme: ColorScheme?
-        var theme: TerminalTheme?
-        var profile: String?
+        var themeNames: [String] = []
     }
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    func updateNSView(_ nsView: HerbsTerminalTerminalView, context: Context) {
-        // A profile edit resets this tab's Bigger/Smaller zoom, as in Terminal.
-        if context.coordinator.profile != profile.signature {
-            if context.coordinator.profile != nil { session.applyProfile(profile) }
-            context.coordinator.profile = profile.signature
-        }
-        guard context.coordinator.scheme != colorScheme || context.coordinator.theme !== theme else { return }
-        context.coordinator.scheme = colorScheme
-        context.coordinator.theme = theme
-        session.applyColors(dark: colorScheme == .dark, theme: theme)
+    /// Reapplies the tab's profile when it, the system appearance, or the installed themes change.
+    func updateNSView(_ nsView: HerbsTerminalView, context: Context) {
+        let settings = session.settings
+        let coordinator = context.coordinator
+        guard coordinator.applied != settings || coordinator.scheme != colorScheme || coordinator.themeNames != themes.allNames else { return }
+        if coordinator.applied != nil, coordinator.applied != settings { session.applyProfile(settings) }
+        coordinator.applied = settings
+        coordinator.scheme = colorScheme
+        coordinator.themeNames = themes.allNames
+        session.applyColors(dark: colorScheme == .dark, settings: settings)
     }
 }

@@ -75,6 +75,8 @@ struct LocalExplorer: View {
     @Binding var history: NavigationHistory
     @ObservedObject var log: FileOperationLog
     var findRequest = 0
+    /// The Places side pane's width; 0 hides it when the pane is too narrow, so nothing is clipped.
+    var sidebarWidth: CGFloat = 170
     @StateObject private var listing = DirectoryListing()
     @StateObject private var filter = ExplorerFilter()
     @StateObject private var selection = ListSelection<URL>()
@@ -87,14 +89,16 @@ struct LocalExplorer: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            if sidebarWidth > 0 {
             PlacesSidebar(sections: [
                 PlacesSection(title: "Places", places: LocalPlaces.standard()),
                 PlacesSection(title: "Devices", places: listing.devices),
                 PlacesSection(title: "Bookmarks", places: bookmarks.map {
                     Place(name: URL(fileURLWithPath: $0).lastPathComponent, symbol: "folder", path: $0)
                 }, removable: true),
-            ], current: path, open: navigate, remove: toggleBookmark)
+            ], current: path, open: navigate, remove: toggleBookmark, width: sidebarWidth)
             Divider()
+            }
             VStack(alignment: .leading, spacing: 0) {
                 LocationBar(path: path, history: $history, home: home, showHidden: $showHidden,
                             go: { directory = URL(fileURLWithPath: $0, isDirectory: true) },
@@ -133,8 +137,14 @@ struct LocalExplorer: View {
                 .hint(entry.isDirectory ? "Folder\nDouble-click or press Return to open it." : "File\nDouble-click or press Return to open it with its Mac app.")
         }
         .contextMenu(forSelectionType: URL.self) { urls in
+            if urls.isEmpty {
+                Button("New Folder…") { create(folder: true) }
+                Button("New File…") { create(folder: false) }
+                Button("Paste") { paste() }.disabled(!FileClipboard.shared.hasContent)
+            }
             if let url = urls.first {
                 Button("Open") { open(url) }
+                if urls.count == 1 { Button("Rename…") { rename(url) } }
                 if opensAsFolder(url) {
                     Button(bookmarks.contains(url.path) ? "Remove Bookmark" : "Add Bookmark") { toggleBookmark(url.path) }
                 }
@@ -169,6 +179,27 @@ struct LocalExplorer: View {
             delete: hasSelection ? { trash(selectedURLs) } : nil,
             selectAll: { selection.ids = Set(visibleEntries.map(\.url)) },
             find: { filter.active = true })
+    }
+
+    private func create(folder: Bool) {
+        guard let name = askForName(title: folder ? "New Folder" : "New File",
+                                    message: "Name for the new \(folder ? "folder" : "file") in \(directory.lastPathComponent):",
+                                    initial: folder ? "untitled folder" : "untitled") else { return }
+        perform {
+            let change = try LocalFiles.create(folder: folder, named: name, in: directory)
+            log.record(change, as: folder ? "New Folder" : "New File")
+            if case .created(let urls) = change { selection.ids = Set(urls) }
+        }
+    }
+
+    private func rename(_ url: URL) {
+        guard let name = askForName(title: "Rename", message: "New name for “\(url.lastPathComponent)”:",
+                                    initial: url.lastPathComponent), name != url.lastPathComponent else { return }
+        perform {
+            let change = try LocalFiles.rename(url, to: name)
+            log.record(change, as: "Rename")
+            if case .moved(let moves) = change { selection.ids = Set(moves.map(\.to)) }
+        }
     }
 
     private func cut(_ urls: Set<URL>) { cut(Array(urls)) }

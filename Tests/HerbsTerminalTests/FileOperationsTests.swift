@@ -206,9 +206,10 @@ func builtInThemesAreSelectableAndPersist() throws {
     let defaults = try #require(UserDefaults(suiteName: "herbsterminal-themes-" + UUID().uuidString))
     let library = ThemeLibrary(defaults: defaults)
     #expect(library.allNames.contains("Solarized Dark"))
-    library.selection = "Nord"
-    #expect(library.current?.palette.count == 16)
-    #expect(ThemeLibrary(defaults: defaults).selection == "Nord")
+    let profile = TerminalProfile(defaults: defaults)
+    profile.theme = "Nord"
+    #expect(library.theme(named: profile.theme)?.palette.count == 16)
+    #expect(TerminalProfile(defaults: defaults).theme == "Nord")
     #expect(!library.isImported("Nord"))
 }
 
