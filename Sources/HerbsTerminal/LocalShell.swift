@@ -42,6 +42,13 @@ final class LocalShell: ObservableObject {
         if started { view.terminate() }
         started = false
     }
+
+    func connectSSH(_ login: SSHLogin) {
+        start()
+        legend.setRemote(target: "\(login.username)@\(login.host)", location: "/")
+        let cmd = "ssh -p \(login.port) \(login.username)@\(login.host)\n"
+        view.send(txt: cmd)
+    }
 }
 
 struct ShellPane: NSViewRepresentable {

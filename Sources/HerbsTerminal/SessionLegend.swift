@@ -6,12 +6,30 @@ final class SessionLegend: ObservableObject, @preconcurrency LocalProcessTermina
     private let initialTitle = NSUserName() + "@" + ProcessInfo.processInfo.hostName.components(separatedBy: ".")[0]
     private var reportedTitle = ""
     private var exited = false
+    private(set) var remoteTarget: String? = nil
+    private(set) var remoteLocation: String? = nil
     @Published private(set) var title: String
     @Published private(set) var subtitle = "~"
 
     init() { title = initialTitle }
 
+    func setRemote(target: String?, location: String? = nil) {
+        self.remoteTarget = target
+        self.remoteLocation = location
+        if let target {
+            self.title = target
+            self.subtitle = location ?? "/"
+        } else {
+            self.title = reportedTitle.isEmpty ? initialTitle : reportedTitle
+            self.subtitle = "~"
+        }
+    }
+
     func refresh(_ view: LocalProcessTerminalView) {
+        guard remoteTarget == nil else {
+            if let remoteLocation, subtitle != remoteLocation { subtitle = remoteLocation }
+            return
+        }
         let process = view.process!
         var next = reportedTitle.isEmpty ? initialTitle : reportedTitle
         if exited {

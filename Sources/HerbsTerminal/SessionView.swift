@@ -1,6 +1,11 @@
 import SwiftUI
 import HerbsTerminalUI
 
+enum SessionEndpoint: Equatable {
+    case local
+    case remote(RemoteEndpoint)
+}
+
 final class WindowState: ObservableObject {
     @Published var layout = SessionLayout.terminal
     @Published var findRequest = 0
@@ -10,6 +15,9 @@ final class WindowState: ObservableObject {
     }
     @Published var notice: String?
     @Published var directory = FileManager.default.homeDirectoryForCurrentUser
+    @Published var endpoint: SessionEndpoint = .local
+    @Published var remoteDirectory: String = "/"
+    @Published var remoteViewModel: RemoteExplorerViewModel? = nil
 }
 
 struct SessionView: View {
@@ -34,7 +42,19 @@ struct SessionView: View {
                     .frame(minWidth: 280)
             }
             if state.layout != .terminal {
-                LocalExplorer(directory: $state.directory).frame(minWidth: 260)
+                switch state.endpoint {
+                case .local:
+                    LocalExplorer(directory: $state.directory).frame(minWidth: 260)
+                case .remote(let ep):
+                    RemoteExplorer(
+                        currentPath: $state.remoteDirectory,
+                        viewModel: state.remoteViewModel ?? {
+                            let vm = RemoteExplorerViewModel(endpoint: ep)
+                            state.remoteViewModel = vm
+                            return vm
+                        }()
+                    ).frame(minWidth: 260)
+                }
             }
         }
         .frame(minWidth: 640, minHeight: 360)

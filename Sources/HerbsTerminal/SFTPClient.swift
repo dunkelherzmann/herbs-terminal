@@ -79,6 +79,8 @@ struct RemoteEndpoint: Equatable, Sendable {
     let port: Int
     let username: String
 
+    var label: String { "\(username)@\(host)" }
+
     init(host: String, port: Int = 22, username: String) {
         self.host = host
         self.port = port
@@ -92,6 +94,16 @@ struct RemoteEndpoint: Equatable, Sendable {
         return args
     }
 }
+
+protocol RemoteFileService: Sendable {
+    func list(_ path: String) throws -> [RemoteEntry]
+    func mkdir(_ path: String) throws
+    func remove(_ path: String, directory: Bool) throws
+    func rename(_ old: String, _ new: String, replace: Bool) throws
+    func stat(_ path: String, follow: Bool) throws -> RemoteAttributes
+}
+
+extension SFTPClient: RemoteFileService, @unchecked Sendable {}
 
 /// One synchronous SFTP v3 channel per background operation. The failing proxy
 /// prevents OpenSSH from making a new connection if its master has disappeared.

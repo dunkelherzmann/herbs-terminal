@@ -14,6 +14,7 @@ final class TerminalTab: Identifiable {
 final class Workspace: ObservableObject {
     @Published var tabs: [TerminalTab]
     @Published var selected: TerminalTab
+    @Published var showingSSHConnect = false
     private var next = 2
 
     init() {
@@ -27,6 +28,15 @@ final class Workspace: ObservableObject {
         next += 1
         tabs.append(tab)
         selected = tab
+    }
+
+    func connectSSH(_ login: SSHLogin) {
+        let tab = selected
+        let ep = RemoteEndpoint(host: login.host, port: login.port, username: login.username)
+        tab.state.endpoint = .remote(ep)
+        tab.state.remoteDirectory = "/"
+        tab.state.remoteViewModel = RemoteExplorerViewModel(endpoint: ep)
+        tab.shell.connectSSH(login)
     }
 
     func close(_ tab: TerminalTab) {
@@ -67,6 +77,8 @@ private struct ActiveWorkspace: View {
                            search: { tab.state.find() }) {
                 Button("New Tab", action: workspace.add)
                 Button("New Window") { openWindow(id: "session") }
+                Button("Connect via SSH…") { workspace.showingSSHConnect = true }
+                    .keyboardShortcut("k", modifiers: [.command])
                 Menu("Open Tabs") {
                     ForEach(workspace.tabs) { item in
                         Button("Terminal \(item.number)") { workspace.selected = item }
@@ -109,6 +121,18 @@ private struct ActiveWorkspace: View {
                 tab.shell.legend.refresh(tab.shell.view)
                 try? await Task.sleep(for: .seconds(1))
             }
+        }
+        .sheet(isPresented: $workspace.showingSSHConnect) {
+            SSHConnectView(
+                viewModel: SSHConnectViewModel(),
+                onConnect: { login in
+                    workspace.showingSSHConnect = false
+                    workspace.connectSSH(login)
+                },
+                onDismiss: {
+                    workspace.showingSSHConnect = false
+                }
+            )
         }
         .ignoresSafeArea(.container, edges: .top)
         .preferredColorScheme(appearance == "System" ? nil : appearance == "Dark" ? .dark : .light)
