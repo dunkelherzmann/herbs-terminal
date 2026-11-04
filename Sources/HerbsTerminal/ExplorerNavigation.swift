@@ -143,7 +143,9 @@ struct LocationBar<Trailing: View>: View {
                         }
                     }
                 }
-                .defaultScrollAnchor(.trailing)
+                // Long paths start scrolled to the end; short ones stay left-aligned.
+                .defaultScrollAnchor(.trailing, for: .initialOffset)
+                .defaultScrollAnchor(.leading, for: .alignment)
                 .id(path)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }

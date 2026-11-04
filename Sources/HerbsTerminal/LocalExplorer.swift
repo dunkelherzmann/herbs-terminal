@@ -76,7 +76,6 @@ struct LocalExplorer: View {
     @StateObject private var filter = ExplorerFilter()
     @StateObject private var selection = ListSelection<URL>()
     @AppStorage("explorerShowHidden") private var showHidden = false
-    @AppStorage("explorerShowSidebar") private var showSidebar = true
     @AppStorage("explorerBookmarks") private var bookmarkList = ""
 
     private let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -85,17 +84,12 @@ struct LocalExplorer: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            if showSidebar {
-                sidebar.frame(width: 170)
-                Divider()
-            }
+            sidebar.frame(width: 170)
+            Divider()
             VStack(alignment: .leading, spacing: 0) {
                 LocationBar(path: path, history: $history, home: home, showHidden: $showHidden,
                             go: { directory = URL(fileURLWithPath: $0, isDirectory: true) },
                             reload: { listing.devices = LocalPlaces.devices(); listing.revision += 1 }) {
-                    Button { showSidebar.toggle() } label: { Label("Side pane", systemImage: "sidebar.left") }
-                        .keyboardShortcut("s", modifiers: [.command, .option])
-                        .help("Side Pane (⌥⌘S)\nShow or hide Places, Devices and Bookmarks.")
                     Button { toggleBookmark(history.current) } label: {
                         Label("Bookmark", systemImage: bookmarks.contains(path) ? "bookmark.fill" : "bookmark")
                     }
