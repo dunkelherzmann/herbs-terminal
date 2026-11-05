@@ -16,7 +16,8 @@ final class RemoteExplorerViewModel: ObservableObject {
 
     let endpoint: RemoteEndpoint
     let queue: TransferQueue
-    private let service: any RemoteFileService
+    /// The channel listings use; replaced with a fresh one when it breaks or times out.
+    private var service: any RemoteFileService
     private let makeClient: @Sendable () throws -> SFTPClient
     private var flags: [UUID: CancelFlag] = [:]
     private var retries: [UUID: () async -> Void] = [:]
@@ -92,6 +93,11 @@ final class RemoteExplorerViewModel: ObservableObject {
             if !Task.isCancelled, generation == loadGeneration {
                 self.errorMessage = error.localizedDescription
                 self.isLoading = false
+            }
+            // A broken or timed-out channel stays broken: open a fresh one, so Reload works again. A status
+            // from the server (no permission, no such folder) means the channel itself is fine.
+            if shared == nil, !(error is SFTPStatus), let fresh = try? await Task.detached(operation: { [makeClient] in try makeClient() }).value {
+                service = fresh
             }
         }
     }
@@ -332,10 +338,11 @@ final class RemoteExplorerViewModel: ObservableObject {
 
     /// Permanently deletes remote items, folders included. The view confirms first: this can't be undone.
     func delete(_ names: [String], in folder: String) async {
+        let asRoot = isAdministrator
         do {
             try await withClient { client in
                 let transfer = SFTPTransfer(client: client)
-                for name in names { try transfer.remove(remoteJoin(folder, name)) }
+                for name in names { try transfer.remove(remoteJoin(folder, name), asRoot: asRoot) }
             }
         } catch {
             alert = error.localizedDescription

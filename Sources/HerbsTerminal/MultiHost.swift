@@ -74,7 +74,7 @@ final class MultiHostModel: ObservableObject {
         ]) + [command]
         var environment = ProcessInfo.processInfo.environment
         if let password = target.password, !password.isEmpty, let broker = AskpassBroker.shared {
-            environment.merge(broker.environment(token: broker.issue(password))) { $1 }
+            environment.merge(broker.environment(token: broker.issue(password, for: SSHControl.passwordLogins(target.endpoint)))) { $1 }
         } else {
             environment["SSH_ASKPASS_REQUIRE"] = "never"
             environment["SSH_ASKPASS"] = nil
@@ -94,11 +94,25 @@ final class MultiHostModel: ObservableObject {
             result.outcome = .notReached(error.localizedDescription)
             return result
         }
-        let data = await Task.detached { pipe.fileHandleForReading.readDataToEndOfFile() }.value
-        process.waitUntilExit()
+        // Only the first `outputLimit` bytes are kept; the rest is read and dropped, so a command that
+        // prints gigabytes can't fill memory.
+        let (data, truncated) = await Task.detached { () -> (Data, Bool) in
+            var kept = Data(), dropped = false
+            let handle = pipe.fileHandleForReading
+            while let chunk = try? handle.read(upToCount: 65536), !chunk.isEmpty {
+                let room = outputLimit - kept.count
+                if room > 0 { kept.append(chunk.prefix(room)) }
+                if chunk.count > room { dropped = true }
+            }
+            return (kept, dropped)
+        }.value
+        // Waiting for the exit off the cooperative thread pool.
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global().async { process.waitUntilExit(); done.resume() }
+        }
         result.seconds = Date().timeIntervalSince(started)
-        result.output = String(decoding: data.prefix(outputLimit), as: UTF8.self)
-        if data.count > outputLimit { result.output += "\n… output truncated" }
+        result.output = String(decoding: data, as: UTF8.self)
+        if truncated { result.output += "\n… output truncated" }
         let status = process.terminationStatus
         if process.terminationReason == .uncaughtSignal {
             result.outcome = .cancelled
