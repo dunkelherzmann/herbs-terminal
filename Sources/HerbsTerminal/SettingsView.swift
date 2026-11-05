@@ -309,6 +309,7 @@ struct TerminalCommands: Commands {
         }
         CommandMenu("Shell") {
             Button("New Tab") { workspace?.add() }.keyboardShortcut("t").disabled(workspace == nil)
+            Button("Export Session…") { workspace?.exportSession() }.keyboardShortcut("s").disabled(workspace == nil)
             Button("Split Vertically") { workspace?.split(.horizontal) }
                 .keyboardShortcut("d").disabled(workspace == nil)
             Button("Split Horizontally") { workspace?.split(.vertical) }

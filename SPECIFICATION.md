@@ -41,6 +41,7 @@ It covers the everyday features of the stock macOS Terminal and Ptyxis. It adds:
   - Passwords and tokens in a command line (`user:pass@host`, `--password=`, `*_TOKEN=`) are hidden before the title is shown.
   - Double-click the title to return the window to its default size and the text to its default zoom. Right-click it to make the current size and text size the defaults.
 - **Right:**
+  - **Export Session** (⌘S): saves everything in the active terminal, scrollback included, to a text file named after the tab and the time, for example `Terminal 2 2026-11-06 09-05.txt`.
   - **Show File Explorer / Show Terminal**: switch the tab between its shell and its explorer.
   - **MultiExec**.
   - **Tailcat Peers**.
@@ -99,7 +100,7 @@ It covers the everyday features of the stock macOS Terminal and Ptyxis. It adds:
 These follow macOS Terminal:
 
 - **Shell:**
-  - New Tab ⌘T, New Tab with Profile, Use Profile.
+  - New Tab ⌘T, Export Session… ⌘S, New Tab with Profile, Use Profile.
   - Split Vertically ⌘D, Split Horizontally ⇧⌘D, Close Pane ⌥⌘W, Select Next / Previous Pane ⌥⌘→ / ⌥⌘←.
   - MultiExec ⇧⌘M, Run Command on Hosts….
   - New Remote Connection ⇧⌘K, Disconnect.

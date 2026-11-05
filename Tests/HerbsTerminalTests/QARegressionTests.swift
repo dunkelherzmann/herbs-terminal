@@ -260,3 +260,18 @@ func tailcatPanelStartsEmptyWithOneTimeChosen() {
     form.clear()
     #expect(form.name.isEmpty && form.username.isEmpty && form.address.isEmpty && !form.persistent)
 }
+
+@Test @MainActor
+func exportSessionSavesTheWholeTextUnderTheTabNameAndTime() throws {
+    let shell = LocalShell()
+    for index in 1...150 { shell.view.feed(text: "line \(index)\r\n") }   // more than a screen: scrollback too
+    shell.view.feed(text: "last line")
+    let text = Workspace.sessionText(shell)
+    #expect(text.hasPrefix("line 1\n") && text.contains("line 150\n") && text.hasSuffix("last line\n"))
+
+    var parts = DateComponents()
+    parts.year = 2026; parts.month = 11; parts.day = 6; parts.hour = 9; parts.minute = 5
+    let date = try #require(Calendar.current.date(from: parts))
+    #expect(Workspace.sessionFileName(title: "Terminal 2", date: date) == "Terminal 2 2026-11-06 09-05.txt")
+    #expect(Workspace.sessionFileName(title: "logs/prod: web", date: date) == "logs-prod- web 2026-11-06 09-05.txt")
+}
