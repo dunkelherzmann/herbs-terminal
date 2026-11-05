@@ -25,24 +25,54 @@ Each tab pairs a shell with an SSH-aware file explorer. When the shell connects 
 
 Nothing else needs to be installed. The app bundles its own SSH helpers and `tailcat`; it uses the system's `/usr/bin/ssh`, `/bin/sh`, `/usr/libexec/sftp-server`, and `sudo` — never Homebrew or PATH copies.
 
-## Download
+## Installing
 
-Grab the latest `.zip` from [Releases](https://github.com/dunkelherzmann/herbs-terminal/releases), unzip it, and drag **Herb's Terminal.app** to your Applications folder.
+Herb's Terminal isn't notarized by Apple, so there are two ways to run it. Building it yourself is the simplest and the easiest to trust.
 
-> **Gatekeeper note:** the app is not notarized. Right-click → Open the first time to bypass the unsigned-app warning.
+### Option 1: build from source (recommended)
 
-## Building from source
+You need only Apple's free Command Line Tools:
 
 ```bash
-# build and sign dist/Herb's Terminal.app
-script/build_and_run.sh
-
-# assemble the .app without launching it
-script/build_and_run.sh --bundle
-
-# build and run the test suite (includes real SFTP transfers)
-script/test.sh
+xcode-select --install
 ```
+
+Then clone and build:
+
+```bash
+git clone https://github.com/dunkelherzmann/herbs-terminal.git
+cd herbs-terminal
+script/build_and_run.sh
+```
+
+The app is built and opened from `dist/Herb's Terminal.app`; drag it to your Applications folder to keep it. An app built on your own Mac isn't quarantined, so Gatekeeper opens it without any warning.
+
+Other build commands:
+
+```bash
+script/build_and_run.sh --bundle   # build the .app without opening it
+script/test.sh                     # run the test suite (includes real SFTP transfers)
+```
+
+### Option 2: use a prebuilt app
+
+Download the `.zip` from [Releases](https://github.com/dunkelherzmann/herbs-terminal/releases), unzip it, and drag **Herb's Terminal.app** to your Applications folder.
+
+Downloaded apps carry macOS's quarantine flag, and because this one isn't notarized, macOS refuses to open it at first ("Apple could not verify…"). Remove the flag once in Terminal:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Herb's Terminal.app"
+```
+
+- `-d com.apple.quarantine` removes only the quarantine flag, and `-r` does it for everything inside the app, including the bundled `tailcat` helper.
+- `xattr -cr "/Applications/Herb's Terminal.app"` also works: `-c` clears all extended attributes, the quarantine flag among them.
+- `-c` and `-d` can't be combined (`xattr -cdr` stops with "Cannot specify -d with -c"); use one or the other.
+
+Without Terminal: try to open the app once, then go to **System Settings ▸ Privacy & Security** and click **Open Anyway** (this needs an administrator password). Since macOS 15, Control-click ▸ Open no longer bypasses the warning.
+
+Only remove the quarantine flag from a copy you downloaded from this repository's Releases page.
+
+## Built with
 
 Built with **Swift 6**, **SwiftUI + AppKit**, [SwiftTerm 1.20](https://github.com/migueldeicaza/SwiftTerm), and Swift Package Manager.
 
@@ -56,8 +86,7 @@ Tests/
   HerbsTerminalTests/  unit and integration tests
 Assets/                app icon source files
 Vendor/tailcat/        bundled tailcat binary + license
-script/                build, icon generation, and test scripts
-docs/                  feature audits and design plans
+script/                build, signing, icon generation, and test scripts
 dist/                  build output (gitignored)
 ```
 
