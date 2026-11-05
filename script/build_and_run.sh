@@ -24,7 +24,7 @@ cd "$ROOT_DIR"
 swift build --build-system native --product "$APP_NAME"
 BUILD_BINARY="$(swift build --build-system native --show-bin-path)/$APP_NAME"
 
-rm -rf "$APP_BUNDLE" "$DIST_DIR/Herbs-Terminal-old.app"
+rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"

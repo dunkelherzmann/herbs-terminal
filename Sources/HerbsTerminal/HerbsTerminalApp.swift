@@ -7,63 +7,18 @@ enum AppMain {
         if let status = HelperMode.run() { exit(status) }
         // Writing to an ssh that has gone away must fail with EPIPE, not end the app and every shell in it.
         signal(SIGPIPE, SIG_IGN)
-        RenameMigration.run()
-        RenameMigration.moveLoginDatabase()
         HerbsTerminalApp.main()
     }
 }
 
-/// One-time migration of settings and saved data from the previous app identity.
-enum RenameMigration {
-    static let oldDomain = "org.herbsterminal.old"
-    static let doneKey = "migratedFromOldApp"
-
-    /// Where the app keeps its own files, for every store that needs one.
-    static func supportFolder(_ support: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]) -> URL {
-        support.appendingPathComponent("HerbsTerminal", isDirectory: true)
+/// Where the app keeps its own files, for every store that needs one.
+enum AppFolders {
+    static func support(_ base: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]) -> URL {
+        base.appendingPathComponent("HerbsTerminal", isDirectory: true)
     }
 
-    static func loginDatabase(_ support: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]) -> URL {
-        supportFolder(support).appendingPathComponent("logins.sqlite3")
-    }
-
-    /// Builds after the rename kept logins in "Herb's Terminal/" while everything else, including the
-    /// migrated legacy app data, went to "HerbsTerminal/". The newer database moves in; a copy already there
-    /// is set aside, never deleted. Retried at each launch until nothing is left behind.
-    static func moveLoginDatabase(support: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]) {
-        let fileManager = FileManager.default
-        let strayFolder = support.appendingPathComponent("Herb's Terminal", isDirectory: true)
-        let stray = strayFolder.appendingPathComponent("logins.sqlite3"), target = loginDatabase(support)
-        guard fileManager.fileExists(atPath: stray.path) else { return }
-        do {
-            try fileManager.createDirectory(at: supportFolder(support), withIntermediateDirectories: true)
-            if fileManager.fileExists(atPath: target.path) {
-                let aside = supportFolder(support).appendingPathComponent("logins-before-\(Int(Date().timeIntervalSince1970)).sqlite3")
-                try fileManager.moveItem(at: target, to: aside)
-            }
-            try fileManager.moveItem(at: stray, to: target)
-            if (try? fileManager.contentsOfDirectory(atPath: strayFolder.path))?.isEmpty == true {
-                try? fileManager.removeItem(at: strayFolder)
-            }
-        } catch {
-            NSLog("Herb's Terminal: couldn't move the login database: \(error.localizedDescription)")
-        }
-    }
-
-    static func run(defaults: UserDefaults = .standard,
-                    oldSettings: [String: Any]? = UserDefaults.standard.persistentDomain(forName: oldDomain),
-                    support: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0],
-                    caches: URL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]) {
-        guard !defaults.bool(forKey: doneKey) else { return }
-        for (key, value) in oldSettings ?? [:] where defaults.object(forKey: key) == nil { defaults.set(value, forKey: key) }
-        let fileManager = FileManager.default
-        let oldFolder = support.appendingPathComponent("Herb's Terminal"), newFolder = supportFolder(support)
-        if fileManager.fileExists(atPath: oldFolder.path), !fileManager.fileExists(atPath: newFolder.path) {
-            try? fileManager.moveItem(at: oldFolder, to: newFolder)
-        }
-        // The old cache only held sockets and one-shot launchers; nothing there is worth keeping.
-        try? fileManager.removeItem(at: caches.appendingPathComponent("Herb's Terminal"))
-        defaults.set(true, forKey: doneKey)
+    static func loginDatabase(_ base: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]) -> URL {
+        support(base).appendingPathComponent("logins.sqlite3")
     }
 }
 
