@@ -287,6 +287,9 @@ struct TerminalCommands: Commands {
     @ObservedObject private var profiles = TerminalProfile.shared
 
     var body: some Commands {
+        CommandGroup(replacing: .appInfo) {
+            Button("About Herb's Terminal") { AboutPanel.show() }
+        }
         CommandGroup(after: .pasteboard) {
             Divider()
             Button("Clear to Start") { workspace?.selected.focusedShell.view.clearToStart() }

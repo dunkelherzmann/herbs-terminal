@@ -110,10 +110,10 @@ enum LoginVaultPrompts {
             let alert = NSAlert()
             alert.messageText = modifying ? "Modify Administrator Password" : "Create Administrator Password"
             alert.informativeText = (message.map { $0 + "\n\n" } ?? "")
-                + (modifying ? "Saved logins are re-encrypted with the new password."
+                + (modifying ? "Saved logins are re-encrypted with the new password.\n\nLeave both new password fields blank to remove the Administrator Password: saved logins are then stored as plain text, unprotected."
                              : "Saved logins will be encrypted with this password. Herb's Terminal can't recover it if you forget it; you would have to delete and re-enter your logins.")
             let current = secureField("Current password")
-            let new = secureField("New password (at least 8 characters)")
+            let new = secureField(modifying ? "New password (blank to remove)" : "New password (at least 8 characters)")
             let confirm = secureField("Confirm new password")
             alert.accessoryView = stack(modifying ? [current, new, confirm] : [new, confirm])
             alert.window.initialFirstResponder = modifying ? current : new
@@ -122,12 +122,30 @@ enum LoginVaultPrompts {
             guard alert.runModal() == .alertFirstButtonReturn else { return false }
             guard new.stringValue == confirm.stringValue else { message = "The new passwords don't match."; continue }
             do {
-                try store.setAdminPassword(new.stringValue, current: modifying ? current.stringValue : nil)
+                // Saved addresses are re-encoded with whatever protection follows, so they stay readable.
+                if modifying { try store.unlock(current.stringValue) }
+                if modifying, new.stringValue.isEmpty {
+                    guard confirmRemoval() else { continue }
+                    try TailcatPeerStore.shared.reprotect { try store.removeAdminPassword(current: current.stringValue) }
+                } else {
+                    try TailcatPeerStore.shared.reprotect { try store.setAdminPassword(new.stringValue, current: modifying ? current.stringValue : nil) }
+                }
                 return true
             } catch {
                 message = error.localizedDescription
             }
         }
+    }
+
+    private static func confirmRemoval() -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = "Remove the Administrator Password?"
+        alert.informativeText = "Saved logins, passwords included, will be stored as plain text: anyone or anything that can read your files could read them."
+        // Cancel is the default, so Return never removes the protection by accident.
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Remove Password").hasDestructiveAction = true
+        return alert.runModal() == .alertSecondButtonReturn
     }
 
     /// Asks for the Administrator Password to unlock saved logins for this session.
@@ -188,24 +206,23 @@ enum LoginVaultPrompts {
         }
     }
 
-    /// Export Login Data, after the Administrator Password (or a plain-text confirmation). Every login is
-    /// exported, so a locked store is unlocked first.
-    static func exportData(_ store: CredentialStore) -> String? {
+    /// Export Login Data, after the Administrator Password (or a plain-text confirmation): the logins in `ids`.
+    static func exportData(_ store: CredentialStore, only ids: Set<SSHLogin.ID>) -> String? {
+        guard !ids.isEmpty else { return nil }
         guard confirmExport(store) else { return nil }
-        if store.isLocked, !unlock(store) { return nil }
         let panel = NSSavePanel()
         panel.title = "Export Login Data"
         panel.allowedContentTypes = [UTType.commaSeparatedText]
         panel.nameFieldStringValue = "logins_export.csv"
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
         do {
-            let data = try store.exportCSV()
+            let data = try store.exportCSV(only: ids)
             // The export holds passwords: readable by this account only, from the moment it exists.
             try? FileManager.default.removeItem(at: url)
             guard FileManager.default.createFile(atPath: url.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
                 throw FileIssue("Couldn't write \(url.lastPathComponent).")
             }
-            return "Login data exported. The file contains readable passwords; delete it when you're done."
+            return "\(ids.count) login\(ids.count == 1 ? "" : "s") exported. The file contains readable passwords; delete it when you're done."
         } catch {
             show(error)
             return nil

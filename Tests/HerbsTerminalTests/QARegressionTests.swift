@@ -1,3 +1,4 @@
+import AppKit
 import CryptoKit
 import SQLite3
 import Foundation
@@ -173,4 +174,89 @@ func anAdministratorPasswordSetByAnEarlierBuildStillUnlocks() throws {
     // The check value was upgraded, so it keeps working.
     #expect(meta("check") != combined)
     #expect(try CredentialStore(databaseURL: url, iterations: 1000).verify("correct horse battery"))
+}
+
+@Test @MainActor
+func removingTheAdministratorPasswordLeavesReadablePlainTextLoginsAndAddresses() throws {
+    let root = try scratch()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let logins = try CredentialStore(databaseURL: root.appendingPathComponent("logins.sqlite3"), iterations: 1000)
+    try logins.setAdminPassword("correct horse battery")
+    let login = SSHLogin(host: "nas.local", port: 22, username: "herb", password: "pw")
+    try logins.save(login)
+    let peers = TailcatPeerStore(file: root.appendingPathComponent("peers.json"), secrets: logins)
+    try peers.add(name: "office", username: "herb", address: "secret-address", persistent: false)
+    #expect(peers.peers[0].secret.first == 1)   // encrypted
+
+    #expect(throws: (any Error).self) { try logins.removeAdminPassword(current: "wrong password") }
+    try peers.reprotect { try logins.removeAdminPassword(current: "correct horse battery") }
+    #expect(logins.protection == .plainText && !logins.isLocked)
+    #expect(logins.plainTextIDs == [login.id] && logins.get(id: login.id)?.password == "pw")
+    #expect(!logins.verify("correct horse battery"))
+    #expect(peers.peers[0].secret.first == 0)
+    #expect(try logins.reveal(peers.peers[0].secret) == "secret-address")
+    // Setting a new one encrypts both again.
+    try peers.reprotect { try logins.setAdminPassword("another good password") }
+    #expect(peers.peers[0].secret.first == 1 && logins.plainTextIDs.isEmpty)
+    #expect(try logins.reveal(peers.peers[0].secret) == "secret-address")
+}
+
+@Test @MainActor
+func exportIncludesOnlyTheTickedLogins() throws {
+    let root = try scratch()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let logins = try CredentialStore(databaseURL: root.appendingPathComponent("logins.sqlite3"), iterations: 1000)
+    try logins.choosePlainText()
+    let a = SSHLogin(host: "a.local", port: 22, username: "u", password: "1"), b = SSHLogin(host: "b.local", port: 22, username: "u", password: "2")
+    try logins.save(a)
+    try logins.save(b)
+    let csv = String(decoding: try logins.exportCSV(only: [b.id]), as: UTF8.self)
+    #expect(csv.contains("b.local") && !csv.contains("a.local"))
+}
+
+@Test @MainActor
+func remoteItemsPasteIntoFinderAsRealFiles() throws {
+    let root = try scratch()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("report.txt")
+    try Data("remote bytes".utf8).write(to: source)
+    let pasteboard = NSPasteboard(name: NSPasteboard.Name("herbs-test-\(UUID().uuidString)"))
+    defer { pasteboard.releaseGlobally() }
+    let clipboard = FileClipboard(pasteboard: pasteboard)
+    let endpoint = RemoteEndpoint(host: "localhost", username: "me")
+    clipboard.writeRemote([source.path], on: endpoint, cut: false) { path, target in
+        try SFTPTransfer(client: try SFTPClient(executable: "/usr/libexec/sftp-server", arguments: [])).download(path, to: target)
+    }
+    // Herb's Terminal still sees remote items…
+    #expect(clipboard.readRemote(for: endpoint)?.paths == [source.path])
+    // …and Finder, or the local explorer, gets a real file with the remote file's bytes.
+    let urls = clipboard.readLocal().urls
+    #expect(urls.count == 1 && urls[0].lastPathComponent == "report.txt")
+    #expect(try Data(contentsOf: urls[0]) == Data("remote bytes".utf8))
+}
+
+@Test @MainActor
+func typingExitClosesThePaneThenTheTab() async throws {
+    let workspace = Workspace(restoring: nil)
+    defer { workspace.tabs.forEach { $0.shells.forEach { $0.close() } } }
+    workspace.add()
+    let (first, second) = (workspace.tabs[0], workspace.tabs[1])
+    workspace.split(.horizontal, in: second)
+    let pane = second.shells[1]
+    workspace.shellExited(pane, in: second)
+    #expect(second.shells.count == 1 && workspace.tabs.count == 2)
+    workspace.shellExited(second.shells[0], in: second)
+    #expect(workspace.tabs.count == 1 && workspace.selected === first)
+    // A shell the app closed itself (already gone from its tab) changes nothing.
+    workspace.shellExited(pane, in: first)
+    #expect(workspace.tabs.count == 1)
+}
+
+@Test @MainActor
+func tailcatPanelStartsEmptyWithOneTimeChosen() {
+    let form = TailcatForm()
+    #expect(form.username.isEmpty && !form.persistent && !form.sharePersistent)
+    form.name = "x"; form.username = "Herbert"; form.address = "secret"; form.persistent = true
+    form.clear()
+    #expect(form.name.isEmpty && form.username.isEmpty && form.address.isEmpty && !form.persistent)
 }

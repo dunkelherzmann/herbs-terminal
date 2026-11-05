@@ -72,6 +72,16 @@ final class TailcatPeerStore: ObservableObject {
         }
     }
 
+    /// Saved addresses follow a change of login protection: they are read with the old key, `change` runs,
+    /// and they are written again with the new one (or as plain text).
+    func reprotect(_ change: () throws -> Void) throws {
+        guard let secrets, !peers.isEmpty else { try change(); return }
+        let addresses = try peers.map { try secrets.reveal($0.secret) }
+        try change()
+        for index in peers.indices { peers[index].secret = try secrets.protect(addresses[index]) }
+        try save()
+    }
+
     func add(name: String, username: String, address: String, persistent: Bool) throws {
         let name = name.trimmingCharacters(in: .whitespaces), address = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, !username.isEmpty, !address.isEmpty else { throw FileIssue("Enter a name, a username and the peer's tailcat address.") }
@@ -209,13 +219,22 @@ final class TailcatShare: ObservableObject {
     }
 }
 
+/// What's typed in Tailcat Peers. Nothing here is kept: the panel starts empty each time it opens.
 @MainActor
 final class TailcatForm: ObservableObject {
     @Published var name = ""
-    @Published var username = NSUserName()
+    @Published var username = ""
     @Published var address = ""
-    @Published var persistent = true
+    @Published var persistent = false
     @Published var sharePersistent = false
+
+    func clear() {
+        name = ""
+        username = ""
+        address = ""
+        persistent = false
+        sharePersistent = false
+    }
 }
 
 struct TailcatPeersView: View {
@@ -254,16 +273,16 @@ struct TailcatPeersView: View {
                     }
                     HStack {
                         Picker("", selection: $form.persistent) {
-                            Text("Persistent").tag(true)
                             Text("One-time").tag(false)
+                            Text("Persistent").tag(true)
                         }
                         .pickerStyle(.segmented).labelsHidden().frame(width: 200)
-                        .hint("Pairing type\nPersistent: the peer keeps a saved server key. One-time: the address dies when its server stops.")
+                        .hint("Pairing type\nOne-time: the address dies when its server stops. Persistent: the peer keeps a saved server key.")
                         Spacer()
                         Button("Add Peer") {
                             do {
                                 try store.add(name: form.name, username: form.username, address: form.address, persistent: form.persistent)
-                                form.name = ""; form.address = ""; store.error = nil
+                                form.clear(); store.error = nil
                             } catch { store.error = error.localizedDescription }
                         }
                         .hint("Add Peer\nSave this peer so you can ping and connect to it.")
@@ -316,6 +335,9 @@ struct TailcatPeersView: View {
         }
         .padding(20)
         .frame(width: 600)
+        // Typed but unsaved values never come back the next time the panel opens.
+        .onAppear { form.clear() }
+        .onDisappear { form.clear() }
     }
 
     private func peerRow(_ peer: TailcatPeer) -> some View {

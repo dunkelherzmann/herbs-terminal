@@ -35,9 +35,10 @@ enum SSHControl {
         return URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
     }
 
-    /// Options for the interactive login. ControlPersist=no ties the master to that session, so leaving
-    /// ssh also detaches the explorer.
-    static let masterOptions = ["-o", "ControlMaster=auto", "-o", "ControlPersist=no"]
+    /// Options for the interactive login. The shared connection runs in the background (ControlPersist), so
+    /// typing `exit` ends the session at once even while the explorer still has a channel open; the tab
+    /// closes the connection when its ssh is gone. If the app quits, it closes itself 10 s after its last use.
+    static let masterOptions = ["-o", "ControlMaster=auto", "-o", "ControlPersist=10"]
 
     /// True while a master connection for `endpoint` is up.
     static func isConnected(_ endpoint: RemoteEndpoint) -> Bool {

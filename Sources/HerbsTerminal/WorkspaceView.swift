@@ -299,9 +299,11 @@ final class Workspace: ObservableObject {
             tab.focusedShell = shell
         }
         shell.legend.onResize = { [weak self] in self?.rememberChrome() }
+        // Typing `exit` closes the pane, the tab when it was the tab's last pane, and the window when it was
+        // the last terminal. An ssh session ends on its own and leaves the local shell running.
         shell.legend.onExit = { [weak self, weak tab, weak shell] in
-            guard let self, let tab, let shell, tab.shells.count > 1 else { return }
-            self.closePane(shell, in: tab, confirm: false)
+            guard let self, let tab, let shell else { return }
+            self.shellExited(shell, in: tab)
         }
         shell.view.extraMenuItems = { [weak self, weak tab, weak shell] in
             guard let self, let tab, let shell else { return [] }
@@ -330,6 +332,19 @@ final class Workspace: ObservableObject {
                 ActionMenuItem("Settings…", key: ",") { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) },
             ]
             return items
+        }
+    }
+
+    func shellExited(_ shell: LocalShell, in tab: TerminalTab) {
+        // Shells the app closed itself (a closed pane or tab) report their exit too; only a shell still showing counts.
+        guard tabs.contains(where: { $0 === tab }), tab.shells.contains(where: { $0 === shell }) else { return }
+        if tab.shells.count > 1 {
+            closePane(shell, in: tab, confirm: false)
+        } else if tabs.count > 1 {
+            remove(tab)
+            if multiExec, allShells.isEmpty { multiExec = false }
+        } else {
+            window?.close()
         }
     }
 
@@ -472,6 +487,14 @@ final class Workspace: ObservableObject {
                 tab.state.connection = .connected(endpoint)
                 tab.shell.legend.setRemote(target: endpoint.label, location: home)
             } else if !up && connected {
+                detach(tab, message: nil)
+                return
+            } else if connected, !hasChildProcess(of: tab.shell.view.process.shellPid, named: "ssh") {
+                // The session ended (`exit`): the shared connection lives on in the background for the
+                // explorer's channels, so close it, unless another tab still uses it, and the tab returns
+                // to this Mac.
+                let shared = Workspace.all.flatMap(\.tabs).contains { $0 !== tab && $0.state.connection == .connected(endpoint) }
+                if !shared { Task.detached { SSHControl.run(endpoint.sshArguments(["-O", "exit"])) } }
                 detach(tab, message: nil)
                 return
             } else if !up && Date().timeIntervalSince(started) > 2,
@@ -737,7 +760,7 @@ private struct ActiveWorkspace: View {
                 Button("Toggle Full Screen") { NSApp.keyWindow?.toggleFullScreen(nil) }.help("Fill the screen with this window.")
                 Divider()
                 SettingsLink { Text("Settings…") }.help("Font, size, cursor, window size and color themes (⌘,).")
-                Button("About Herb's Terminal") { NSApp.orderFrontStandardAboutPanel(nil) }
+                Button("About Herb's Terminal") { AboutPanel.show() }
             }
         }
         .task(id: tab.id) {

@@ -172,6 +172,27 @@ final class CredentialStore: ObservableObject {
         try reload()
     }
 
+    /// Removes the Administrator Password after checking `current`: every login is stored as plain text again,
+    /// in one transaction, and the key material is deleted.
+    func removeAdminPassword(current: String) throws {
+        guard protection == .adminPassword else { return }
+        try unlock(current)
+        let readable = logins
+        try execute(sql: "BEGIN IMMEDIATE TRANSACTION;")
+        do {
+            for login in readable { try write(login, scheme: "plain", vault: nil) }
+            try setMeta("protection", Data(LoginProtection.plainText.rawValue.utf8))
+            try execute(sql: "DELETE FROM meta WHERE key IN ('salt', 'iterations', 'check');")
+            try execute(sql: "COMMIT;")
+        } catch {
+            try? execute(sql: "ROLLBACK;")
+            throw error
+        }
+        vault = nil
+        protection = .plainText
+        try reload()
+    }
+
     /// Unlocks saved logins for this session. A wrong password changes nothing.
     func unlock(_ password: String) throws {
         guard protection == .adminPassword else { return }
@@ -479,7 +500,8 @@ final class CredentialStore: ObservableObject {
         }
     }
 
-    func exportCSV() throws -> Data {
-        return LoginCSV.encode(logins)
+    /// The logins as CSV; `only` limits it to those logins.
+    func exportCSV(only ids: Set<SSHLogin.ID>? = nil) throws -> Data {
+        return LoginCSV.encode(ids.map { ids in logins.filter { ids.contains($0.id) } } ?? logins)
     }
 }

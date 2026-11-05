@@ -200,6 +200,16 @@ final class RemoteExplorerViewModel: ObservableObject {
             })
     }
 
+    /// Downloads one copied item when Finder or the local explorer pastes it. It runs on the main thread while
+    /// the paste waits, over its own SFTP channel (the root session, one request at a time, in Administrator mode).
+    nonisolated var clipboardFetcher: @Sendable (String, URL) throws -> Void {
+        let make = makeClient, lock = shared == nil ? nil : sharedLock
+        return { path, target in
+            func download() throws { try SFTPTransfer(client: try make()).download(path, to: target) }
+            if let lock { try lock.withLock(download) } else { try download() }
+        }
+    }
+
     /// Get Info for items in `folder`: their permissions and owners, changed over SFTP (as root in Administrator mode).
     func infoSource(for names: [String], in folder: String) -> FileInfoSource {
         let accounts = accountsOn
@@ -645,7 +655,8 @@ struct RemoteExplorer: View {
     }
 
     private func clip(_ names: [String], cut: Bool) {
-        FileClipboard.shared.writeRemote(names.map { remoteJoin(currentPath, $0) }, on: viewModel.endpoint, cut: cut)
+        FileClipboard.shared.writeRemote(names.map { remoteJoin(currentPath, $0) }, on: viewModel.endpoint, cut: cut,
+                                         fetch: viewModel.clipboardFetcher)
     }
 
     /// Remote items paste as a move or copy on this host; Mac files copied in Finder or the local explorer upload.

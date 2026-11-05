@@ -21,7 +21,7 @@ enum ManageLoginsWindow {
         let window = NSWindow(contentViewController: NSHostingController(rootView: ManageLoginsView(store: store)))
         window.title = "Manage Logins"
         window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
-        window.setContentSize(NSSize(width: 640, height: 400))
+        window.setContentSize(NSSize(width: 720, height: 420))
         window.isReleasedWhenClosed = false
         window.center()
         self.window = window
@@ -38,6 +38,8 @@ final class ManageLoginsState: ObservableObject {
     @Published var selection: SSHLogin.ID?
     @Published var editing: LoginDraft?
     @Published var notice: String?
+    /// Logins ticked for Export.
+    @Published var checked: Set<SSHLogin.ID> = []
 }
 
 struct ManageLoginsView: View {
@@ -72,7 +74,7 @@ struct ManageLoginsView: View {
                 .padding(.horizontal, 12).padding(.vertical, 6)
             }
         }
-        .frame(minWidth: 520, minHeight: 280)
+        .frame(minWidth: 640, minHeight: 300)
         .sheet(item: $state.editing) { (draft: LoginDraft) in
             LoginEditor(draft: draft, store: store) { saved in
                 state.editing = nil
@@ -90,10 +92,10 @@ struct ManageLoginsView: View {
             barButton("Import", "square.and.arrow.down", help: "Import Login Data\nAdd logins from a CSV file (host,port,username,password).") {
                 state.notice = LoginVaultPrompts.importData(store) ?? state.notice
             }
-            barButton("Export", "square.and.arrow.up", help: "Export Login Data\nSave every login, passwords included, to a CSV file.") {
-                state.notice = LoginVaultPrompts.exportData(store) ?? state.notice
+            barButton(exportTitle, "square.and.arrow.up", help: "Export Login Data\nSave the ticked logins, passwords included, to a CSV file. Tick them in the first column, or all at once in its heading.") {
+                state.notice = LoginVaultPrompts.exportData(store, only: checkedIDs) ?? state.notice
             }
-            .disabled(store.logins.isEmpty && store.lockedCount == 0)
+            .disabled(checkedIDs.isEmpty)
             Divider().frame(height: 16).padding(.horizontal, 4)
             barButton(store.protection == .adminPassword ? "Modify Administrator Password" : "Create Administrator Password", "key",
                       help: store.protection == .adminPassword ? "Modify Administrator Password\nChange the password that encrypts saved logins."
@@ -114,35 +116,81 @@ struct ManageLoginsView: View {
             .hint(help)
     }
 
-    private var table: some View {
-        Table(store.logins, selection: $state.selection) {
-            TableColumn("Host") { Text($0.host) }
-            TableColumn("Port") { Text(String($0.port)).monospacedDigit() }.width(min: 44, ideal: 54, max: 70)
-            TableColumn("Username") { Text($0.username) }
-            TableColumn("Password") { Text($0.password.isEmpty ? "None (keys)" : "••••••••").foregroundStyle(.secondary) }
-            TableColumn("Stored") { login in
+    /// Ticked logins that are still listed.
+    private var checkedIDs: Set<SSHLogin.ID> { state.checked.intersection(store.logins.map(\.id)) }
+    private var exportTitle: String { checkedIDs.isEmpty ? "Export" : "Export (\(checkedIDs.count))" }
+    private var allChecked: Bool { !store.logins.isEmpty && checkedIDs.count == store.logins.count }
+
+    private enum Width {
+        static let check: CGFloat = 22, port: CGFloat = 52, username: CGFloat = 120, password: CGFloat = 90, stored: CGFloat = 100
+    }
+
+    /// The column headings. The first column holds the Export checkboxes: the box in the heading ticks them all.
+    private var header: some View {
+        HStack(spacing: 8) {
+            Toggle("", isOn: Binding(get: { allChecked },
+                                     set: { state.checked = $0 ? Set(store.logins.map(\.id)) : [] }))
+                .toggleStyle(.checkbox).labelsHidden()
+                .disabled(store.logins.isEmpty)
+                .frame(width: Width.check)
+                .accessibilityLabel("Tick all logins for export")
+                .hint("All logins\nTick or untick every login for Export.")
+            Text("Host").frame(maxWidth: .infinity, alignment: .leading)
+            Text("Port").frame(width: Width.port, alignment: .leading)
+            Text("Username").frame(width: Width.username, alignment: .leading)
+            Text("Password").frame(width: Width.password, alignment: .leading)
+            Text("Stored").frame(width: Width.stored, alignment: .leading)
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 16).padding(.vertical, 5)
+    }
+
+    private func row(_ login: SSHLogin) -> some View {
+        HStack(spacing: 8) {
+            Toggle("", isOn: Binding(get: { state.checked.contains(login.id) },
+                                     set: { if $0 { state.checked.insert(login.id) } else { state.checked.remove(login.id) } }))
+                .toggleStyle(.checkbox).labelsHidden()
+                .frame(width: Width.check)
+                .accessibilityLabel("Export \(login.label)")
+            Text(login.host).lineLimit(1).truncationMode(.middle).frame(maxWidth: .infinity, alignment: .leading)
+            Text(String(login.port)).monospacedDigit().frame(width: Width.port, alignment: .leading)
+            Text(login.username).lineLimit(1).frame(width: Width.username, alignment: .leading)
+            Text(login.password.isEmpty ? "None (keys)" : "••••••••").foregroundStyle(.secondary).frame(width: Width.password, alignment: .leading)
+            Group {
                 if store.plainTextIDs.contains(login.id) {
                     Label("Plain text", systemImage: "lock.open").foregroundStyle(.orange)
                 } else {
                     Label("Encrypted", systemImage: "lock.fill").foregroundStyle(.secondary)
                 }
             }
+            .frame(width: Width.stored, alignment: .leading)
         }
-        .contextMenu(forSelectionType: SSHLogin.ID.self) { ids in
-            if let id = ids.first, let login = store.get(id: id) {
-                Button("Edit…") { edit(login) }
-                Button("Delete…", role: .destructive) { delete(login) }
-            } else {
-                Button("New Login…") { edit(nil) }
+    }
+
+    private var table: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+            List(store.logins, selection: $state.selection) { login in
+                row(login).tag(login.id)
             }
-        } primaryAction: { ids in
-            if let id = ids.first { edit(store.get(id: id)) }
-        }
-        .onDeleteCommand { if let selectedLogin { delete(selectedLogin) } }
-        .overlay {
-            if store.logins.isEmpty {
-                Text(store.isLocked ? "No plain-text logins. Unlock to see encrypted ones." : "No saved logins. Click New or Import to add some.")
-                    .foregroundStyle(.secondary)
+            .contextMenu(forSelectionType: SSHLogin.ID.self) { ids in
+                if let id = ids.first, let login = store.get(id: id) {
+                    Button("Edit…") { edit(login) }
+                    Button("Delete…", role: .destructive) { delete(login) }
+                } else {
+                    Button("New Login…") { edit(nil) }
+                }
+            } primaryAction: { ids in
+                if let id = ids.first { edit(store.get(id: id)) }
+            }
+            .onDeleteCommand { if let selectedLogin { delete(selectedLogin) } }
+            .overlay {
+                if store.logins.isEmpty {
+                    Text(store.isLocked ? "No plain-text logins. Unlock to see encrypted ones." : "No saved logins. Click New or Import to add some.")
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -197,6 +245,7 @@ private final class LoginFields: ObservableObject {
     @Published var username = ""
     @Published var password = ""
     @Published var error: String?
+    @Published var showPassword = false
 }
 
 private struct LoginEditor: View {
@@ -212,7 +261,16 @@ private struct LoginEditor: View {
                 TextField("Host or IP Address:", text: $fields.host)
                 TextField("Port:", value: $fields.port, format: .number.grouping(.never)).frame(width: 160)
                 TextField("Username:", text: $fields.username)
-                SecureField("Password:", text: $fields.password, prompt: Text("Empty to use SSH keys"))
+                if fields.showPassword {
+                    TextField("Password:", text: $fields.password, prompt: Text("Empty to use SSH keys"))
+                } else {
+                    SecureField("Password:", text: $fields.password, prompt: Text("Empty to use SSH keys"))
+                }
+                // Readable only when nothing is hidden: plain-text logins, or once the Administrator Password was given.
+                if store.protection != .adminPassword || !store.isLocked {
+                    Toggle("Show password", isOn: $fields.showPassword)
+                        .hint("Show password\nShow the stored password as text while you edit it.")
+                }
             }
             if let error = fields.error { Text(error).font(.caption).foregroundStyle(.red) }
             Text(store.protection == .adminPassword ? "Saved encrypted with your Administrator Password." : "Saved as plain text.")
