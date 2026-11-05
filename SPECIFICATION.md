@@ -22,7 +22,7 @@ It covers the everyday features of the stock macOS Terminal and Ptyxis. It adds:
 - **Building:** `script/build_and_run.sh` builds and signs `dist/Herb's Terminal.app` with bundle ID `org.herbsterminal.app`.
   - `--bundle` assembles the app without touching a running copy.
   - `--verify` builds the app and checks it.
-- **Icon:** a dark glass tile in the style of the macOS Terminal icon, with a prompt that reads `> HT` followed by an amber cursor. `script/make_icon.swift` draws it and writes `Assets/HerbsTerminal.icns`.
+- **Icon:** a dark glass tile in the style of the macOS Terminal icon, with a centered prompt that reads `> HT_`. `script/make_icon.swift` draws it and writes `Assets/HerbsTerminal.icns`.
 - **Local Network permission:** the app declares a Local Network usage description, so macOS can ask for that permission and SSH to machines on the LAN works.
 - **Tests:** `script/test.sh` runs the test suite, including real SFTP transfers through the system SFTP server.
 

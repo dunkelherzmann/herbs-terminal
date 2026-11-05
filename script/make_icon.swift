@@ -1,5 +1,5 @@
-// Draws Herb's Terminal's app icon in the style of the macOS Terminal icon: a dark glass tile with a prompt
-// that reads "> HT" and a warm cursor. Writes Assets/HerbsTerminal.png (1024 px) and Assets/HerbsTerminal.icns.
+// Draws Herb's Terminal's app icon in the style of the macOS Terminal icon: a dark glass tile with a centered
+// prompt that reads "> HT_". Writes Assets/HerbsTerminal.png (1024 px) and Assets/HerbsTerminal.icns.
 //
 //   swift script/make_icon.swift
 import AppKit
@@ -45,13 +45,14 @@ let image = NSImage(size: NSSize(width: size, height: size), flipped: true) { _ 
     // Near-black glass, a touch lighter at the top.
     NSGradient(colorsAndLocations: (color(0x2B2B2F), 0), (color(0x18181B), 0.45), (color(0x0C0C0E), 1))!
         .draw(in: tile, angle: 90)
-    // A faint warm glow behind the cursor.
-    let glowCenter = NSPoint(x: 748, y: 440)
-    NSGradient(colors: [color(0xFF9A4D, 0.18), color(0xFF9A4D, 0)])!
-        .draw(fromCenter: glowCenter, radius: 0, toCenter: glowCenter, radius: 260, options: [])
     NSGraphicsContext.restoreGraphicsState()
 
-    // The prompt: a chevron, then "HT" in the same rounded strokes.
+    // The prompt: a chevron, "HT" in the same rounded strokes, and the cursor, all in one color. It is laid out
+    // from x 212 to 834 and y 278 to 466, then moved to the middle of the tile.
+    NSGraphicsContext.saveGraphicsState()
+    let centering = NSAffineTransform()
+    centering.translateX(by: 512 - (212 + 834) / 2, yBy: 512 - (278 + 466) / 2)
+    centering.concat()
     let weight: CGFloat = 36
     let top: CGFloat = 296, bottom: CGFloat = 448, middle = (top + bottom) / 2
     let chevron = stroke([[NSPoint(x: 230, y: top + 6), NSPoint(x: 340, y: middle), NSPoint(x: 230, y: bottom - 6)]], width: weight)
@@ -68,16 +69,10 @@ let image = NSImage(size: NSSize(width: size, height: size), flipped: true) { _ 
     lift.set()
     color(0xF5F5F7).setStroke()
     [chevron, letterH, letterT].forEach { $0.stroke() }
+    // The cursor, after "HT".
+    color(0xF5F5F7).setFill()
+    NSBezierPath(roundedRect: NSRect(x: 722, y: bottom - 22, width: 112, height: 26), xRadius: 8, yRadius: 8).fill()
     NSGraphicsContext.restoreGraphicsState()
-
-    // The cursor, after "HT": a warm amber bar where Terminal's is gray.
-    let cursor = NSBezierPath(roundedRect: NSRect(x: 722, y: bottom - 22, width: 112, height: 26), xRadius: 8, yRadius: 8)
-    NSGraphicsContext.saveGraphicsState()
-    let cursorGlow = NSShadow()
-    cursorGlow.shadowColor = color(0xFF9A4D, 0.8)
-    cursorGlow.shadowBlurRadius = 18
-    cursorGlow.set()
-    NSGradient(colors: [color(0xFFC07A), color(0xFF8A3D)])!.draw(in: cursor, angle: 90)
     NSGraphicsContext.restoreGraphicsState()
 
     // The glass edge: bright along the top, fading down the sides.
