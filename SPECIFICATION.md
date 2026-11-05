@@ -1,169 +1,392 @@
-# Herb's Terminal product specification
+# Herb's Terminal
 
-**Scope reviewed 4 November 2026, against the build after commit `8ad61d4`.** Herb's Terminal (formerly HerbsTerminal) is a native, terminal-first workspace for an administrator using an Apple Silicon Mac to manage local files and remote Windows, Linux, and macOS machines. Its defining behavior is that the explorer follows the host and account of the active terminal. An administrator who connects once can use the shell, transfer files, and, where available, open the remote desktop from that tab.
+Herb's Terminal is a native macOS terminal for administrators. It runs on Macs with Apple silicon and manages local files and remote Linux, macOS and Windows machines over SSH.
 
-At minimum Herb's Terminal must match the everyday functionality of the stock macOS Terminal and Ptyxis, plus the features below. The current audit, against the owner's feature requests and against macOS Terminal, Ptyxis, MobaXterm and iTerm2, is [docs/2026-11-04-feature-audit.md](docs/2026-11-04-feature-audit.md).
+Each tab pairs a shell with a file explorer. When the shell connects to another machine, the explorer follows it to the same host and account. Connect once, and the shell, files, transfers, text editing and permissions are all in that one tab.
 
-A **requirement** describes the intended product. **Status** says what the current build delivers: **Delivered** (built and verified in the app or by tests), **Partial** (built, but a stated part is missing or unverified), or **Open** (not built). A visible button alone does not count as delivery.
+It covers the everyday features of the stock macOS Terminal and Ptyxis. It adds:
 
-## 1. Platform, packaging and delivery status
+- an SSH-aware file explorer in the style of Thunar, with a built-in text editor;
+- MultiExec, which types into several terminals at once;
+- an encrypted login vault;
+- Administrator mode, for working on files as root;
+- Tailcat pairing, for reaching machines that can't reach each other by IP.
 
-The operator application targets **macOS 15 and later on Apple Silicon**. Windows and Linux are remote targets. The app uses SwiftUI, AppKit, SwiftTerm 1.20.0 and a local PTY, and builds with Swift Package Manager.
+## 1. Platform
 
-- **Self-contained.** The app must not depend on anything installed separately, even when other copies exist on the system. It runs only its own bundled helpers and components that ship with macOS (`/usr/bin/ssh`, `/bin/sh`, Screen Sharing). *Delivered:* `tailcat` 0.7.0 (BSD-3, pinned in `Vendor/tailcat`) is bundled in `Contents/Helpers`; copies on PATH or from Homebrew are never used; the SSH password helper and the Tailcat proxy are modes of the app's own executable. RDP viewing still needs Microsoft's Windows App (see §8).
-- **Bundle identity.** `script/build_and_run.sh` builds `dist/Herb's Terminal.app` (executable `HerbsTerminal`) and signs the helper and the bundle ad-hoc under `org.herbsterminal.app` and declares `NSLocalNetworkUsageDescription`, so macOS Local Network privacy can identify the app and LAN SSH works. *Delivered.* `--bundle` assembles and signs without quitting a running copy.
+- **System:** macOS 15 or later on Apple silicon.
+- **Built with:** SwiftUI and AppKit, the SwiftTerm terminal emulator and Swift Package Manager.
+- **Self-contained:** nothing has to be installed separately. The app uses its own bundled helpers and parts of macOS (`/usr/bin/ssh`, `/bin/sh`, `/usr/libexec/sftp-server`, `sudo`). It never picks up other copies of these tools from PATH or Homebrew.
+  - The bundled `tailcat` (BSD-3) lives in `Contents/Helpers`.
+  - The SSH password helper and the Tailcat proxy are modes of the app's own executable.
+- **Building:** `script/build_and_run.sh` builds and signs `dist/Herb's Terminal.app` with bundle ID `org.herbsterminal.app`.
+  - `--bundle` assembles the app without touching a running copy.
+  - `--verify` builds the app and checks it.
+- **Icon:** a dark glass tile in the style of the macOS Terminal icon, with a centered prompt that reads `> HT_`. `script/make_icon.swift` draws it and writes `Assets/HerbsTerminal.icns`.
+- **Local Network permission:** the app declares a Local Network usage description, so macOS can ask for that permission and SSH to machines on the LAN works.
+- **Tests:** `script/test.sh` runs the test suite, including real SFTP transfers through the system SFTP server.
 
-| Area | Status | Summary |
-|---|---|---|
-| Terminal and workspace | Partial | Named profiles, split panes, tabs (rename, reorder, ⌘1–9), layouts, session restore, transparency, saved zoom, close/quit confirmation, right-click menu, Terminal shortcuts; no tab moving or overview |
-| Local explorer | Delivered | Thunar-style navigation, file actions, new folder/file, rename |
-| Appearance | Delivered | Terminal Basic default, six built-in themes, iTerm2 import, light/dark |
-| SSH and remote files | Partial | GUI and typed `ssh` both attach the explorer after a verified login; new folder, rename, transfer retry; no remote editing in the UI, no reconnect |
-| Saved logins | Delivered | Herb's Terminal-owned vault with an Administrator Password or confirmed plain text; Manage Logins import/export |
-| MultiExec and multi-host commands | Delivered | MobaXterm-style MultiExec grid with broadcast typing; non-interactive Run Command on Hosts; PowerShell untested |
-| Tailcat peers | Partial | Add, ping, connect, remove, share; not yet exercised against a live peer |
-| Remote desktop | Partial | VNC/RDP over SSH forwarding into the system viewers; no embedded viewer or view-only mode |
+## 2. Window, tabs and toolbar
 
-## 2. Terminal window and appearance
+### Toolbar
 
-- Launch into a local terminal. Each tab owns its shell, scrollback, explorer location, and connection. Changing layout or switching tabs preserves the session; closing a tab releases its resources. *Delivered.* Closing a tab, a window, or quitting while a shell runs another program or an SSH session asks first (Settings ▸ Terminal). *Delivered.*
-- New tabs open in the current tab's folder (read from the shell process) or in home, per Settings. Tabs can be renamed (double-click, right-click, or Shell ▸ Rename Tab ⇧⌘I), dragged to reorder or moved left and right, and picked with ⌘1–⌘9. *Delivered.*
-- **Session restore.** At quit, each window's tabs are saved with their folder, layout, name and explorer folder, and reopen at the next launch (Settings ▸ Terminal, on by default). Remote sessions reopen as local shells; logins are never replayed. Scrollback is not restored. *Delivered.*
-- Keep the native traffic lights on the left, followed by **New Tab** and **Connect via SSH**. Center the active tab's title and location, for example `user@host ~`. The legend follows shell-reported titles, current files or directories, foreground commands and exit state, abbreviates home as `~`, truncates while staying centered, and treats shell metadata as display text only. Credentials in command lines (`user:pass@host`, `--password=`, `*_TOKEN=`) are redacted before display. *Delivered.*
-- On the right, order the buttons **File Explorer → Split View → Multi-Host Commands → Tailcat Peers → Remote Control**, then **Search → Main Menu**, as compact monochrome Ptyxis-style icons aligned with the window controls (4 pt within groups, 38 pt before Search). The toolbar draws with one or many tabs. *Delivered.*
-- While a tab is connected, the SSH button is highlighted and opens connection details (account, host, port, route, remote home, connected time) with **Disconnect** and **New Connection** (which opens a new tab). *Delivered.*
-- Every control shows a hover bubble saying what it is and what it does, after about half a second, including in the titlebar and while Herb's Terminal is in the background. Menu items carry native tooltips. *Delivered.*
-- Search (⌘F) finds files when the explorer fills the window and searches the scrollback otherwise; Find in Terminal always searches the scrollback. *Delivered.*
-- **Menus and shortcuts follow macOS Terminal.** *Delivered:*
-  - Shell: New Tab ⌘T, New Remote Connection ⇧⌘K, Disconnect, Show Previous/Next Tab ⇧⌘[ / ⇧⌘], Rename Tab ⇧⌘I, Move Tab Left/Right, Reset ⌥⌘R, Hard Reset ⌃⌥⌘R, Secure Keyboard Entry.
-  - Window: Show Tab 1–9 ⌘1–⌘9.
-  - Edit: Clear to Start ⌘K, Clear Scrollback ⌥⌘K.
-  - View: Bigger ⌘+, Smaller ⌘−, Default Font Size ⌘0. The zoom is saved in the tab's profile, so text keeps its size across sessions; ⌘0 clears it.
-  - macOS window tabbing is disabled because Herb's Terminal has its own tab strip.
-- **Terminal right-click menu:** Copy, Paste, Paste Escaped Text, Select All, Find, Clear to Start, Clear Scrollback, Reset, New Tab, Split View, Show File Explorer, Connect/Disconnect, Bigger, Smaller, Settings. *Delivered.*
-- Dropping files or folders on the terminal types their shell-quoted paths. *Delivered.*
-- **Named profiles**, as in Terminal and Ptyxis. Each tab uses one; new tabs keep the current tab's profile. A profile holds font, size, zoom, cursor, color theme, background opacity and blur, Option as Meta, scrollback, bell, a startup command and a start folder. Shell ▸ New Tab with Profile and Use Profile; Settings ▸ Profiles adds, duplicates, renames, deletes and sets the default. Settings from before profiles became the "Basic" profile. *Delivered.*
-- **Main Menu ▸ Terminal Theme** sets the current tab's profile theme, imports an iTerm2 preset into it, and **Restore Defaults** (with a confirmation) returns that profile's font, size, zoom, cursor, colors and transparency, and the app appearance, to stock Terminal Basic. *Delivered.*
-- **Split panes**, as in iTerm2: Shell ▸ Split Vertically ⌘D (side by side) and Split Horizontally ⇧⌘D (stacked), also on the terminal's right-click menu; each pane is its own shell with the current pane's profile and folder, and panes can be split again. Close Pane ⌥⌘W, Select Next/Previous Pane ⌥⌘→ / ⌥⌘←; typing `exit` closes a pane; the focused pane is outlined, and zoom, Clear, Reset and Find act on it. Closing a tab or quitting asks when any pane is busy. Session restore keeps the layout and each pane's folder; MultiExec shows and types into every pane. The tab's SSH connection and explorer follow its first pane, and pass to the next pane if it closes. Panes share space equally (no dragging yet). The explorer's Bookmark shortcut moved to ⌥⌘D. *Delivered.*
-- **Split View widens the window** by up to 520 points so the terminal keeps its width, staying on screen, and gives the width back when Split View closes. *Delivered.*
-- **Settings (⌘,)**: Profiles, then Text, Terminal and Colors for the profile being edited, and Window. *Delivered:*
-  - Text: any installed monospaced font, size 6–72 pt, background opacity (20–100%) and blur, cursor block/underline/bar, blink, live preview.
-  - Terminal: Option as Meta key (off by default, as in Terminal), scrollback 100–1,000,000 lines, bell (audible, visual, both, off), where new tabs open, restore windows and tabs, ask before closing.
-  - Window: default width and height for new windows, apply to open windows, copy the front window's size.
-  - Colors: appearance (System/Light/Dark), macOS Terminal Basic plus six built-in palettes (Solarized Dark/Light, Tango Dark/Light, Gruvbox Dark, Nord), `.itermcolors` import and removal.
-- Match the macOS Terminal **Basic** profile by default (SF Mono Terminal 11 pt, stock light/dark colors and ANSI palette), inset 8 pt leading and 6 pt top in the terminal's own background color. *Delivered.*
-- `.itermcolors` import applies foreground, background, cursor, cursor text, selection, selected text and the 16 ANSI colors; malformed files are rejected without losing the current selection; the choice persists and applies across tabs and windows. *Delivered.*
-- **Open:** resizing panes by dragging, moving a tab to another window, a tab overview, marks and bookmarks, an inspector, editable key bindings, and cmd-click opening of URLs and files (SwiftTerm's default link handling is in place but unverified). See the audit for priorities.
+- **Left:** after the traffic lights come **New Tab** and **Connect via SSH**.
+  - While the tab is connected, the SSH button is highlighted. It then opens the connection details instead: account, host, port, route, remote home and how long it has been connected. From there you can **Disconnect**, or start a **New Connection** in a new tab.
+- **Center:** the tab's title and location, for example `user@host ~`.
+  - It follows the titles the shell reports, the current folder and the program in the foreground, and shows home as `~`.
+  - Passwords and tokens in a command line (`user:pass@host`, `--password=`, `*_TOKEN=`) are hidden before the title is shown.
+  - Double-click the title to return the window to its default size and the text to its default zoom. Right-click it to make the current size and text size the defaults.
+- **Right:**
+  - **Show File Explorer / Show Terminal**: switch the tab between its shell and its explorer.
+  - **MultiExec**.
+  - **Tailcat Peers**.
+  - **Search**: searches files while the explorer is showing and the scrollback otherwise (⌘F).
+  - The **Main Menu**.
+- **Main Menu:**
+  - New Tab, New Window, Connect via SSH…, and Open Tabs (a list of tabs to jump to).
+  - Find in Terminal….
+  - **Zoom:** Bigger, Smaller, Default.
+  - **Appearance:**
+    - Color scheme: System, Light, Dark.
+    - Color preset: the theme list.
+    - Import iTerm2 Color Preset….
+    - Restore Defaults.
+  - Toggle Full Screen, Settings…, About.
+- **Hover hints:** every control shows a short bubble saying what it is and what it does. It appears after about half a second, in the titlebar too, and while the app is in the background. Screen readers get the same description.
 
-## 3. Connect once and follow the active host
+### Tabs
 
-| User action | Required behavior | Status |
-|---|---|---|
-| Open a tab on the Mac | Start the local login shell; the explorer shows local files. | Delivered |
-| Choose **Connect via SSH** (⇧⌘K) | Accept host, port (default 22), username, and password or a saved login; allow one-time use and optional saving; open the remote shell and attach the explorer to the same host and account. | Delivered |
-| Type ordinary `ssh user@host` or `ssh alias` | Resolve through SSH configuration and attach the explorer after authentication; offer a choice when a bare host has several saved logins. | Delivered for zsh and bash (shell integration); saved-login choice for typed ssh is Open |
-| Change layout or select another tab | Show that tab's session and location; transfers keep their original endpoints. | Delivered |
-| Exit SSH normally, or Disconnect | Return to the preceding session and its explorer location; for one hop, local files. | Delivered |
-| Authentication fails or the link drops | Show the real connection state, distinguish remote from local files, never redirect writes. | Partial: "Connecting…" and failure banners exist; reconnect is not offered |
+- Each tab has its own shell, scrollback, explorer location and connection. Switching tabs keeps every session running.
+- **Names:** tabs are numbered "Terminal 1", "Terminal 2" and so on. A new tab takes the lowest free number. Rename a tab by double-clicking it, from its right-click menu, or with Shell ▸ Rename Tab (⇧⌘I).
+- **Order:** drag tabs to reorder them, or use Move Tab Left and Move Tab Right.
+- **Switching:** ⌘1–⌘8 pick a tab by position, and ⌘9 picks the last tab. ⇧⌘[ and ⇧⌘] go to the previous and next tab. Keyboard focus moves to the selected tab.
+- **Closing:**
+  - ⌘W closes the current tab. When only one tab is left, ⌘W closes the window.
+  - Closing a tab, a window or the app asks first if a shell is running another program or an SSH session (Settings ▸ Terminal).
+- **Where new tabs start:** in the current tab's folder or in your home folder, as set in Settings. A profile can also set its own start folder.
+- **Session restore:** when the app quits, each window's tabs are saved with their folder, panes, explorer folder and name, and they reopen at the next launch.
+  - This is on by default.
+  - Remote sessions reopen as local shells; logins are never replayed.
+  - Scrollback isn't saved.
 
-**Typed ssh.** Each tab's zsh or bash starts with a small integration (zsh through `ZDOTDIR`, bash through `--rcfile`) that first loads the user's own startup files, then defines an `ssh` function. It resolves the destination with `ssh -G` (aliases, HostName, User, Port), announces it to the app in the private socket folder, and runs the real ssh as the master of a shared connection; the tab then follows it exactly like a GUI login. `ssh -G/-O/-V/-Q` pass straight through; other shells run unchanged. A password typed into the user name is never shown.
+### Split panes
 
-**How a GUI connection works.** Herb's Terminal types only the path of a private, self-deleting launcher (mode 0700). The launcher erases that echoed line, prints "Connecting to user@host…" and execs `/usr/bin/ssh` as the master of an OpenSSH shared connection (`ControlMaster=auto`, `ControlPersist=no`, socket in a short private folder, `/tmp/herbs-<uid>`, which must be a real directory owned by the user with mode 0700, because Unix socket paths must stay under 104 bytes). No command line, token or option appears on screen or in shell history. A saved password reaches ssh through `SSH_ASKPASS`, which is the Herb's Terminal executable in helper mode, trading a one-time token over a private Unix socket. Host-key questions, one-time codes and retries are asked on the terminal. Each tab polls the shared socket: it attaches the explorer at the remote home folder once the login succeeds, and detaches when ssh exits or the link drops.
+- Shell ▸ **Split Vertically** (⌘D) places panes side by side; **Split Horizontally** (⇧⌘D) stacks them. Panes can be split again, and they share the space equally.
+- Each pane is its own shell, using the current pane's profile and folder.
+- **Close Pane** is ⌥⌘W, and typing `exit` also closes a pane. **Select Next / Previous Pane** are ⌥⌘→ and ⌥⌘←.
+- The focused pane is outlined. Zoom, Clear, Reset and Find act on it.
+- A tab's SSH connection and explorer belong to its first pane. If that pane closes, the next pane takes over.
 
-Honor SSH aliases, custom ports, identity files, agent authentication, interactive MFA, host-key verification and jump hosts; prefer shared transport for shell and SFTP; keep the shell usable if SFTP is denied. *Delivered through the system ssh client and the user's ssh configuration; jump hosts and MFA are untested.*
+### Terminal behavior
 
-**Host following and directory following are separate.** Host following is automatic for GUI connections. Directory following, nested hops inside a remote shell, and a stack of verified hops remain **Open**. A prompt, window title or printed hostname is never evidence for redirecting file operations.
+- **Right-click menu:**
+  - Copy, Paste, Paste Escaped Text, Select All, Find.
+  - Clear to Start, Clear Scrollback, Reset.
+  - Split Vertically, Split Horizontally, Close Pane, New Tab, Show File Explorer.
+  - Connect via SSH, or Disconnect while connected.
+  - Bigger, Smaller, Settings.
+- **Dropping files:** dropping files or folders on the terminal types their paths, quoted for the shell.
+- **Bell:** sounds, flashes, does both, or does nothing. The flash happens at most twice a second and fades gently when Reduce Motion is on.
+- **Size badge:** while the window is being resized, a badge shows the terminal's size in columns × rows (Settings ▸ Window).
 
-## 4. Explorer, editing and transfers
+### Menus and shortcuts
 
-The explorer follows Thunar's model, locally and remotely: a Places side pane, back and forward history, up, home, clickable path segments, an editable location (⌘L), hidden files (⇧⌘.), reload, double-click or Return to open, and Delete for Back. Shortcuts are Mac adaptations of Thunar's.
+These follow macOS Terminal:
 
-| Capability | Requirement | Status |
-|---|---|---|
-| Navigate | Places (local: Home, Desktop, Documents, Downloads, Movies, Music, Pictures, Computer, Trash, mounted Devices; remote: Home, File System), bookmarks (⌘D; per host when remote), history, path bar, location entry with `~` and relative paths, hidden files, symbolic links to folders opened as folders. | Delivered |
-| File Actions menu | Upload File/Folder, Download File/Folder, Undo ⌘Z, Redo ⇧⌘Z, Cut ⌘X, Copy ⌘C, Paste ⌘V, Delete ⌘⌫, Select All ⌘A, Find ⌘F. Shortcuts are shown in the menu and reach the focused file list through the Edit menu, so ⌘C/⌘V still copy and paste terminal text. | Delivered |
-| Local file changes | Copy, move and Trash with Finder-style "name copy" names, never overwriting; Undo/Redo by original action name; Finder clipboard interoperability. | Delivered |
-| Remote file changes | Move within the host (undoable), copy on the host, confirmed recursive delete, paste of Mac files uploads them. | Delivered |
-| Create and rename | New Folder and New File (right-click an empty area), Rename (right-click an item); free "untitled" names; undoable locally ("Undo New Folder", "Undo Rename"), rename undoable remotely. | Delivered |
-| Transfer | Upload and download files and folder trees with a progress strip, cancel and Retry (failed or cancelled items rerun from the start); uploads land under a temporary name and are renamed into place; name clashes get new names. | Partial: no drag-and-drop, no resume after interruption |
-| Edit remotely | Open a working copy in the chosen Mac editor and send changes back; detect concurrent remote edits; keep a recoverable draft; preserve bytes, line endings and permissions. | **Open:** staging and conflict checks exist in code but aren't reachable from the UI |
-| Permissions and sudo | Use the authenticated file account by default. **Administrator mode** (the lock button in either explorer) is the separate, explicit authorization: after the sudo password it starts the system SFTP server under sudo, on this Mac (`/usr/libexec/sftp-server`) or on the host over the tab's shared SSH connection (the host's own sftp-server), and every explorer action (browse, new folder/file, rename, cut/copy/paste, delete, upload, download) runs as root until it is left. A red bar marks it. The password goes to `sudo -S` once on standard input, is checked on its own first so a wrong one can't hang the session, and isn't stored; password-free sudo isn't asked. It ends with the SSH session it ran over. | Delivered; tested with a stand-in for sudo, not yet with a real sudo password |
-| Windows targets | Windows drive paths, case rules, PowerShell hosts. | Untested |
+- **Shell:**
+  - New Tab ⌘T, New Tab with Profile, Use Profile.
+  - Split Vertically ⌘D, Split Horizontally ⇧⌘D, Close Pane ⌥⌘W, Select Next / Previous Pane ⌥⌘→ / ⌥⌘←.
+  - MultiExec ⇧⌘M, Run Command on Hosts….
+  - New Remote Connection ⇧⌘K, Disconnect.
+  - Show Previous / Next Tab ⇧⌘[ / ⇧⌘], Rename Tab ⇧⌘I, Move Tab Left / Right.
+  - Reset ⌥⌘R, Hard Reset ⌃⌥⌘R.
+  - Secure Keyboard Entry.
+- **Edit:** Clear to Start ⌘K, Clear Scrollback ⌥⌘K.
+- **View:** Bigger ⌘+, Smaller ⌘−, Default ⌘0. The zoom is saved in the tab's profile, so text keeps its size across sessions. ⌘0 clears it.
+- **Window:** Show Tab 1–8 ⌘1–⌘8, Show Last Tab ⌘9.
+- macOS's own window tabbing is turned off; the app has its own tab strip.
 
-## 5. Saved logins
+## 3. Profiles, appearance and Settings
 
-- Logins (host, port, username, password; several per host) live in an **app-owned SQLite file** (`~/Library/Application Support/HerbsTerminal/logins.sqlite3`, mode 0600). **The app does not use the macOS Keychain at all.** *Delivered.*
-- **Administrator Password.** When one is set, each password is AES-GCM encrypted with a key derived from it (PBKDF2-SHA256, 600,000 rounds, random 16-byte salt). Only the salt, iteration count and an encrypted check value are stored; the password itself never is. The app starts locked and asks once per session; a wrong password changes nothing. Changing the password re-encrypts every login in one transaction. Tailcat peer addresses are protected the same way. *Delivered.*
-- **Plain text.** Without an Administrator Password, logins are stored as plain text inside Herb's Terminal. This needs an explicit choice and a second confirmation. *Delivered.*
-- **First use.** The first time Connect via SSH or Manage Logins is used, an alert explains that an Administrator Password is needed to encrypt saved logins, and that otherwise they are stored as plain text, which is a security risk. It offers Create Administrator Password, Store as Plain Text, or Not Now. Nothing is saved until a choice is made. *Delivered.*
-- **Manage Logins** offers Create/Modify Admin Password, Import Login Data and Export Login Data (CSV with header `host,port,username,password`; UTF-8, quoted commas, quotes and embedded line breaks; transactional; a rejected import preserves the store). Export writes readable passwords, so it requires the Administrator Password, or a confirmation in plain-text mode. *Delivered; conflict preview before import is Open.*
-- **Earlier builds.** Logins saved by builds that used a Keychain key can't be read and are only listed, with **Discard** (behind a confirmation whose default is Cancel). *Delivered.*
-- Passwords stay out of process arguments, terminal output, shell history and logs. SSH private keys and Tailcat server keys never enter the CSV. *Delivered.*
-- **Recovery.** A forgotten Administrator Password cannot be recovered; the logins must be deleted and re-entered. Machine migration is by Export and Import.
-- **Acceptance example.** Set an Administrator Password, save two accounts for one host, relaunch (locked), unlock, select either account, export, import into a fresh store, and reconnect. A password containing a comma and a quote must round-trip exactly, and the database must contain neither password nor the Administrator Password. *Covered by tests except the reconnect.*
+### Profiles
 
-## 6. MultiExec and multi-host commands
+- Each tab uses a named profile, and new tabs keep the current tab's profile.
+- **A profile holds:**
+  - text: font, size, zoom and cursor shape and blink;
+  - colors: the color preset, background opacity and blur;
+  - keyboard: whether Option acts as the Meta key;
+  - scrollback length and the bell;
+  - a command to run when a tab opens, and a start folder.
+- **Default look:** the macOS Terminal **Basic** profile, in SF Mono Terminal 11 pt with Terminal's light and dark colors and ANSI palette.
 
-**MultiExec** (the toolbar's Multi-Host button, Shell ▸ MultiExec ⇧⌘M) follows MobaXterm's MultiExec. The window shows every tab as a live terminal in a grid, each with a caption bar giving its number, title (or remote `user@host`) and an include checkbox. What the user types or pastes into an included terminal is sent to every included terminal. An unchecked terminal takes only its own typing. The focused terminal is outlined; a bar shows how many terminals receive input, with New Tab, Connect via SSH, Include All and Exit MultiExec (Esc). Only user input is broadcast: the emulator's replies to programs (cursor reports and the like) and text the app types itself (the ssh launcher, startup commands, Clear's redraw) stay in their own tab. *Delivered.*
+### Color presets
 
-Because MultiExec types into live sessions, it reaches whatever each session is running, including a password prompt or an editor. Leaving a terminal out with its checkbox is the guard.
+- macOS Terminal Basic, Solarized Dark, Solarized Light, Tango Dark, Tango Light, Gruvbox Dark and Nord.
+- **iTerm2 import:** an `.itermcolors` file sets the foreground, background, cursor, cursor text, selection and selected text, and the 16 ANSI colors.
+  - A damaged file is rejected without changing the current colors.
+  - Imported presets can be removed.
+- **Restore Defaults** (Main Menu ▸ Appearance) asks first. It then returns the profile's font, size, zoom, cursor, colors and transparency, and the app's color scheme, to the Basic look.
 
-**Run Command on Hosts** (Shell menu) keeps the non-interactive composer: it runs one command concurrently on selected saved logins and the tab's live connection, each over its own ssh channel (`-T`, `StrictHostKeyChecking=yes`), never typing into interactive sessions and never retrying, and reports each host's outcome, exit code, duration and output. *Delivered.* Saved host groups, per-host retry, separate stdout/stderr and PowerShell targets are **Open**.
+### Settings (⌘,)
 
-## 7. Tailcat pairing and connectivity
+- **Profiles:** add, duplicate, rename, delete and choose the default profile. Also set the startup command and start folder.
+- **Text:** any installed monospaced font, size 6–72 pt, cursor shape and blink, background opacity (20–100%) and blur, with a live preview.
+- **Terminal:**
+  - Option as Meta (off by default, as in Terminal);
+  - scrollback of 100–1,000,000 lines;
+  - the bell;
+  - where new tabs open;
+  - restoring windows and tabs at launch;
+  - asking before closing.
+- **Window:**
+  - the size of new windows in **columns × rows**, the same numbers the resize badge shows (default 120 × 32);
+  - showing the size badge while resizing;
+  - Apply to Open Windows, Use Front Window's Size, and Reset.
+  - Windows are sized against the terminal's real grid, so they open at exactly the size set, within the screen and the window's minimum size.
+- **Colors:** the color scheme (System, Light, Dark) and the color presets, with import and removal.
 
-Tailcat is the alternate route when machines can't reach each other by IP. The app runs its bundled `tailcat`; the other machine runs `tailcat serve`.
+## 4. SSH: connect once, follow the host
 
-- **Accept a pairing:** name, username, and the peer's secret address, marked **Persistent** (the peer keeps a saved server key) or **One-time** (the address dies with its server). Addresses are stored under the login protection of §5. *Delivered.*
-- **Peer actions:** Ping reports **Direct** or **Relayed** with latency. Connect opens the shell and explorer through Tailcat: ssh's ProxyCommand is the app's helper, which redeems a one-time token for the address and becomes the bundled tailcat, so the address never appears in ssh's arguments or history. Remove forgets the peer here; revoking it server-side means stopping or re-keying that server. *Delivered, not yet exercised against a live peer.*
-- **Share this Mac:** run `tailcat serve` for port 22, one-time (fresh key) or persistent (saved `default` key), and show the address with Copy and Stop. Requires Remote Login. Sharing stops when the app quits. *Delivered, not exercised live.*
-- SSH host verification and authentication stay active over the tunnel. Route-change recovery, NAT-traversal measurements and Windows/Linux helper packaging are **Open**.
-
-## 8. Remote desktop control
-
-The Remote Control button opens the active host's desktop through the tab's SSH connection, so the desktop service is never exposed on the network. The app adds a local forward (`ssh -O forward`) to a free loopback port, then opens:
-
-| Target | Service | Viewer |
-|---|---|---|
-| macOS, Linux | VNC / Screen Sharing (5900) | macOS Screen Sharing (`vnc://`) |
-| Windows | RDP (3389) | Microsoft Windows App (`rdp://`), which must be installed |
-
-The shell and transfers keep running; forwards are listed and closable, and end with the SSH session. Missing viewers, refused forwards and absent services are reported without disturbing the shell. *Delivered.* View-only mode, an embedded viewer (the earlier Guacamole proposal), the `herbsterminal desktop` command, desktops over Tailcat, and distinguishing a shared screen from a separate login are **Open**.
-
-## 9. Release acceptance matrix
-
-Run `script/test.sh` (79 tests, including real SFTP transfers through `/usr/libexec/sftp-server`, the password helper, the login vault and Tailcat parsing) and `script/build_and_run.sh --verify`. Remote milestones need live endpoints.
-
-| Gate | Scenario and pass condition | Status |
-|---|---|---|
-| Local workspace | All three layouts keep the shell PID; new tabs have independent shells; toolbar visible with one tab; title centered at any width. | Passing |
-| Appearance | Import a preset, switch tabs, relaunch, reset to Basic; check text, cursor, selection, ANSI and insets in light and dark. | Passing (manual for relaunch) |
-| Single-host administration | On each remote OS: GUI and typed SSH, browse, create, edit, upload, download, exit to local files; compare bytes; denied permissions; unavailable SFTP. | Partial: GUI connect, browse and disconnect verified on Linux (ZimaOS); typed SSH, editing and Windows/macOS hosts outstanding |
-| Session identity | Two accounts on one host, alias, jump host, changed host key, unverified nested hop; no write reaches the wrong account. | Not run |
-| Transfer recovery | Interrupt a replacement upload, reconnect, resume or restart safely; verify bytes. | Partial: cancel leaves no partial file and Retry restarts safely (tested); resume Open |
-| Credentials | §5 acceptance example; database and logs free of plaintext; locked and plain-text behavior. | Passing in tests |
-| Multi-host | One command on three hosts with a failure and an unreachable host; independent results, no replay. | Passing in tests; live run outstanding |
-| Tailcat | Pair across networks, direct and relayed routes, reconnect, revoke. | Not run live |
-| Desktop | RDP and VNC over SSH, input, recovery; SSH-only host gets an actionable error. | Not run live |
-
-## 10. Delivery sequence and open decisions
-
-1. **Close the SSH gaps:** reconnect after a drop, remote editing in the UI, drag-and-drop transfers and resume, saved-login choice for typed ssh.
-2. **Terminal parity:** the remaining gaps in the audit (split panes, moving tabs between windows, tab overview, marks and inspector, verifying cmd-click links, regex find and inline images, key bindings).
-3. **Live validation:** Tailcat across two networks, remote desktop on each OS, multi-host against Windows.
-4. **Embedded desktop viewer**, if the system viewers prove insufficient.
-
-Open decisions: nested SSH coverage; the privileged-edit workflow; stable code signing (ad-hoc rebuilds change identity, which matters for Local Network privacy prompts); Tailcat helper packaging and relay ownership for Windows and Linux peers; supported desktop authentication and session combinations. Record interoperability by host OS, service version and transport before declaring a combination supported.
-
-## Design and protocol references
-
-| Reference | Relevance |
+| You do | Herb's Terminal does |
 |---|---|
-| [TMOG](https://tmog.org/) and [Ptyxis](https://devsuite.app/ptyxis/) | Native status presentation and compact terminal-first controls |
-| [macOS Terminal User Guide](https://support.apple.com/guide/terminal/welcome/mac) and [iTerm2 documentation](https://iterm2.com/documentation.html) | Parity baselines |
-| [MobaXterm](https://mobaxterm.mobatek.net/features.html) | SSH-linked explorer and multi-host execution |
-| [FilesRemote](https://github.com/allanrbo/filesremote) and [WinSCP transfer resume](https://winscp.net/eng/docs/resume) | Local-editor workflow, transfer staging and recovery |
+| Open a tab | Starts your login shell; the explorer shows this Mac's files. |
+| **Connect via SSH** (⇧⌘K) | Takes a host, port (22 by default), username, and a password or a saved login. You can save the login or use it once. It opens the remote shell, and once the login succeeds the explorer moves to the same host and account. |
+| Type `ssh user@host` or `ssh alias` in zsh or bash | Resolves the destination through your SSH configuration and follows it exactly like a Connect via SSH login. |
+| Exit the remote shell, or **Disconnect** | Returns the tab, and its explorer, to this Mac. |
+| A login fails or the link drops | A banner shows the real state. File actions never go anywhere other than the host you're connected to. |
+
+**How a connection is made**
+
+- The app types only the path of a private launcher, which deletes itself after use. The launcher clears that line from the screen and starts the system `ssh` as the master of an OpenSSH shared connection.
+- **Shared-connection settings:**
+  - `ControlMaster=auto`, `ControlPersist=no`.
+  - The socket lives in `/tmp/herbs-<uid>`, which must be a real folder owned by you with mode 0700. Unix socket paths must stay under 104 bytes, which is why the folder name is short.
+- No command line, password or token appears on screen or in shell history.
+- **Saved passwords:** a saved password reaches ssh through `SSH_ASKPASS`, which is the app itself in helper mode. It trades a one-time token over a private socket.
+- Host-key questions, one-time codes and retries are asked in the terminal as usual.
+- The tab checks the shared connection. It attaches the explorer at the remote home folder once the login succeeds, and detaches when ssh exits or the link drops.
+
+**Typed ssh**
+
+- Each tab's zsh or bash first loads your own startup files, then adds a small `ssh` function (zsh through `ZDOTDIR`, bash through `--rcfile`).
+- The function resolves the destination with `ssh -G`, tells the app where it's going, and runs the real ssh as the master of a shared connection.
+- `ssh -G`, `-O`, `-V` and `-Q` pass straight through. Other shells run unchanged.
+
+**Your SSH setup is respected.** Aliases, ports, identity files, the SSH agent, multi-factor prompts, host-key checks and jump hosts all come from your own `~/.ssh/config` and the system ssh client. The explorer and transfers reuse the shell's connection, so you log in only once.
+
+## 5. File explorer
+
+The explorer follows Thunar's design and works the same on this Mac and on SSH hosts.
+
+### Navigating
+
+- **Places side pane:**
+  - This Mac: Home, Desktop, Documents, Downloads, Movies, Music, Pictures, Computer, Trash and mounted devices.
+  - A host: Home and File System.
+- **Bookmarks:** ⌥⌘D. Bookmarks are kept separately for each host.
+- **Moving around:** back and forward (⌘[ and ⌘]), up (⌘↑), home (⇧⌘H), clickable path segments, an editable location (⌘L) that accepts `~` and relative paths, show hidden files (⇧⌘.), reload (⌘R), and Delete to go back.
+- **Opening:** double-click or Return opens an item. Symbolic links to folders open as folders.
+
+### File Actions
+
+The File Actions button in the location bar holds:
+
+- Upload File/Folder and Download File/Folder;
+- Undo ⌘Z and Redo ⇧⌘Z;
+- Cut ⌘X, Copy ⌘C, Paste ⌘V and Delete ⌘⌫;
+- Select All ⌘A and Find ⌘F.
+
+These shortcuts act on the file list when it has focus. In the terminal, ⌘C and ⌘V still copy and paste text.
+
+### Changing files
+
+- **On this Mac:**
+  - Copy, move and move to Trash, with Finder-style "name copy" names that never overwrite anything.
+  - Undo and Redo, named after the action.
+  - The Finder clipboard works in both directions.
+- **On a host:**
+  - Moving is undoable, copying happens on the host, and deleting asks first and removes whole folders.
+  - Pasting files from this Mac uploads them.
+  - A folder can't be moved or copied into itself.
+- **Creating and renaming:** right-click an empty area for New Folder and New File, and right-click an item to rename it. New items get a free "untitled" name. On this Mac both actions are undoable; on a host, renaming is.
+
+### Transfers
+
+- Uploads and downloads work for single files and whole folder trees.
+- A progress strip under the file list has Cancel and Retry. Retry runs a failed or cancelled transfer again from the start.
+- **Uploads are staged:** each file is written under an unguessable temporary name, opened exclusively, then renamed into place. A dropped connection never leaves a half-written file, and nothing already at that name is written through.
+- Name clashes get new names, never overwrites.
+- Links to folders inside a tree are skipped, so a link that loops back can't make a transfer run forever.
+
+### Text editor
+
+- Text files open in a built-in editor, as a tab in the terminal window: double-click them, or right-click and choose **Open in Text Editor**.
+  - "Text" covers plain text, Markdown, source code, scripts, configuration files, JSON, YAML, XML, CSV and logs.
+  - It also covers files with no extension, or an unfamiliar one, whose content looks like text.
+- **New File…** opens the new file straight in the editor, on this Mac and on hosts.
+- **Editing:**
+  - a monospaced font, undo, and Find (⌘F);
+  - Wrap Lines;
+  - a status line with line and column, line count, encoding and line endings.
+- **Saving:**
+  - ⌘S or the Save button saves. The tab shows a • while there are unsaved changes.
+  - Closing the tab, the window or the app asks before discarding them.
+  - If the file changed elsewhere since it was opened, you're asked before it's replaced.
+  - Files keep their encoding (UTF-8, UTF-16 or Latin-1), line endings and permissions.
+  - Remote saves are written in full and then renamed into place.
+  - Links are edited at their target.
+- **Limits:** files larger than 20 MB, and files that look binary, aren't opened. A message explains why.
+- **Other apps:** on this Mac, **Open with Default App** opens a file in its usual Mac app.
+
+### Get Info: permissions and attributes
+
+Right-click one or more items and choose **Get Info…**.
+
+- **Shown:** name, location, kind, size, the date modified, and the current permissions as `ls -l` text with the octal value.
+- **Permissions (chmod):**
+  - Read, write and execute for the owner, the group and others (for folders, execute reads "Open").
+  - Set user ID, set group ID and sticky.
+  - An octal field (644, 755, …) that stays in step with the checkboxes.
+- **Owner and group (chown):** by name or number. On a host, names are looked up on the host itself.
+- **This Mac only:** **Hidden** and **Locked**.
+- **Apply to enclosed items:** changes everything inside a folder too. Folders inside keep their search permission wherever they're readable, so they stay openable. Links inside are left alone.
+- Apply changes only what you edited, on every selected item. Revert reloads the current values.
+
+### Administrator mode
+
+- The lock button in either explorer starts Administrator mode for that tab. After you enter the sudo password, the explorer works as root: on this Mac, or on the connected host over the tab's own SSH connection.
+- **How it works:**
+  - It starts the system SFTP server under `sudo`.
+  - Every explorer action runs as root: browsing, creating, renaming, cut, copy and paste, deleting, transfers, editing and Get Info.
+  - This is what makes it possible to give a file to another owner.
+- **The password:**
+  - It goes to `sudo -S` once, on standard input.
+  - It's checked first, so a wrong password can't hang the session.
+  - It's never stored.
+  - Accounts with password-free sudo aren't asked.
+- A red bar marks Administrator mode until you leave it. On a host, it ends with the SSH session it runs over.
+
+## 6. Saved logins
+
+**Storage**
+
+- Logins are kept in an app-owned database at `~/Library/Application Support/HerbsTerminal/logins.sqlite3`, mode 0600.
+- Each login has a host, port, username and password, and a host can have several logins.
+- Host names ignore case. The macOS Keychain isn't used.
+
+**Administrator Password**
+
+- With an Administrator Password, every password is encrypted with AES-GCM. The key is derived from the Administrator Password with PBKDF2-SHA256: 600,000 rounds and a random 16-byte salt.
+- Only the salt, the round count and an encrypted check value are stored; the Administrator Password itself never is.
+- Saved logins are locked when the app starts and unlock once per session.
+- Changing the Administrator Password re-encrypts every login in one step.
+- Tailcat peer addresses are protected the same way.
+
+**Plain text**
+
+- Without an Administrator Password, logins are stored as plain text.
+- This needs an explicit choice and a second confirmation.
+
+**First use**
+
+- The first time you save a login or open Manage Logins, an explanation appears. It says an Administrator Password is needed to encrypt saved logins, and that plain text is a security risk.
+- It offers Create Administrator Password, Store as Plain Text, or Not Now.
+- Nothing is saved until you choose.
+
+**Manage Logins** (a button in Connect via SSH) opens a window listing every saved login, with host, port, username, a hidden password, and whether the login is encrypted or plain text.
+
+- **Opening it:** with an Administrator Password set, the window asks for it first. **Skip** still opens the window, showing only plain-text logins, with a bar to unlock the rest.
+- **Top bar:**
+  - **New** and **Edit**: a form for host, port, username and password.
+  - **Import**.
+  - **Export**.
+  - **Create Administrator Password** (or **Modify Administrator Password** once one is set).
+- **In the list:** double-click a login to edit it. Right-click, or press Delete, to remove one after a confirmation whose default is Cancel.
+
+**Import and export**
+
+- The format is CSV with the header `host,port,username,password`, in UTF-8. Commas, quotes and line breaks are quoted.
+- Importing is all-or-nothing: a rejected import leaves the saved logins as they were.
+- **Export** writes readable passwords, so it needs the Administrator Password (or a confirmation for plain-text logins). It always includes every login.
+  - The file is suggested as `logins_export.csv`.
+  - Only your account can read it.
+
+**Privacy and recovery**
+
+- Passwords never appear in process arguments, terminal output, shell history or logs. SSH private keys never go into the CSV.
+- A forgotten Administrator Password can't be recovered; the logins have to be deleted and entered again.
+- To move to another Mac, export the logins and import them there.
+
+## 7. MultiExec and Run Command on Hosts
+
+**MultiExec** (the toolbar button, or Shell ▸ MultiExec ⇧⌘M) works like MobaXterm's.
+
+- **The grid:** every terminal in the window appears as a live terminal in a grid. Each has a caption bar with its number, title or remote `user@host`, and an include checkbox.
+- **Typing:** what you type or paste into an included terminal goes to every included terminal. An unchecked terminal takes only its own typing.
+- **Keys:**
+  - ⌘1–⌘9 pick a terminal by its number.
+  - ⌘W closes only the active terminal.
+  - Esc leaves MultiExec.
+- **The bar** shows how many terminals receive typing, and has New Tab, Connect via SSH, Include All, **Close All** and Exit MultiExec.
+  - Close All asks first, ends every terminal in the grid, and leaves MultiExec with one new terminal.
+- **What isn't broadcast:** only your own input is sent to the others. The emulator's replies to programs, and text the app types itself, stay in their own terminal.
+- MultiExec types into live sessions, so it reaches whatever each one is running, including a password prompt or an editor. Leave a terminal out with its checkbox to protect it.
+
+**Run Command on Hosts** (Shell menu) runs one command on several machines without typing into any session.
+
+- **Targets:** selected saved logins and the tab's live connection, all at the same time. Each runs over its own ssh channel, with strict host-key checking and no retries.
+- **Results:** each host's outcome, exit code, duration and output.
+
+## 8. Tailcat peers
+
+Tailcat connects machines that can't reach each other by IP. Herb's Terminal runs its bundled `tailcat`; the other machine runs `tailcat serve`.
+
+- **Add a peer:**
+  - Enter a name, a username and the peer's secret address.
+  - Mark it **Persistent** (the peer keeps a saved server key) or **One-time** (the address ends with its server).
+  - Addresses are protected like saved logins.
+- **Ping** reports whether the route is Direct or Relayed, with the latency.
+- **Connect** opens the shell and explorer through Tailcat.
+  - ssh's ProxyCommand is the app's helper, which swaps a one-time token for the address and then runs as the bundled tailcat.
+  - So the address never appears in ssh's arguments or in history.
+- **Remove** forgets a peer on this Mac.
+- **Share this Mac:** runs `tailcat serve` for SSH, either one-time or persistent, and shows the address with Copy and Stop.
+  - It needs Remote Login turned on.
+  - Sharing stops when the app quits.
+- SSH host verification and authentication stay on inside the tunnel.
+
+## 9. Accessibility
+
+- Every control has a name for VoiceOver and a hover hint. Hints read the description once, without repeating the control's name.
+- **States VoiceOver announces:**
+  - which tab is selected; the selected tab's title is also bold;
+  - whether toggle buttons (MultiExec, Bookmark, Administrator mode) are on or off;
+  - each MultiExec checkbox, named after its terminal.
+- **Password fields** in dialogs have visible labels.
+- **Motion:** window resizing follows Reduce Motion, and the visual bell never flashes more than twice a second.
+
+## 10. Security summary
+
+- **Secrets stay hidden:** passwords and Tailcat addresses never appear in command lines, on screen, in history or in logs.
+- **Private folders:** the SSH socket folder is checked to be a real folder owned by you, with mode 0700. A symlink placed there by someone else is refused.
+- **Administrator mode uploads:**
+  - Uploads use unguessable temporary names opened exclusively.
+  - Copies never write through existing files.
+  - Uploaded files don't carry setuid or setgid bits.
+- **No silent data loss:**
+  - Settings, profiles or Tailcat peers that can't be read are set aside rather than overwritten.
+  - If the login database can't be opened, the app keeps working with an in-memory store and turns Manage Logins off.
+- **Exports:** files with passwords are created readable by your account only.
+- **Disconnects:** a dropped connection is reported as an error; it never stops the app.
+
+## References
+
+| Reference | Used for |
+|---|---|
+| [macOS Terminal User Guide](https://support.apple.com/guide/terminal/welcome/mac) | Menus, shortcuts and the Basic profile |
+| [Ptyxis](https://devsuite.app/ptyxis/) and [iTerm2 documentation](https://iterm2.com/documentation.html) | Terminal features, split panes and profiles |
+| [MobaXterm](https://mobaxterm.mobatek.net/features.html) | MultiExec and the SSH-linked explorer |
 | [Xfce Thunar](https://docs.xfce.org/xfce/thunar/the-file-manager-window) | File manager navigation and layout |
-| [OpenSSH ssh_config](https://man.openbsd.org/ssh_config) and [Tailcat](https://github.com/tailscale/tailcat) | Connection sharing, askpass, host routing, peer identity and relays |
-| [Guacamole architecture](https://guacamole.apache.org/doc/gug/guacamole-architecture.html) | Candidate embedded desktop viewer |
-| [iTerm2 color presets](https://iterm2.com/documentation-preferences-profiles-colors.html) | Terminal theme interchange |
+| [OpenSSH ssh_config](https://man.openbsd.org/ssh_config) | Shared connections, askpass and host routing |
+| [Tailcat](https://github.com/tailscale/tailcat) | Peer pairing and relays |
+| [iTerm2 color presets](https://iterm2.com/documentation-preferences-profiles-colors.html) | The color preset format |
