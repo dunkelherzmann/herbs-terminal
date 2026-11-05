@@ -43,7 +43,7 @@ struct GapClosingTests {
         SessionRestore.reset()
         let workspace = Workspace(restoring: nil)
         defer { workspace.tabs.forEach { $0.shell.close() } }
-        workspace.selected.state.layout = .split
+        workspace.selected.state.layout = .explorer
         workspace.selected.state.directory = root
         workspace.selected.customTitle = "Builds"
         workspace.selected.shell.startDirectory = root.path
@@ -51,12 +51,12 @@ struct GapClosingTests {
 
         SessionRestore.reset()
         let saved = try #require(SessionRestore.takeNext(defaults: defaults))
-        #expect(saved.tabs.count == 1 && saved.tabs[0].title == "Builds" && saved.tabs[0].layout == "split")
+        #expect(saved.tabs.count == 1 && saved.tabs[0].title == "Builds" && saved.tabs[0].layout == "explorer")
         #expect(SessionRestore.takeNext(defaults: defaults) == nil)
         let reopened = Workspace(restoring: saved)
         defer { reopened.tabs.forEach { $0.shell.close() } }
         #expect(reopened.selected.title == "Builds")
-        #expect(reopened.selected.state.layout == .split)
+        #expect(reopened.selected.state.layout == .explorer)
         #expect(reopened.selected.state.directory.path == root.path)
         #expect(reopened.selected.shell.startDirectory == root.path)
         SessionRestore.reset()
@@ -78,6 +78,13 @@ struct GapClosingTests {
         #expect(workspace.selected === one)
         two.customTitle = "logs"
         #expect(two.title == "logs" && three.title == "Terminal 3")
+        // A closed tab's number is used again by the next new tab.
+        workspace.close(two)
+        workspace.add()
+        #expect(workspace.tabs.last?.number == 2)
+        // ⌘9 is the last tab.
+        workspace.selectTab(number: 8)
+        #expect(workspace.selected === workspace.tabs.last)
     }
 
     @Test

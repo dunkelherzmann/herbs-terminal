@@ -1,7 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Main Menu ▸ Terminal Theme for the current tab's profile.
+/// Main Menu ▸ Appearance: the window's color scheme, then the current tab's profile color preset.
 struct ThemeMenu: View {
     @ObservedObject private var library = ThemeLibrary.shared
     @ObservedObject private var profiles = TerminalProfile.shared
@@ -9,7 +9,11 @@ struct ThemeMenu: View {
     let profileID: UUID?
 
     var body: some View {
-        Menu("Terminal Theme") {
+        Menu("Appearance") {
+            Picker("Color scheme", selection: $appearance) {
+                ForEach(["System", "Light", "Dark"], id: \.self) { Text($0) }
+            }.pickerStyle(.inline)
+            Divider()
             Picker("Color preset", selection: Binding(get: { profiles.settings(for: profileID).theme },
                                                       set: { name in profiles.update(profileID) { $0.theme = name } })) {
                 Text("macOS Terminal Basic").tag("")

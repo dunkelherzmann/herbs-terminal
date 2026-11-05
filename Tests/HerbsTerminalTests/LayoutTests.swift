@@ -16,7 +16,7 @@ func switchingLayoutsKeepsShell() async throws {
     try await Task.sleep(for: .milliseconds(250))
     let pid = shell.view.process.shellPid
     try #require(pid > 0)
-    for layout in [SessionLayout.split, .explorer, .terminal] {
+    for layout in [SessionLayout.explorer, .terminal] {
         state.layout = layout
         try await Task.sleep(for: .milliseconds(200))
         #expect(shell.view.process.shellPid == pid)
@@ -70,7 +70,7 @@ func tabsKeepIndependentShellsAndSearchReopensTerminal() async throws {
     first.state.find()
     #expect(first.state.layout == .explorer)
     #expect(first.state.explorerFindRequest == 1)
-    first.state.layout = .split
+    first.state.layout = .terminal
     try await Task.sleep(for: .milliseconds(150))
     first.state.find()
     try await Task.sleep(for: .milliseconds(250))

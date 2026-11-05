@@ -28,21 +28,26 @@ final class RemoteExplorerViewModel: ObservableObject {
     /// Counts listings so one that finishes after a newer one started is dropped.
     private var loadGeneration = 0
     var isAdministrator: Bool { shared != nil }
+    /// Where account names are looked up for Get Info's owner and group: the host itself, or this Mac for
+    /// Administrator mode here.
+    let accountsOn: PrivilegedAccess.Target
 
     init(endpoint: RemoteEndpoint, service: (any RemoteFileService)? = nil,
          makeClient: (@Sendable () throws -> SFTPClient)? = nil, queue: TransferQueue = .shared) {
         self.endpoint = endpoint
         self.queue = queue
         self.shared = nil
+        self.accountsOn = .remote(endpoint)
         self.service = service ?? (try? SFTPClient(endpoint: endpoint)) ?? FallbackRemoteService()
         // One SFTP channel per background operation, multiplexed over the tab's SSH connection.
         self.makeClient = makeClient ?? { try SFTPClient(endpoint: endpoint) }
     }
 
     /// An explorer over a root SFTP session started through sudo (see `PrivilegedAccess`).
-    init(administrator client: SFTPClient, endpoint: RemoteEndpoint, queue: TransferQueue = .shared) {
+    init(administrator client: SFTPClient, endpoint: RemoteEndpoint, target: PrivilegedAccess.Target = .local, queue: TransferQueue = .shared) {
         self.endpoint = endpoint
         self.queue = queue
+        self.accountsOn = target
         self.shared = client
         self.service = client
         self.makeClient = { client }
@@ -156,6 +161,107 @@ final class RemoteExplorerViewModel: ObservableObject {
             }
         } catch { alert = error.localizedDescription }
         await load(path: currentPath)
+    }
+
+    /// New File: an empty file under a free name; returns its path so it can open in the text editor.
+    func newFile(named name: String, in folder: String) async -> String? {
+        defer { Task { await load(path: currentPath) } }
+        do {
+            return try await withClient { client in
+                try validateFileName(name)
+                let path = try SFTPTransfer(client: client).destination(for: name, in: folder)
+                try client.close(try client.open(path, flags: SFTPTransfer.write | SFTPTransfer.create | SFTPTransfer.exclusive, mode: 0o644))
+                return path
+            }
+        } catch {
+            alert = error.localizedDescription
+            return nil
+        }
+    }
+
+    /// The text editor's access to a remote file, through this explorer's connection (root in Administrator mode).
+    func textSource(for path: String) -> TextFileSource {
+        TextFileSource(
+            name: (path as NSString).lastPathComponent,
+            location: "\(endpoint.label):\(path)" + (isAdministrator ? " (root)" : ""),
+            read: { [weak self] in
+                guard let self else { throw FileIssue("The explorer for this file was closed.") }
+                return try await self.withClient { try SFTPTransfer(client: $0).readAll(path, limit: TextCodec.sizeLimit) }
+            },
+            version: { [weak self] in
+                guard let self else { return nil }
+                let attributes = try await self.withClient { try $0.stat(path, follow: true) }
+                return TextFileSource.Version(size: attributes.size, modified: attributes.modified.map(Double.init))
+            },
+            write: { [weak self] data in
+                guard let self else { throw FileIssue("The explorer for this file was closed; reopen the file to save it.") }
+                try await self.withClient { try SFTPTransfer(client: $0).replace(path, with: data) }
+                await self.load(path: self.currentPath)
+            })
+    }
+
+    /// Get Info for items in `folder`: their permissions and owners, changed over SFTP (as root in Administrator mode).
+    func infoSource(for names: [String], in folder: String) -> FileInfoSource {
+        let accounts = accountsOn
+        return FileInfoSource(
+            title: names.count == 1 ? names[0] : "\(names.count) items",
+            load: { [weak self] in
+                guard let self else { return [] }
+                return try await self.withClient { client in
+                    // A listing carries owner and group names; stat alone only has the numbers.
+                    let listed = Dictionary((try? client.list(folder))?.map { ($0.name, $0.attributes) } ?? [], uniquingKeysWith: { a, _ in a })
+                    return try names.map { name in
+                        let own = try client.stat(remoteJoin(folder, name), follow: false)
+                        let attributes = own.link ? ((try? client.stat(remoteJoin(folder, name), follow: true)) ?? own) : own
+                        return FileInfo(name: name, location: folder, isFolder: attributes.directory, isLink: own.link,
+                                        size: attributes.size, modified: attributes.modified.map { Date(timeIntervalSince1970: TimeInterval($0)) },
+                                        mode: (attributes.mode ?? 0) & 0o7777,
+                                        owner: listed[name]?.owner ?? attributes.uid.map(String.init) ?? "",
+                                        group: listed[name]?.group ?? attributes.gid.map(String.init) ?? "")
+                    }
+                }
+            },
+            apply: { [weak self] change in
+                guard let self else { return }
+                // Names become numbers before the SFTP work starts.
+                let ids: (UInt32?, UInt32?) = try await Task.detached {
+                    func lookup(_ name: String?, group: Bool) throws -> UInt32? {
+                        guard let name else { return nil }
+                        switch accounts {
+                        case .local: return group ? try Accounts.localGroup(name) : try Accounts.localUser(name)
+                        case .remote(let endpoint): return try Accounts.remote(name, group: group, on: endpoint)
+                        }
+                    }
+                    return (try lookup(change.owner, group: false), try lookup(change.group, group: true))
+                }.value
+                try await self.withClient { client in
+                    for name in names { try Self.apply(change, uid: ids.0, gid: ids.1, to: remoteJoin(folder, name), top: true, client: client) }
+                }
+                await self.load(path: self.currentPath)
+            },
+            hasMacFlags: false)
+    }
+
+    nonisolated private static func apply(_ change: FileInfoChange, uid: UInt32?, gid: UInt32?, to path: String, top: Bool, client: SFTPClient) throws {
+        let own = try client.stat(path, follow: false)
+        // Inside a folder, links are skipped: SFTP would change whatever they point at.
+        if !top, own.link { return }
+        let attributes = own.link ? try client.stat(path, follow: true) : own
+        if let mode = change.mode { try client.permissions(path, (attributes.directory && !top) ? folderMode(mode) : mode) }
+        if uid != nil || gid != nil {
+            guard let newUID = uid ?? attributes.uid, let newGID = gid ?? attributes.gid else {
+                throw FileIssue("The server didn't report who owns “\((path as NSString).lastPathComponent)”.")
+            }
+            do { try client.owner(path, uid: newUID, gid: newGID) }
+            catch let status as SFTPStatus where status.code == 3 {
+                throw FileIssue("Only root can give “\((path as NSString).lastPathComponent)” to another owner. Turn on Administrator mode (the lock) and try again.")
+            }
+        }
+        if change.recursive, attributes.directory, !own.link {
+            for entry in try client.list(path) {
+                try apply(change, uid: uid, gid: gid, to: remoteJoin(path, entry.name), top: false, client: client)
+            }
+        }
     }
 
     /// Rename on the host; undoable like a move.
@@ -377,11 +483,12 @@ struct RemoteExplorer: View {
                     FileRow(name: entry.name, isFolder: entry.attributes.directory, size: entry.attributes.size.map(Int64.init))
                     .tag(entry.id)
                     .hint(entry.attributes.directory ? "Remote folder\nDouble-click or press Return to open it."
-                                                     : "Remote file\nSelect it and choose Download from File Actions to copy it to this Mac.")
+                                                     : "Remote file\nDouble-click to edit a text file here; Download from File Actions copies any file to this Mac.")
                 }
                 .contextMenu(forSelectionType: String.self) { names in
                     if names.isEmpty {
                         Button("New Folder…") { newFolder() }
+                        Button("New File…") { newFile() }
                         Button("Paste") { paste() }
                     }
                     if names.count == 1, let name = names.first {
@@ -390,6 +497,13 @@ struct RemoteExplorer: View {
                     if let entry = entry(named: names.first) {
                         if entry.attributes.directory {
                             Button("Open") { open(entry) }
+                        } else {
+                            Button("Open in Text Editor") {
+                                names.compactMap { self.entry(named: $0) }.filter { !$0.attributes.directory }.forEach(edit)
+                            }
+                        }
+                        Button("Get Info…") {
+                            FileInfoWindow.show(viewModel.infoSource(for: Array(names), in: currentPath))
                         }
                         Button("Download…") { download(Array(names)) }
                         Divider()
@@ -464,7 +578,11 @@ struct RemoteExplorer: View {
     }
 
     private func open(_ entry: RemoteEntry) {
-        guard entry.attributes.directory else { return }
+        guard entry.attributes.directory else {
+            // Text opens in the editor; for files of an unknown type the editor checks the content itself.
+            if TextCodec.isText(name: entry.name, sniff: { Data() }) { edit(entry) }
+            return
+        }
         let target = remoteJoin(currentPath, entry.name)
         history.visit(target)
         currentPath = target
@@ -475,6 +593,21 @@ struct RemoteExplorer: View {
                                     initial: "untitled folder") else { return }
         let folder = currentPath
         Task { await viewModel.newFolder(named: name, in: folder) }
+    }
+
+    private func edit(_ entry: RemoteEntry) {
+        Workspace.openEditor(viewModel.textSource(for: remoteJoin(currentPath, entry.name)))
+    }
+
+    private func newFile() {
+        guard let name = askForName(title: "New File", message: "Name for the new file on \(viewModel.endpoint.label):",
+                                    initial: "untitled.txt") else { return }
+        let folder = currentPath
+        Task {
+            if let path = await viewModel.newFile(named: name, in: folder) {
+                Workspace.openEditor(viewModel.textSource(for: path))
+            }
+        }
     }
 
     private func rename(_ name: String) {

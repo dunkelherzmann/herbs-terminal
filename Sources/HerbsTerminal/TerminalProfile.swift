@@ -14,7 +14,7 @@ struct ProfileSettings: Codable, Equatable {
     var fontFamily = ""
     /// The Basic profile's 11 pt; `TerminalTypeface.regular` reads the same from Terminal's own profile.
     var fontSize: Double = 11
-    /// Points added by Bigger / Smaller (⌘+ / ⌘−); Default Font Size (⌘0) sets it back to 0.
+    /// Points added by Bigger / Smaller (⌘+ / ⌘−); Default (⌘0) sets it back to 0.
     var zoom: Double = 0
     var cursor: CursorShape = .block
     var cursorBlinks = true
@@ -32,6 +32,12 @@ struct ProfileSettings: Codable, Equatable {
     var startDirectory = ""
 
     static let sizeRange: ClosedRange<Double> = 6...72
+
+    /// One character cell, worked out as SwiftTerm does: the width of "W" by the line height.
+    @MainActor static func cellSize(of font: NSFont) -> CGSize {
+        let height = ceil(CTFontGetAscent(font) + CTFontGetDescent(font) + CTFontGetLeading(font))
+        return CGSize(width: font.advancement(forGlyph: font.glyph(withName: "W")).width, height: height)
+    }
 
     var effectiveSize: Double { min(Self.sizeRange.upperBound, max(Self.sizeRange.lowerBound, fontSize + zoom)) }
 
@@ -67,7 +73,7 @@ struct ProfileSettings: Codable, Equatable {
         return copy
     }
 
-    /// Main Menu ▸ Terminal Theme ▸ Restore Defaults: font, size, zoom, cursor, colors and transparency.
+    /// Main Menu ▸ Appearance ▸ Restore Defaults: font, size, zoom, cursor, colors and transparency.
     mutating func restoreTheming() {
         let stock = ProfileSettings()
         fontFamily = stock.fontFamily
@@ -93,7 +99,11 @@ struct NamedProfile: Codable, Identifiable, Equatable {
 final class TerminalProfile: ObservableObject {
     static let shared = TerminalProfile()
     static let sizeRange = ProfileSettings.sizeRange
-    static let defaultWindow = CGSize(width: 960, height: 580)
+    /// New windows' terminal size, in columns × rows, as the resize badge shows it.
+    static let defaultGrid = (columns: 120, rows: 32)
+    /// What a one-tab window adds around the terminal grid (toolbar, scroller), until a real window is measured.
+    static let estimatedChrome = CGSize(width: 16, height: 32)
+    static let gridRange = (columns: 20...1000, rows: 5...500)
 
     private let defaults: UserDefaults
     @Published private(set) var profiles: [NamedProfile]
@@ -109,8 +119,27 @@ final class TerminalProfile: ObservableObject {
     @Published var restoreSession: Bool { didSet { defaults.set(restoreSession, forKey: "restoreSession") } }
     /// Show the terminal's columns × rows while the window is resized.
     @Published var showSizeWhileResizing: Bool { didSet { defaults.set(showSizeWhileResizing, forKey: "showSizeWhileResizing") } }
-    @Published var windowWidth: Double { didSet { defaults.set(windowWidth, forKey: "windowWidth") } }
-    @Published var windowHeight: Double { didSet { defaults.set(windowHeight, forKey: "windowHeight") } }
+    @Published var windowColumns: Int { didSet { defaults.set(windowColumns, forKey: "windowColumns") } }
+    @Published var windowRows: Int { didSet { defaults.set(windowRows, forKey: "windowRows") } }
+    /// Measured from a one-tab window, so new windows open at exactly `windowColumns` × `windowRows`.
+    var windowChrome: CGSize {
+        didSet {
+            defaults.set(Double(windowChrome.width), forKey: "windowChromeWidth")
+            defaults.set(Double(windowChrome.height), forKey: "windowChromeHeight")
+        }
+    }
+
+    /// A new window's content size in points for the default grid with the default profile's font.
+    var windowContentSize: CGSize { contentSize(columns: windowColumns, rows: windowRows, profile: defaultProfileID, chrome: windowChrome) }
+    var windowWidth: Double { Double(windowContentSize.width) }
+    var windowHeight: Double { Double(windowContentSize.height) }
+
+    func contentSize(columns: Int, rows: Int, profile: UUID?, chrome: CGSize) -> CGSize {
+        let cell = ProfileSettings.cellSize(of: settings(for: profile).font)
+        // Half a point over, so rounding never costs the last column or row.
+        return CGSize(width: (CGFloat(columns) * cell.width + chrome.width + 0.5).rounded(.up),
+                      height: (CGFloat(rows) * cell.height + chrome.height + 0.5).rounded(.up))
+    }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -131,8 +160,21 @@ final class TerminalProfile: ObservableObject {
         newTabsInSameFolder = defaults.object(forKey: "terminalNewTabSameFolder") as? Bool ?? true
         restoreSession = defaults.object(forKey: "restoreSession") as? Bool ?? true
         showSizeWhileResizing = defaults.object(forKey: "showSizeWhileResizing") as? Bool ?? true
-        windowWidth = defaults.object(forKey: "windowWidth") as? Double ?? Self.defaultWindow.width
-        windowHeight = defaults.object(forKey: "windowHeight") as? Double ?? Self.defaultWindow.height
+        let chrome = CGSize(width: defaults.object(forKey: "windowChromeWidth") as? Double ?? Self.estimatedChrome.width,
+                            height: defaults.object(forKey: "windowChromeHeight") as? Double ?? Self.estimatedChrome.height)
+        windowChrome = chrome
+        if let columns = defaults.object(forKey: "windowColumns") as? Int, let rows = defaults.object(forKey: "windowRows") as? Int {
+            windowColumns = columns
+            windowRows = rows
+        } else if let width = defaults.object(forKey: "windowWidth") as? Double, let height = defaults.object(forKey: "windowHeight") as? Double {
+            // Earlier builds kept the size in points: keep the same window, now counted in columns × rows.
+            let cell = ProfileSettings.cellSize(of: loaded.first { $0.id == defaultID }?.settings.font ?? ProfileSettings().font)
+            windowColumns = max(Self.gridRange.columns.lowerBound, Int((CGFloat(width) - chrome.width) / cell.width))
+            windowRows = max(Self.gridRange.rows.lowerBound, Int((CGFloat(height) - chrome.height) / cell.height))
+        } else {
+            windowColumns = Self.defaultGrid.columns
+            windowRows = Self.defaultGrid.rows
+        }
         save()
     }
 

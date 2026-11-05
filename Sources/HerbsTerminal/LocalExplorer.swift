@@ -152,7 +152,8 @@ struct LocalExplorer: View {
         List(visibleEntries, selection: $selection.ids) { entry in
             FileRow(name: entry.url.lastPathComponent, isFolder: entry.isDirectory, size: entry.size)
                 .tag(entry.url)
-                .hint(entry.isDirectory ? "Folder\nDouble-click or press Return to open it." : "File\nDouble-click or press Return to open it with its Mac app.")
+                .hint(entry.isDirectory ? "Folder\nDouble-click or press Return to open it."
+                      : "File\nDouble-click or press Return to open it: text files in the text editor, others in their Mac app.")
         }
         .contextMenu(forSelectionType: URL.self) { urls in
             if urls.isEmpty {
@@ -162,10 +163,15 @@ struct LocalExplorer: View {
             }
             if let url = urls.first {
                 Button("Open") { open(url) }
+                if !opensAsFolder(url) {
+                    Button("Open in Text Editor") { urls.filter { !opensAsFolder($0) }.forEach { Workspace.openEditor(.local($0)) } }
+                    Button("Open with Default App") { urls.forEach { NSWorkspace.shared.open($0) } }
+                }
                 if urls.count == 1 { Button("Rename…") { rename(url) } }
                 if opensAsFolder(url) {
                     Button(bookmarks.contains(url.path) ? "Remove Bookmark" : "Add Bookmark") { toggleBookmark(url.path) }
                 }
+                Button("Get Info…") { FileInfoWindow.show(.local(Array(urls))) }
                 Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting(Array(urls)) }
                 Divider()
                 Button("Cut") { cut(urls) }
@@ -206,7 +212,11 @@ struct LocalExplorer: View {
         perform {
             let change = try LocalFiles.create(folder: folder, named: name, in: directory)
             log.record(change, as: folder ? "New Folder" : "New File")
-            if case .created(let urls) = change { selection.ids = Set(urls) }
+            if case .created(let urls) = change {
+                selection.ids = Set(urls)
+                // A new file opens straight away in the text editor.
+                if !folder, let url = urls.first { Workspace.openEditor(.local(url)) }
+            }
         }
     }
 
@@ -251,6 +261,7 @@ struct LocalExplorer: View {
 
     private func open(_ url: URL) {
         if opensAsFolder(url) { navigate(to: url.standardizedFileURL.path) }
+        else if TextCodec.isLocalText(url) { Workspace.openEditor(.local(url)) }
         else { NSWorkspace.shared.open(url) }
     }
 

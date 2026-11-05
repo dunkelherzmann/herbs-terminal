@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import HerbsTerminalUI
 
@@ -17,11 +18,19 @@ final class TerminalTab: Identifiable, ObservableObject {
     var typedSSHWatch: Task<Void, Never>?
     /// Set by Rename Tab; otherwise tabs are numbered.
     var customTitle: String?
-    var title: String { customTitle ?? "Terminal \(number)" }
-    var shells: [LocalShell] { root.leaves }
+    /// A text editor tab shows a file instead of a shell; its shell is never started.
+    let editor: TextEditorModel?
+    private var editorWatch: AnyCancellable?
+    var title: String {
+        if let editor { return (editor.isEdited ? "• " : "") + editor.source.name }
+        return customTitle ?? "Terminal \(number)"
+    }
+    /// The tab's terminal panes; none for an editor tab.
+    var shells: [LocalShell] { editor == nil ? root.leaves : [] }
 
-    init(number: Int, directory: String? = nil, profile: UUID? = nil, panes: SavedPane? = nil) {
+    init(number: Int, directory: String? = nil, profile: UUID? = nil, panes: SavedPane? = nil, editor: TextEditorModel? = nil) {
         self.number = number
+        self.editor = editor
         let main = LocalShell(profileID: profile)
         if let directory { main.startDirectory = directory }
         shell = main
@@ -31,6 +40,10 @@ final class TerminalTab: Identifiable, ObservableObject {
             root = PaneNode.restore(panes, first: &first, profile: profile)
         } else {
             root = PaneNode(shell: main)
+        }
+        // The tab title shows a dot while the file has unsaved changes.
+        editorWatch = editor?.objectWillChange.sink { [weak self] in
+            DispatchQueue.main.async { self?.objectWillChange.send() }
         }
     }
 
@@ -48,7 +61,6 @@ final class Workspace: ObservableObject {
     @Published var showingSSHConnect = false
     @Published var panel: WorkspacePanel?
     let multiHost = MultiHostModel()
-    let desktop = RemoteDesktopModel()
     /// Keeps the window delegate proxy alive; AppKit holds delegates weakly.
     var closeGuard: WindowCloseGuard?
     weak var window: NSWindow?
@@ -102,10 +114,18 @@ final class Workspace: ObservableObject {
         }
         return targets
     }
-    private var next = 2
+    /// The lowest number no open tab uses, so closing tabs frees their numbers again.
+    private var nextNumber: Int {
+        let used = Set(tabs.filter { $0.editor == nil }.map(\.number))
+        return (1...).first { !used.contains($0) }!
+    }
+
+    /// Reopened from the last session; such windows keep the size macOS restores.
+    let isRestored: Bool
 
     /// A new window's workspace; it reopens the next window from the last session when there is one.
     init(restoring saved: SavedWindow? = SessionRestore.takeNext()) {
+        isRestored = saved != nil
         let restored = (saved?.tabs ?? []).enumerated().map { index, tab -> TerminalTab in
             let item = TerminalTab(number: index + 1,
                                    directory: FileManager.default.fileExists(atPath: tab.directory) ? tab.directory : nil,
@@ -121,7 +141,6 @@ final class Workspace: ObservableObject {
         let all = restored.isEmpty ? [TerminalTab(number: 1)] : restored
         tabs = all
         selected = all[min(max(saved?.selected ?? 0, 0), all.count - 1)]
-        next = all.count + 1
         all.forEach(configure)
         Self.registry.removeAll { $0.value == nil }
         Self.registry.append(WeakWorkspace(value: self))
@@ -138,17 +157,93 @@ final class Workspace: ObservableObject {
         } else if TerminalProfile.shared.newTabsInSameFolder, case .local = selected.state.connection {
             directory = selected.shell.currentDirectory
         }
-        let tab = TerminalTab(number: next, directory: directory, profile: profileID)
-        next += 1
+        let tab = TerminalTab(number: nextNumber, directory: directory, profile: profileID)
         tabs.append(tab)
         selected = tab
         configure(tab)
         updateBroadcast()
     }
 
+    /// Opens `source` in an editor tab of the frontmost window, or selects the tab already showing it.
+    static func openEditor(_ source: TextFileSource) {
+        let workspace = all.first { $0.window?.isKeyWindow == true } ?? all.first { $0.window?.isVisible == true } ?? all.first
+        workspace?.openEditor(source)
+    }
+
+    func openEditor(_ source: TextFileSource) {
+        if let open = tabs.first(where: { $0.editor?.source.location == source.location }) {
+            select(open)
+            return
+        }
+        let model = TextEditorModel(source: source)
+        let tab = TerminalTab(number: 0, editor: model)
+        model.onFailure = { [weak self, weak tab] in
+            guard let self, let tab else { return }
+            self.remove(tab)
+        }
+        if let index = tabs.firstIndex(where: { $0 === selected }) { tabs.insert(tab, at: index + 1) } else { tabs.append(tab) }
+        selected = tab
+        Task { await model.load() }
+    }
+
+    /// ⌘1–⌘9: the tab at that position; ⌘9 is the last tab, as in Terminal and Safari.
     func selectTab(number index: Int) {
-        guard tabs.indices.contains(index) else { return }
-        selected = tabs[index]
+        // In MultiExec the numbers are the grid's: one per terminal, as its caption shows.
+        if multiExec {
+            let cells = tabs.flatMap { tab in tab.shells.map { (tab, $0) } }
+            guard !cells.isEmpty, index >= 0 else { return }
+            let target = index == 8 ? cells.count - 1 : index
+            guard cells.indices.contains(target) else { return }
+            selected = cells[target].0
+            cells[target].0.focusedShell = cells[target].1
+            focusSelected()
+            return
+        }
+        guard !tabs.isEmpty, index >= 0 else { return }
+        let target = index == 8 ? tabs.count - 1 : index
+        guard tabs.indices.contains(target) else { return }
+        selected = tabs[target]
+        focusSelected()
+    }
+
+    /// MultiExec ▸ Close All: ends every terminal in the grid after asking, then leaves MultiExec with one
+    /// fresh terminal. Editor tabs stay open.
+    func closeAllTerminals() {
+        let terminals = tabs.filter { $0.editor == nil }
+        let count = terminals.reduce(0) { $0 + $1.shells.count }
+        let alert = NSAlert()
+        alert.messageText = "Close all \(count) terminal\(count == 1 ? "" : "s")?"
+        alert.informativeText = "Every shell and remote session in the grid ends. A new terminal opens in their place."
+        alert.addButton(withTitle: "Close All")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard Self.confirmClosing(terminals, scope: "these terminals") else { return }
+        for tab in terminals {
+            tab.monitor?.cancel()
+            tab.typedSSHWatch?.cancel()
+            for shell in tab.shells {
+                shell.view.broadcast = nil
+                shell.close()
+            }
+        }
+        let fresh = TerminalTab(number: 1)
+        tabs = tabs.filter { $0.editor != nil } + [fresh]
+        excludedFromMultiExec = []
+        selected = fresh
+        configure(fresh)
+        multiExec = false
+        focusSelected()
+    }
+
+    func select(_ tab: TerminalTab) {
+        selected = tab
+        focusSelected()
+    }
+
+    /// Keyboard focus follows the selected tab, so typing goes to the tab that's shown.
+    private func focusSelected() {
+        let focus = selected.focusedShell
+        DispatchQueue.main.async { focus.view.window?.makeFirstResponder(focus.view) }
     }
 
     /// Moves `tab` to `index` in the tab strip (drag to reorder, Move Tab Left/Right).
@@ -167,6 +262,7 @@ final class Workspace: ObservableObject {
 
     /// Terminal's Edit Title: an empty name goes back to the numbered title.
     func rename(_ tab: TerminalTab) {
+        guard tab.editor == nil else { return }   // an editor tab is named after its file
         let alert = NSAlert()
         alert.messageText = "Rename Tab"
         alert.informativeText = "Leave empty to use the numbered name."
@@ -186,10 +282,12 @@ final class Workspace: ObservableObject {
     func selectTab(offset: Int) {
         guard let index = tabs.firstIndex(where: { $0 === selected }), tabs.count > 1 else { return }
         selected = tabs[(index + offset + tabs.count) % tabs.count]
+        focusSelected()
     }
 
     /// The workspace part of the terminal's right-click menu, and typed-ssh following.
     private func configure(_ tab: TerminalTab) {
+        guard tab.editor == nil else { return }
         watchTypedSSH(tab)
         tab.shells.forEach { configurePane($0, in: tab) }
     }
@@ -200,6 +298,7 @@ final class Workspace: ObservableObject {
             guard let tab, let shell, tab.focusedShell !== shell else { return }
             tab.focusedShell = shell
         }
+        shell.legend.onResize = { [weak self] in self?.rememberChrome() }
         shell.legend.onExit = { [weak self, weak tab, weak shell] in
             guard let self, let tab, let shell, tab.shells.count > 1 else { return }
             self.closePane(shell, in: tab, confirm: false)
@@ -217,9 +316,6 @@ final class Workspace: ObservableObject {
             items += [
                 NSMenuItem.separator(),
                 ActionMenuItem("New Tab", key: "t") { self.add() },
-                ActionMenuItem(state.layout == .split ? "Hide Split View" : "Split View") {
-                    state.layout = state.layout == .split ? .terminal : .split
-                },
                 ActionMenuItem("Show File Explorer") { state.layout = .explorer },
                 NSMenuItem.separator(),
             ]
@@ -243,6 +339,7 @@ final class Workspace: ObservableObject {
     /// profile and, per Settings, the same folder.
     func split(_ axis: PaneNode.Axis, from shell: LocalShell? = nil, in tab: TerminalTab? = nil) {
         let tab = tab ?? selected
+        guard tab.editor == nil else { return }
         let source = shell ?? tab.focusedShell
         guard let leaf = tab.root.leaf(for: source) else { return }
         let pane = LocalShell(profileID: source.profileID)
@@ -258,6 +355,7 @@ final class Workspace: ObservableObject {
     /// Closes one pane; the last pane closes the tab instead.
     func closePane(_ shell: LocalShell? = nil, in tab: TerminalTab? = nil, confirm: Bool = true) {
         let tab = tab ?? selected
+        guard tab.editor == nil else { close(tab); return }
         let shell = shell ?? tab.focusedShell
         guard tab.shells.count > 1 else { close(tab); return }
         if confirm, TerminalProfile.shared.askBeforeClosing, let program = shell.foregroundProgram {
@@ -397,9 +495,19 @@ final class Workspace: ObservableObject {
         tab.shell.legend.setRemote(target: nil)
     }
 
-    /// Bigger / Smaller like Terminal's View menu: this tab only, until Default Font Size or a profile change.
+    /// Bigger / Smaller like Terminal's View menu: this tab only, until Default (⌘0) or a profile change.
     /// Terminal's rule: ask before ending tabs that run something other than their login shell.
     static func confirmClosing(_ tabs: [TerminalTab], scope: String = "this tab") -> Bool {
+        let unsaved = tabs.compactMap(\.editor).filter(\.isEdited)
+        if !unsaved.isEmpty {
+            let alert = NSAlert()
+            alert.messageText = "Discard unsaved changes?"
+            alert.informativeText = "These files have changes that aren't saved: " + unsaved.map(\.source.name).joined(separator: ", ")
+                + ". Cancel, then save them with ⌘S in their tabs, to keep them."
+            alert.addButton(withTitle: "Discard Changes")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return false }
+        }
         guard TerminalProfile.shared.askBeforeClosing else { return true }
         let running = tabs.flatMap { tab -> [String] in
             var programs = tab.shells.compactMap(\.foregroundProgram)
@@ -430,65 +538,91 @@ final class Workspace: ObservableObject {
     }
 
     /// Bigger / Smaller change the selected tab's profile, so the size is kept across sessions and every
-    /// tab with that profile follows. Default Font Size (⌘0) clears the zoom.
+    /// tab with that profile follows. Default (⌘0) clears the zoom.
     func zoom(_ delta: CGFloat) {
         TerminalProfile.shared.update(selected.focusedShell.profileID) { $0.zoom += Double(delta) }
     }
 
     func resetZoom() { TerminalProfile.shared.update(selected.focusedShell.profileID) { $0.zoom = 0 } }
 
-    /// Width added for Split View, given back when it closes.
-    private var splitWidthAdded: CGFloat = 0
-
-    /// Opening Split View doubles the window width so both halves keep the terminal's width; closing it
-    /// gives the room back. The window stays on its screen, moving left when there's no room on the right.
-    func resizeWindow(from old: SessionLayout, to new: SessionLayout) {
-        guard let window, !window.styleMask.contains(.fullScreen), old != new else { return }
-        var frame = window.frame
-        if new == .split, splitWidthAdded == 0 {
-            // Double the width so each half matches the terminal's width before Split View.
-            let screen = window.screen?.visibleFrame ?? frame
-            let grow = min(frame.width, max(0, screen.width - frame.width))
-            guard grow > 0 else { return }
-            frame.size.width += grow
-            if frame.maxX > screen.maxX { frame.origin.x = max(screen.minX, screen.maxX - frame.width) }
-            splitWidthAdded = grow
-        } else if old == .split, splitWidthAdded > 0 {
-            frame.size.width = max(window.minSize.width, frame.width - splitWidthAdded)
-            splitWidthAdded = 0
-        } else {
-            return
-        }
-        window.setFrame(frame, display: true, animate: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+    /// What this window adds around the selected terminal's grid: toolbar, tab strip and scroller. Measured
+    /// from the live terminal; nil while it isn't showing a single terminal pane.
+    func liveChrome() -> CGSize? {
+        guard let window, selected.state.layout == .terminal, selected.shells.count == 1 else { return nil }
+        let view = selected.focusedShell.view
+        let terminal = view.getTerminal()
+        guard terminal.cols > 0, terminal.rows > 0, view.frame.width > 0 else { return nil }
+        let content = window.contentRect(forFrameRect: window.frame).size
+        let cell = ProfileSettings.cellSize(of: view.font)
+        // The grid without the part of a cell left over at the right and bottom edges.
+        let optimal = view.getOptimalFrameSize().size
+        let scroller = max(0, optimal.width - CGFloat(terminal.cols) * cell.width)
+        return CGSize(width: content.width - view.frame.width + scroller, height: content.height - view.frame.height)
     }
 
-    /// Double-click on the title: the window goes back to the default size (doubled in Split View, as
-    /// when Split View opens) and the text to its profile's size, clearing ⌘+ / ⌘− zoom.
-    func restoreDefaultSize() {
-        let profile = TerminalProfile.shared
-        profile.update(selected.shell.profileID) { $0.zoom = 0 }
+    /// One-tab windows teach new windows how much room goes around the grid.
+    func rememberChrome() {
+        guard tabs.count == 1, let window, !window.styleMask.contains(.fullScreen), let chrome = liveChrome() else { return }
+        TerminalProfile.shared.windowChrome = chrome
+    }
+
+    /// Resizes the window so the selected terminal shows `columns` × `rows`, staying on its screen. The
+    /// first size is worked out from the font; it is then corrected against the terminal's own count, so the
+    /// result matches the resize badge exactly (unless the window's minimum size or the screen stops it).
+    func resize(columns: Int, rows: Int) {
         guard let window, !window.styleMask.contains(.fullScreen) else { return }
-        let split = selected.state.layout == .split
+        let profile = TerminalProfile.shared
+        let view = selected.focusedShell.view
+        view.font = selected.focusedShell.settings.font
+        var chrome = liveChrome() ?? profile.windowChrome
+        if liveChrome() == nil, tabs.count > 1 { chrome.height += 28 }   // the tab strip
+        var size = profile.contentSize(columns: columns, rows: rows, profile: selected.focusedShell.profileID, chrome: chrome)
+        for _ in 0..<4 {
+            setContentSize(size, of: window)
+            guard selected.state.layout == .terminal, selected.shells.count == 1 else { break }
+            let terminal = view.getTerminal()
+            guard terminal.cols > 0, terminal.rows > 0 else { break }
+            let (extraColumns, extraRows) = (columns - terminal.cols, rows - terminal.rows)
+            guard extraColumns != 0 || extraRows != 0 else { break }
+            let optimal = view.getOptimalFrameSize().size
+            size.width += CGFloat(extraColumns) * optimal.width / CGFloat(terminal.cols)
+            size.height += CGFloat(extraRows) * optimal.height / CGFloat(terminal.rows)
+        }
+        rememberChrome()
+    }
+
+    private func setContentSize(_ size: CGSize, of window: NSWindow) {
         let screen = window.screen?.visibleFrame ?? window.frame
-        let width = min(screen.width, profile.windowWidth * (split ? 2 : 1))
-        var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: NSSize(width: width, height: profile.windowHeight)))
+        var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: CGSize(width: size.width.rounded(.up), height: size.height.rounded(.up))))
+        frame.size.width = min(frame.width, screen.width)
+        frame.size.height = min(frame.height, screen.height)
         frame.origin = NSPoint(x: window.frame.minX, y: window.frame.maxY - frame.height)
         if frame.maxX > screen.maxX { frame.origin.x = max(screen.minX, screen.maxX - frame.width) }
         if frame.minY < screen.minY { frame.origin.y = screen.minY }
-        splitWidthAdded = split ? width - profile.windowWidth : 0
-        window.setFrame(frame, display: true, animate: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        window.setFrame(frame, display: true)
+        // Lay out now so the terminal reports its new columns and rows before the next correction.
+        window.contentView?.layoutSubtreeIfNeeded()
     }
 
-    /// Right-click on the title: the current window size (a single pane's width in Split View) and the
-    /// current text size, zoom included, become the defaults.
+    /// Double-click on the title: the terminal goes back to the default columns × rows and the text to its
+    /// profile's size, clearing ⌘+ / ⌘− zoom.
+    func restoreDefaultSize() {
+        let profile = TerminalProfile.shared
+        profile.update(selected.shell.profileID) { $0.zoom = 0 }
+        resize(columns: profile.windowColumns, rows: profile.windowRows)
+    }
+
+    /// Right-click on the title: the terminal's current columns × rows and text size, zoom included,
+    /// become the defaults.
     func makeCurrentSizeDefault() {
         let profile = TerminalProfile.shared
+        rememberChrome()
+        let terminal = selected.focusedShell.view.getTerminal()
+        if terminal.cols > 0, terminal.rows > 0 {
+            profile.windowColumns = terminal.cols
+            profile.windowRows = terminal.rows
+        }
         profile.update(selected.shell.profileID) { $0.fontSize = $0.effectiveSize; $0.zoom = 0 }
-        guard let window else { return }
-        let content = window.contentRect(forFrameRect: window.frame).size
-        profile.windowWidth = (selected.state.layout == .split ? content.width / 2 : content.width).rounded()
-        profile.windowHeight = content.height.rounded()
-        splitWidthAdded = selected.state.layout == .split ? profile.windowWidth : 0
     }
 
     /// Shell ▸ Use Profile: switch the selected tab to another profile.
@@ -499,10 +633,24 @@ final class Workspace: ObservableObject {
     }
 
     func close(_ tab: TerminalTab) {
-        guard tabs.count > 1, let index = tabs.firstIndex(where: { $0 === tab }) else { return }
+        guard tabs.count > 1, tabs.contains(where: { $0 === tab }) else { return }
+        if let editor = tab.editor {
+            Task {
+                guard await editor.confirmClose() else { return }
+                remove(tab)
+            }
+            return
+        }
         guard Self.confirmClosing([tab]) else { return }
+        remove(tab)
+    }
+
+    /// Takes `tab` out of the window and ends its shells; asks nothing.
+    private func remove(_ tab: TerminalTab) {
+        guard tabs.count > 1, let index = tabs.firstIndex(where: { $0 === tab }) else { return }
         if selected === tab { selected = tabs[index == 0 ? 1 : index - 1] }
         tabs.remove(at: index)
+        focusSelected()
         tab.monitor?.cancel()
         tab.typedSSHWatch?.cancel()
         for shell in tab.shells {
@@ -548,13 +696,18 @@ private struct ActiveWorkspace: View {
                         }.buttonStyle(.plain)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }
-                SessionView(state: tab.state, shell: tab.shell, tab: tab).id(tab.id)
+                if let editor = tab.editor {
+                    EditorPane(model: editor).id(tab.id)
+                } else {
+                    SessionView(state: tab.state, shell: tab.shell, tab: tab).id(tab.id)
+                }
             }
         }
         // The toolbar sits in the titlebar as a safe-area inset, so content below sees exactly its height
         // as the top inset; a leftover titlebar inset made sidebars and fills paint over the toolbar.
         .safeAreaInset(edge: .top, spacing: 0) {
-            SessionToolbar(layout: $state.layout, title: legend.title, subtitle: legend.subtitle,
+            SessionToolbar(layout: $state.layout, title: tab.editor.map { $0.source.name } ?? legend.title,
+                           subtitle: tab.editor.map { $0.source.location } ?? legend.subtitle,
                            newTab: { workspace.add() },
                            connect: workspace.connectButton,
                            connectedTo: { if case .connected(let e) = state.connection { e.label } else { nil } }(),
@@ -562,15 +715,15 @@ private struct ActiveWorkspace: View {
                            saveSizeAsDefault: workspace.makeCurrentSizeDefault,
                            multiHost: { workspace.multiExec.toggle() },
                            tailcat: { workspace.panel = .tailcat },
-                           remoteControl: { workspace.panel = .remoteDesktop },
-                           search: { tab.state.find() }, multiHostActive: workspace.multiExec) {
+                           search: { if let editor = tab.editor { editor.find() } else { tab.state.find() } },
+                           multiHostActive: workspace.multiExec) {
                 Button("New Tab") { workspace.add() }.help("Open another local terminal in this window.")
                 Button("New Window") { openWindow(id: "session") }.help("Open a new Herb's Terminal window.")
                 Button("Connect via SSH…") { workspace.showingSSHConnect = true }
                     .help("Open a remote shell (⇧⌘K).")
                 Menu("Open Tabs") {
                     ForEach(workspace.tabs) { item in
-                        Button("Terminal \(item.number)") { workspace.selected = item }
+                        Button(item.title) { workspace.select(item) }
                     }
                 }
                 Divider()
@@ -578,12 +731,9 @@ private struct ActiveWorkspace: View {
                 Menu("Zoom") {
                     Button("Bigger") { workspace.zoom(1) }.help("Larger text in this tab (⌘+).")
                     Button("Smaller") { workspace.zoom(-1) }.help("Smaller text in this tab (⌘−).")
-                    Button("Default Font Size") { workspace.resetZoom() }.help("Back to the Settings font size (⌘0).")
+                    Button("Default") { workspace.resetZoom() }.help("Back to the Settings font size (⌘0).")
                 }
                 ThemeMenu(profileID: tab.shell.profileID)
-                Picker("Appearance", selection: $appearance) {
-                    ForEach(["System", "Light", "Dark"], id: \.self) { Text($0) }
-                }
                 Button("Toggle Full Screen") { NSApp.keyWindow?.toggleFullScreen(nil) }.help("Fill the screen with this window.")
                 Divider()
                 SettingsLink { Text("Settings…") }.help("Font, size, cursor, window size and color themes (⌘,).")
@@ -591,6 +741,7 @@ private struct ActiveWorkspace: View {
             }
         }
         .task(id: tab.id) {
+            guard tab.editor == nil else { return }
             while !Task.isCancelled {
                 tab.shell.legend.refresh(tab.shell.view)
                 try? await Task.sleep(for: .seconds(1))
@@ -613,9 +764,6 @@ private struct ActiveWorkspace: View {
                 ConnectionDetailsView(state: tab.state,
                                       disconnect: { workspace.disconnect(); workspace.panel = nil },
                                       newConnection: { workspace.panel = nil; workspace.showingSSHConnect = true }) { workspace.panel = nil }
-            case .remoteDesktop:
-                RemoteDesktopView(state: tab.state, model: workspace.desktop,
-                                  connect: { workspace.panel = nil; workspace.showingSSHConnect = true }) { workspace.panel = nil }
             }
         })
         .sheet(isPresented: $workspace.showingSSHConnect) {
@@ -638,13 +786,19 @@ private struct ActiveWorkspace: View {
             workspace.selected.shell.settings.applyTransparency(to: window)
             guard workspace.closeGuard == nil else { return }
             workspace.closeGuard = WindowCloseGuard(window: window, workspace: workspace)
+            // The scene opens near the default size; snap to the exact default columns × rows once the
+            // terminal is laid out.
+            guard !workspace.isRestored else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                let profile = TerminalProfile.shared
+                workspace.resize(columns: profile.windowColumns, rows: profile.windowRows)
+            }
         })
         // The window is see-through when the selected tab's profile is.
         .onReceive(TerminalProfile.shared.objectWillChange) {
             DispatchQueue.main.async { if let window = workspace.window { workspace.selected.shell.settings.applyTransparency(to: window) } }
         }
         .onChange(of: tab.id) { if let window = workspace.window { tab.shell.settings.applyTransparency(to: window) } }
-        .onChange(of: state.layout) { old, new in workspace.resizeWindow(from: old, to: new) }
         .ignoresSafeArea(.container, edges: .top)
         .preferredColorScheme(appearance == "System" ? nil : appearance == "Dark" ? .dark : .light)
 
@@ -665,7 +819,7 @@ extension FocusedValues {
 }
 
 enum WorkspacePanel: String, Identifiable {
-    case multiHost, tailcat, remoteDesktop, connection
+    case multiHost, tailcat, connection
     var id: String { rawValue }
 }
 
@@ -755,6 +909,19 @@ final class WindowCloseGuard: NSObject, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if original?.windowShouldClose?(sender) == false { return false }
         guard let workspace else { return true }
+        // ⌘W (File ▸ Close) closes the current tab while there are others; the close button and the last
+        // tab close the window.
+        if NSApp.currentEvent?.type == .keyDown {
+            if workspace.multiExec, workspace.allShells.count > 1 {
+                // In MultiExec, the active terminal in the grid.
+                workspace.closePane()
+                return false
+            }
+            if !workspace.multiExec, workspace.tabs.count > 1 {
+                workspace.close(workspace.selected)
+                return false
+            }
+        }
         return Workspace.confirmClosing(workspace.tabs, scope: "this window")
     }
 
@@ -770,12 +937,12 @@ final class WindowCloseGuard: NSObject, NSWindowDelegate {
 /// One tab in the tab strip: click to switch, double-click to rename, drag to reorder.
 private struct TabChip: View {
     @ObservedObject var workspace: Workspace
-    let item: TerminalTab
+    @ObservedObject var item: TerminalTab
     let selected: Bool
 
     var body: some View {
         HStack(spacing: 6) {
-            Button { workspace.selected = item } label: {
+            Button { workspace.select(item) } label: {
                 // Selection shows in weight too, not only in the faint background colour.
                 Text(item.title).fontWeight(selected ? .semibold : .regular)
             }
@@ -878,6 +1045,8 @@ struct MultiExecGrid: View {
             Button("Include All") { workspace.excludedFromMultiExec = [] }
                 .disabled(workspace.excludedFromMultiExec.isEmpty)
                 .hint("Include All\nSend typing to every terminal again.")
+            Button("Close All") { workspace.closeAllTerminals() }
+                .hint("Close All\nEnd every terminal in the grid and leave MultiExec with one new terminal.")
             Button("Exit MultiExec") { workspace.multiExec = false }
                 .keyboardShortcut(.cancelAction)
                 .hint("Exit MultiExec (Esc)\nBack to one tab at a time.")
@@ -902,6 +1071,8 @@ struct MultiExecGrid: View {
                     lineWidth: focused ? 2 : 1))
         .contentShape(Rectangle())
         .simultaneousGesture(TapGesture().onEnded { workspace.selected = tab; tab.focusedShell = shell })
+        // Each cell is its terminal: keyed by shell, so closing one never leaves another's view in its place.
+        .id(shell.id)
     }
 }
 

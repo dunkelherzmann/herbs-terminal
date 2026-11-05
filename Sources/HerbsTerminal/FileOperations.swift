@@ -308,6 +308,48 @@ struct SFTPTransfer {
         return target.directory ? nil : target
     }
 
+    /// A whole remote file, for the text editor; refuses anything over `limit` bytes.
+    func readAll(_ path: String, limit: Int) throws -> Data {
+        let attributes = try client.stat(path, follow: true)
+        guard !attributes.directory else { throw FileIssue("“\((path as NSString).lastPathComponent)” is a folder.") }
+        if let size = attributes.size, size > UInt64(limit) {
+            throw FileIssue("“\((path as NSString).lastPathComponent)” is larger than \(limit / 1_048_576) MB, too big to edit here.")
+        }
+        let handle = try client.open(path, flags: Self.read)
+        defer { try? client.close(handle) }
+        var data = Data()
+        while true {
+            let chunk = try client.read(handle, offset: UInt64(data.count))
+            if chunk.isEmpty { break }
+            data.append(chunk)
+            guard data.count <= limit else { throw FileIssue("“\((path as NSString).lastPathComponent)” is too big to edit here.") }
+        }
+        return data
+    }
+
+    /// Saves the text editor's file: written in full under an unguessable name next to it, then renamed
+    /// over it, so a dropped connection never leaves it half written. Its permissions are kept.
+    func replace(_ path: String, with data: Data) throws {
+        let mode = ((try? client.stat(path, follow: true))?.mode ?? 0o644) & 0o777
+        let tag = UUID().uuidString.prefix(8).lowercased()
+        let part = remoteJoin(parentPath(path), ".\((path as NSString).lastPathComponent).\(tag).herbsterminal-part")
+        let handle = try client.open(part, flags: Self.write | Self.create | Self.exclusive, mode: mode)
+        do {
+            var offset = 0
+            while offset < data.count {
+                let chunk = data.subdata(in: offset..<min(data.count, offset + 32768))
+                try client.write(handle, offset: UInt64(offset), bytes: chunk)
+                offset += chunk.count
+            }
+            try client.close(handle)
+            try client.rename(part, path, replace: true)
+        } catch {
+            try? client.close(handle)
+            try? client.remove(part)
+            throw error
+        }
+    }
+
     /// Deletes a remote file or folder tree. SFTP only removes empty folders, so children go first.
     func remove(_ path: String) throws {
         let attributes = try client.stat(path)

@@ -132,17 +132,17 @@ enum LoginVaultPrompts {
 
     /// Asks for the Administrator Password to unlock saved logins for this session.
     @discardableResult
-    static func unlock(_ store: CredentialStore) -> Bool {
+    static func unlock(_ store: CredentialStore, cancelTitle: String = "Cancel", detail: String? = nil) -> Bool {
         var message: String?
         while store.isLocked {
             let alert = NSAlert()
             alert.messageText = "Unlock Saved Logins"
-            alert.informativeText = message ?? "Enter the Administrator Password to use your saved logins."
+            alert.informativeText = message ?? detail ?? "Enter the Administrator Password to use your saved logins."
             let field = secureField("Administrator Password")
             alert.accessoryView = stack([field])
             alert.window.initialFirstResponder = field
             alert.addButton(withTitle: "Unlock")
-            alert.addButton(withTitle: "Cancel")
+            alert.addButton(withTitle: cancelTitle)
             guard alert.runModal() == .alertFirstButtonReturn else { return false }
             do { try store.unlock(field.stringValue) } catch { message = error.localizedDescription }
         }
@@ -170,22 +170,79 @@ enum LoginVaultPrompts {
         return true
     }
 
+    /// Import Login Data: a CSV of host,port,username,password. Returns a summary to show, or nil if cancelled.
+    static func importData(_ store: CredentialStore) -> String? {
+        if store.protection == .unset, !explainSetup(store) { return nil }
+        if store.isLocked, !unlock(store) { return nil }
+        let panel = NSOpenPanel()
+        panel.title = "Import Login Data"
+        panel.allowedContentTypes = [UTType.commaSeparatedText]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        do {
+            let summary = try store.importCSV(try Data(contentsOf: url), policy: .overwrite)
+            return "Import completed: \(summary.added) added, \(summary.updated) updated, \(summary.skipped) skipped."
+        } catch {
+            show(error)
+            return nil
+        }
+    }
+
+    /// Export Login Data, after the Administrator Password (or a plain-text confirmation). Every login is
+    /// exported, so a locked store is unlocked first.
+    static func exportData(_ store: CredentialStore) -> String? {
+        guard confirmExport(store) else { return nil }
+        if store.isLocked, !unlock(store) { return nil }
+        let panel = NSSavePanel()
+        panel.title = "Export Login Data"
+        panel.allowedContentTypes = [UTType.commaSeparatedText]
+        panel.nameFieldStringValue = "logins_export.csv"
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        do {
+            let data = try store.exportCSV()
+            // The export holds passwords: readable by this account only, from the moment it exists.
+            try? FileManager.default.removeItem(at: url)
+            guard FileManager.default.createFile(atPath: url.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
+                throw FileIssue("Couldn't write \(url.lastPathComponent).")
+            }
+            return "Login data exported. The file contains readable passwords; delete it when you're done."
+        } catch {
+            show(error)
+            return nil
+        }
+    }
+
     static func show(_ error: Error) {
         NSAlert(error: error).runModal()
     }
 
-    private static func secureField(_ placeholder: String) -> NSSecureTextField {
-        let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
-        field.placeholderString = placeholder
+    private static func secureField(_ label: String) -> NSSecureTextField {
+        let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: fieldWidth, height: 24))
+        field.placeholderString = label
+        field.setAccessibilityLabel(label)
         return field
     }
 
-    private static func stack(_ fields: [NSView]) -> NSView {
-        let stack = NSStackView(views: fields)
-        stack.orientation = .vertical
-        stack.spacing = 8
-        stack.frame = NSRect(x: 0, y: 0, width: 260, height: CGFloat(fields.count) * 32)
-        return stack
+    private static let fieldWidth: CGFloat = 260
+
+    /// Each field under its own label, laid out by frame: an alert's accessory view gets no Auto Layout
+    /// sizing, so a stack view there squeezed the fields down to slivers.
+    private static func stack(_ fields: [NSSecureTextField]) -> NSView {
+        let row: CGFloat = 46
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: fieldWidth, height: CGFloat(fields.count) * row - 6))
+        for (index, field) in fields.enumerated() {
+            let top = view.frame.height - CGFloat(index) * row
+            let label = NSTextField(labelWithString: field.placeholderString ?? "")
+            label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+            label.textColor = .secondaryLabelColor
+            label.frame = NSRect(x: 0, y: top - 16, width: fieldWidth, height: 16)
+            field.frame = NSRect(x: 0, y: top - 40, width: fieldWidth, height: 24)
+            view.addSubview(label)
+            view.addSubview(field)
+        }
+        // Tab moves down the fields in order.
+        for (field, next) in zip(fields, fields.dropFirst()) { field.nextKeyView = next }
+        return view
     }
 }
 
@@ -284,14 +341,9 @@ struct SSHConnectView: View {
             }
 
             HStack {
-                Button { manageLogins() } label: {
-                    HStack(spacing: 4) {
-                        Text("Manage Logins")
-                        Image(systemName: "chevron.down").font(.caption2)
-                    }
-                }
+                Button("Manage Logins…") { ManageLoginsWindow.show(store) }
                 .disabled(viewModel.lockedReason != nil)
-                .hint("Manage Logins\nSet the Administrator Password, or import and export login data (host,port,username,password).")
+                .hint("Manage Logins\nSee, add and edit saved logins, import or export them, and set the Administrator Password.")
 
                 Spacer()
 
@@ -346,20 +398,6 @@ struct SSHConnectView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Manage Logins: explains the Administrator Password the first time, then offers its menu.
-    private func manageLogins() {
-        if store.protection == .unset, !LoginVaultPrompts.explainSetup(store) { return }
-        let menu = NSMenu()
-        menu.addItem(ActionMenuItem(store.protection == .adminPassword ? "Modify Admin Password…" : "Create Admin Password…") {
-            LoginVaultPrompts.createOrModify(store)
-        })
-        menu.addItem(ActionMenuItem("Import Login Data…") { importCSV() })
-        menu.addItem(ActionMenuItem("Export Login Data…", enabled: !store.logins.isEmpty) {
-            if LoginVaultPrompts.confirmExport(store) { exportCSV() }
-        })
-        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
-    }
-
     private func discardLegacy() {
         let alert = NSAlert()
         alert.alertStyle = .warning
@@ -373,34 +411,4 @@ struct SSHConnectView: View {
         do { try store.discardLegacy() } catch { viewModel.errorMessage = error.localizedDescription }
     }
 
-    private func importCSV() {
-        if store.isLocked, !LoginVaultPrompts.unlock(store) { return }
-        let panel = NSOpenPanel()
-        panel.title = "Import Login Data"
-        panel.allowedContentTypes = [UTType.commaSeparatedText]
-        panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        do {
-            let summary = try viewModel.importCSV(from: url, policy: .overwrite)
-            viewModel.noticeMessage = "Import completed: \(summary.added) added, \(summary.updated) updated, \(summary.skipped) skipped."
-        } catch {
-            viewModel.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func exportCSV() {
-        let panel = NSSavePanel()
-        panel.title = "Export Login Data"
-        panel.allowedContentTypes = [UTType.commaSeparatedText]
-        panel.nameFieldStringValue = "herbsterminal_logins.csv"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        do {
-            try viewModel.exportCSV(to: url)
-            viewModel.noticeMessage = "Login data exported. The file contains readable passwords; delete it when you're done."
-        } catch {
-            viewModel.errorMessage = error.localizedDescription
-        }
-    }
 }

@@ -19,6 +19,27 @@ struct MultiExecTests {
     }
 
     @Test
+    func commandNumbersPickGridTerminalsAndCloseOnlyTheActiveOne() {
+        let workspace = Workspace(restoring: nil)
+        defer { workspace.tabs.forEach { $0.shells.forEach { $0.close() } } }
+        workspace.add()
+        let (first, second) = (workspace.tabs[0], workspace.tabs[1])
+        workspace.split(.horizontal, in: first)
+        let pane = first.shells[1]
+        workspace.multiExec = true
+        // Grid order: Terminal 1, its second pane, Terminal 2.
+        workspace.selectTab(number: 1)
+        #expect(workspace.selected === first && first.focusedShell === pane)
+        workspace.selectTab(number: 8)
+        #expect(workspace.selected === second)
+        // ⌘W's action in the grid closes the active terminal only.
+        workspace.selectTab(number: 1)
+        workspace.closePane(confirm: false)
+        #expect(workspace.allShells.count == 2 && !first.shells.contains { $0 === pane })
+        #expect(workspace.multiExec)
+    }
+
+    @Test
     func typingReachesIncludedTabsOnly() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("multiexec-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

@@ -29,12 +29,14 @@ enum SessionRestore {
     static func save(_ workspaces: [Workspace], defaults: UserDefaults = .standard) {
         guard TerminalProfile.shared.restoreSession else { defaults.removeObject(forKey: key); return }
         let windows = workspaces.map { workspace in
-            SavedWindow(tabs: workspace.tabs.map { tab in
+            // Editor tabs aren't reopened; the files stay where they were saved.
+            let terminals = workspace.tabs.filter { $0.editor == nil }
+            return SavedWindow(tabs: terminals.map { tab in
                 SavedTab(directory: tab.shell.currentDirectory ?? tab.shell.startDirectory,
                          layout: tab.state.layout.savedName, title: tab.customTitle,
                          explorerPath: tab.state.directory.path, profile: tab.shell.profileID?.uuidString,
                          panes: tab.shells.count > 1 ? tab.root.saved : nil)
-            }, selected: workspace.tabs.firstIndex { $0 === workspace.selected } ?? 0)
+            }, selected: terminals.firstIndex { $0 === workspace.selected } ?? 0)
         }
         if let data = try? JSONEncoder().encode(windows) { defaults.set(data, forKey: key) }
     }
@@ -58,14 +60,12 @@ extension SessionLayout {
     var savedName: String {
         switch self {
         case .terminal: "terminal"
-        case .split: "split"
         case .explorer: "explorer"
         }
     }
 
     init(savedName: String) {
         switch savedName {
-        case "split": self = .split
         case "explorer": self = .explorer
         default: self = .terminal
         }

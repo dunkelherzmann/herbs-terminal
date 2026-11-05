@@ -56,6 +56,8 @@ final class CredentialStore: ObservableObject {
     @Published private(set) var protection: LoginProtection = .unset
     /// Rows encrypted with the Administrator Password while it hasn't been entered this session.
     @Published private(set) var lockedCount = 0
+    /// Readable logins stored as plain text rather than encrypted.
+    @Published private(set) var plainTextIDs: Set<SSHLogin.ID> = []
     /// Rows from earlier builds, encrypted with a key this app no longer holds; they can only be discarded.
     @Published private(set) var legacyCount = 0
 
@@ -260,12 +262,14 @@ final class CredentialStore: ObservableObject {
 
     /// Loads every login this session can read; the rest are counted, never dropped.
     func reload() throws {
-        var readable: [SSHLogin] = [], locked = 0, legacy = 0
+        var readable: [SSHLogin] = [], locked = 0, legacy = 0, plain: Set<SSHLogin.ID> = []
         for row in try readRows() {
             switch row.scheme {
             case "plain":
-                readable.append(SSHLogin(host: row.host, port: row.port, username: row.username,
-                                         password: String(decoding: row.payload.ciphertext, as: UTF8.self)))
+                let login = SSHLogin(host: row.host, port: row.port, username: row.username,
+                                     password: String(decoding: row.payload.ciphertext, as: UTF8.self))
+                readable.append(login)
+                plain.insert(login.id)
             case "admin":
                 if let vault, let password = try? vault.decrypt(row.payload) {
                     readable.append(SSHLogin(host: row.host, port: row.port, username: row.username, password: password))
@@ -277,6 +281,7 @@ final class CredentialStore: ObservableObject {
             }
         }
         logins = readable
+        plainTextIDs = plain
         lockedCount = locked
         legacyCount = legacy
     }

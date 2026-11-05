@@ -172,38 +172,43 @@ private struct WindowSettings: View {
         Form {
             Toggle("Show columns × rows while resizing", isOn: $profile.showSizeWhileResizing)
                 .hint("Size while resizing\nShow the terminal's size, like 100 × 30, while you resize the window.")
-            TextField("Width:", value: $profile.windowWidth, format: .number)
-                .hint("Window width\nPoints. New windows open at this size.")
-            TextField("Height:", value: $profile.windowHeight, format: .number)
-                .hint("Window height\nPoints. New windows open at this size.")
             HStack {
-                Button("Apply to Open Windows") { applyToOpenWindows() }
-                    .hint("Apply to Open Windows\nResize every open terminal window to this size now.")
+                TextField("Columns:", value: clamped($profile.windowColumns, TerminalProfile.gridRange.columns), format: .number)
+                    .frame(width: 160)
+                Stepper("", value: $profile.windowColumns, in: TerminalProfile.gridRange.columns).labelsHidden()
+            }
+            .hint("Columns\nCharacters per line in new windows: the first number the resize badge shows.")
+            HStack {
+                TextField("Rows:", value: clamped($profile.windowRows, TerminalProfile.gridRange.rows), format: .number)
+                    .frame(width: 160)
+                Stepper("", value: $profile.windowRows, in: TerminalProfile.gridRange.rows).labelsHidden()
+            }
+            .hint("Rows\nLines of text in new windows: the second number the resize badge shows.")
+            HStack {
+                Button("Apply to Open Windows") { Workspace.all.forEach { $0.resize(columns: profile.windowColumns, rows: profile.windowRows) } }
+                    .hint("Apply to Open Windows\nResize every open terminal window to this many columns and rows now.")
                 Button("Use Front Window's Size") { useFrontWindow() }
-                    .hint("Use Front Window's Size\nCopy the size of the most recently used terminal window.")
+                    .hint("Use Front Window's Size\nCopy the columns and rows of the most recently used terminal window.")
                 Button("Reset") {
-                    profile.windowWidth = TerminalProfile.defaultWindow.width
-                    profile.windowHeight = TerminalProfile.defaultWindow.height
+                    profile.windowColumns = TerminalProfile.defaultGrid.columns
+                    profile.windowRows = TerminalProfile.defaultGrid.rows
                 }
-                .hint("Reset\nGo back to 960 × 580 points.")
+                .hint("Reset\nGo back to \(TerminalProfile.defaultGrid.columns) × \(TerminalProfile.defaultGrid.rows).")
             }
         }
     }
 
-    private var sessionWindows: [NSWindow] {
-        NSApp.orderedWindows.filter { $0.identifier?.rawValue.hasPrefix("session") == true }
-    }
-
-    private func applyToOpenWindows() {
-        for window in sessionWindows where !window.styleMask.contains(.fullScreen) {
-            window.setContentSize(NSSize(width: profile.windowWidth, height: profile.windowHeight))
-        }
+    private func clamped(_ value: Binding<Int>, _ range: ClosedRange<Int>) -> Binding<Int> {
+        Binding(get: { value.wrappedValue }, set: { value.wrappedValue = min(range.upperBound, max(range.lowerBound, $0)) })
     }
 
     private func useFrontWindow() {
-        guard let size = sessionWindows.first?.contentLayoutRect.size else { return }
-        profile.windowWidth = size.width.rounded()
-        profile.windowHeight = size.height.rounded()
+        let front = NSApp.orderedWindows.first { $0.identifier?.rawValue.hasPrefix("session") == true }
+        guard let workspace = Workspace.all.first(where: { $0.window === front }) ?? Workspace.all.first else { return }
+        let terminal = workspace.selected.focusedShell.view.getTerminal()
+        guard terminal.cols > 0, terminal.rows > 0 else { return }
+        profile.windowColumns = terminal.cols
+        profile.windowRows = terminal.rows
     }
 }
 
@@ -274,7 +279,7 @@ enum SwiftTermPalette {
                                            (73, 46, 225), (211, 56, 211), (51, 187, 200), (203, 204, 205)]
 }
 
-/// Menu-bar commands with macOS Terminal's shortcuts: View ▸ Bigger / Smaller / Default Font Size,
+/// Menu-bar commands with macOS Terminal's shortcuts: View ▸ Bigger / Smaller / Default,
 /// Edit ▸ Clear to Start / Clear Scrollback, and a Shell menu for tabs, SSH, reset and secure entry.
 struct TerminalCommands: Commands {
     @FocusedValue(\.workspace) private var workspace
@@ -291,9 +296,11 @@ struct TerminalCommands: Commands {
         }
         CommandGroup(before: .windowList) {
             ForEach(1..<10) { number in
-                Button("Show Tab \(number)") { workspace?.selectTab(number: number - 1) }
+                // Not disabled by tab count: menu commands aren't re-evaluated when tabs open or close,
+                // which left ⌘2… disabled after new tabs were added.
+                Button(number == 9 ? "Show Last Tab" : "Show Tab \(number)") { workspace?.selectTab(number: number - 1) }
                     .keyboardShortcut(KeyEquivalent(Character(String(number))))
-                    .disabled((workspace?.tabs.count ?? 0) < number)
+                    .disabled(workspace == nil)
             }
             Divider()
         }
@@ -306,9 +313,9 @@ struct TerminalCommands: Commands {
             Button("Close Pane") { workspace?.closePane() }
                 .keyboardShortcut("w", modifiers: [.command, .option]).disabled(workspace == nil)
             Button("Select Next Pane") { workspace?.focusPane(offset: 1) }
-                .keyboardShortcut(.rightArrow, modifiers: [.command, .option]).disabled((workspace?.selected.shells.count ?? 0) < 2)
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .option]).disabled(workspace == nil)
             Button("Select Previous Pane") { workspace?.focusPane(offset: -1) }
-                .keyboardShortcut(.leftArrow, modifiers: [.command, .option]).disabled((workspace?.selected.shells.count ?? 0) < 2)
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .option]).disabled(workspace == nil)
             Divider()
             Toggle("MultiExec", isOn: Binding(get: { workspace?.multiExec ?? false }, set: { workspace?.multiExec = $0 }))
                 .keyboardShortcut("m", modifiers: [.command, .shift]).disabled(workspace == nil)
@@ -333,13 +340,13 @@ struct TerminalCommands: Commands {
                 .disabled({ if case .connected = workspace?.selected.state.connection { false } else { true } }())
             Divider()
             Button("Show Previous Tab") { workspace?.selectTab(offset: -1) }
-                .keyboardShortcut("[", modifiers: [.command, .shift]).disabled((workspace?.tabs.count ?? 0) < 2)
+                .keyboardShortcut("[", modifiers: [.command, .shift]).disabled(workspace == nil)
             Button("Show Next Tab") { workspace?.selectTab(offset: 1) }
-                .keyboardShortcut("]", modifiers: [.command, .shift]).disabled((workspace?.tabs.count ?? 0) < 2)
+                .keyboardShortcut("]", modifiers: [.command, .shift]).disabled(workspace == nil)
             Button("Rename Tab…") { if let workspace { workspace.rename(workspace.selected) } }
                 .keyboardShortcut("i", modifiers: [.command, .shift]).disabled(workspace == nil)
-            Button("Move Tab Left") { workspace?.moveSelected(by: -1) }.disabled((workspace?.tabs.count ?? 0) < 2)
-            Button("Move Tab Right") { workspace?.moveSelected(by: 1) }.disabled((workspace?.tabs.count ?? 0) < 2)
+            Button("Move Tab Left") { workspace?.moveSelected(by: -1) }.disabled(workspace == nil)
+            Button("Move Tab Right") { workspace?.moveSelected(by: 1) }.disabled(workspace == nil)
             Divider()
             Button("Reset") { workspace?.selected.focusedShell.view.reset(hard: false) }
                 .keyboardShortcut("r", modifiers: [.command, .option]).disabled(workspace == nil)
@@ -353,7 +360,7 @@ struct TerminalCommands: Commands {
                 .disabled(workspace == nil)
             Button("Smaller") { workspace?.zoom(-1) }.keyboardShortcut("-")
                 .disabled(workspace == nil)
-            Button("Default Font Size") { workspace?.resetZoom() }.keyboardShortcut("0")
+            Button("Default") { workspace?.resetZoom() }.keyboardShortcut("0")
                 .disabled(workspace == nil)
             Divider()
         }

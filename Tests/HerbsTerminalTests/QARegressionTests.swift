@@ -149,3 +149,20 @@ func unreadableTailcatPeersAreSetAside() throws {
     #expect(!FileManager.default.fileExists(atPath: file.path))
     #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).contains { $0.contains("unreadable") })
 }
+
+@Test @MainActor
+func manageLoginsKnowsWhichLoginsArePlainText() throws {
+    let root = try scratch()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let logins = try CredentialStore(databaseURL: root.appendingPathComponent("logins.sqlite3"), iterations: 1000)
+    try logins.choosePlainText()
+    let plain = SSHLogin(host: "nas.local", port: 22, username: "herb", password: "pw")
+    try logins.save(plain)
+    #expect(logins.plainTextIDs == [plain.id])
+    // Once an Administrator Password is set, every login is encrypted.
+    try logins.setAdminPassword("correct horse battery")
+    #expect(logins.plainTextIDs.isEmpty && logins.logins.count == 1)
+    // Locked, the encrypted ones are hidden and counted.
+    logins.lock()
+    #expect(logins.logins.isEmpty && logins.lockedCount == 1)
+}

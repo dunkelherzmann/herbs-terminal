@@ -113,6 +113,8 @@ final class SessionLegend: ObservableObject, @preconcurrency LocalProcessTermina
     }
     /// Called when the shell exits; a split pane closes itself.
     var onExit: (() -> Void)?
+    /// Called after the terminal's columns or rows change.
+    var onResize: (() -> Void)?
 
     func processTerminated(source: TerminalView, exitCode: Int32?) {
         exited = true
@@ -124,6 +126,7 @@ final class SessionLegend: ObservableObject, @preconcurrency LocalProcessTermina
         let first = columns == 0
         columns = newCols
         rows = newRows
+        onResize?()
         guard !first else { return }   // not when the tab first opens
         showingSize = true
         hideSize?.cancel()

@@ -114,7 +114,7 @@ enum AdministratorMode {
             case .local: host = "this Mac"
             case .remote(let endpoint): host = endpoint.host
             }
-            state.adminViewModel = RemoteExplorerViewModel(administrator: client, endpoint: RemoteEndpoint(host: host, username: "root"))
+            state.adminViewModel = RemoteExplorerViewModel(administrator: client, endpoint: RemoteEndpoint(host: host, username: "root"), target: target)
             state.adminTarget = target
             state.adminPath = start
             state.adminHistory = NavigationHistory(start)

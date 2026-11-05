@@ -132,21 +132,15 @@ struct SessionView: View {
     static let compactSidebarWidth: CGFloat = 700
 
     var body: some View {
-        // Split View shows the terminal and the explorer side by side at equal widths.
+        // The tab shows either its terminal or its file explorer.
         GeometryReader { geometry in
-            let split = state.layout == .split
-            let explorerWidth = split ? (geometry.size.width - 1) / 2 : geometry.size.width
-            HStack(spacing: 0) {
-                if state.layout != .explorer {
-                    terminalPane.frame(width: split ? (geometry.size.width - 1) / 2 : geometry.size.width)
-                }
-                if split { Divider() }
-                if state.layout != .terminal {
-                    explorerPane(sidebarWidth: explorerWidth < Self.sidebarMinimumWidth ? 0
-                                 : explorerWidth < Self.compactSidebarWidth ? 140 : 170)
-                        .frame(width: explorerWidth)
-                        .clipped()
-                }
+            let width = geometry.size.width
+            if state.layout == .explorer {
+                explorerPane(sidebarWidth: width < Self.sidebarMinimumWidth ? 0 : width < Self.compactSidebarWidth ? 140 : 170)
+                    .frame(width: width)
+                    .clipped()
+            } else {
+                terminalPane.frame(width: width)
             }
         }
         .frame(minWidth: 640, minHeight: 360)

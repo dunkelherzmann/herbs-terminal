@@ -170,11 +170,3 @@ func multiHostClassifiesEachHostOnItsOwn() async throws {
     #expect(process.arguments?.last == "uptime")
 }
 
-@Test
-func desktopURLsPointAtTheLocalForward() throws {
-    #expect(DesktopProtocol.vnc.url(port: 50123, username: "admin")?.absoluteString == "vnc://admin@127.0.0.1:50123")
-    #expect(DesktopProtocol.rdp.url(port: 50124, username: "admin")?.absoluteString
-            == "rdp://full%20address=s%3A127.0.0.1%3A50124&username=s%3Aadmin")
-    let port = try #require(RemoteDesktopModel.freeLocalPort())
-    #expect(port > 1024)
-}
