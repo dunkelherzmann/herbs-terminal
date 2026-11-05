@@ -40,6 +40,32 @@ enum SSHControl {
     /// closes the connection when its ssh is gone. If the app quits, it closes itself 10 s after its last use.
     static let masterOptions = ["-o", "ControlMaster=auto", "-o", "ControlPersist=10"]
 
+    /// The `user@host` names ssh's password prompt can show for `endpoint`: as given, and with the user
+    /// and host name that ~/.ssh/config resolves it to.
+    static func passwordLogins(_ endpoint: RemoteEndpoint) -> [String] {
+        let user = endpoint.username.split(separator: ":", maxSplits: 1).first.map(String.init) ?? endpoint.username
+        var logins = ["\(user)@\(endpoint.host)"]
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
+        process.arguments = ["-G"] + endpoint.sshArguments()
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        process.standardInput = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return logins }
+        let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        process.waitUntilExit()
+        var resolvedUser = user, resolvedHost: String?
+        for line in text.split(separator: "\n") {
+            let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { continue }
+            if parts[0] == "user" { resolvedUser = parts[1] }
+            if parts[0] == "hostname" { resolvedHost = parts[1] }
+        }
+        if let resolvedHost { logins.append("\(resolvedUser)@\(resolvedHost)") }
+        return logins
+    }
+
     /// True while a master connection for `endpoint` is up.
     static func isConnected(_ endpoint: RemoteEndpoint) -> Bool {
         run(endpoint.sshArguments(["-O", "check"])) == 0
@@ -77,7 +103,9 @@ final class AskpassBroker: @unchecked Sendable {
     /// The program ssh runs: this app's own executable, switched into helper mode by HERBSTERMINAL_HELPER.
     let helperPath: String
     private let lock = NSLock()
-    private var secrets: [String: String] = [:]
+    /// A secret and, for a password, the `user@host` names whose password prompt may receive it.
+    private struct Grant { let secret: String; let logins: [String]? }
+    private var secrets: [String: Grant] = [:]
     private let listener: Int32
 
     init(directory: URL = SSHControl.directory, helperPath: String = Bundle.main.executablePath ?? CommandLine.arguments[0]) throws {
@@ -118,12 +146,14 @@ final class AskpassBroker: @unchecked Sendable {
         }
     }
 
-    /// A one-time token that the helper can exchange for `secret`; it expires after five minutes.
-    func issue(_ secret: String) -> String {
+    /// A one-time token that the helper can exchange for `secret`; it expires after five minutes. With
+    /// `logins` (`user@host` forms), only a prompt for one of them gets it: a ProxyJump host asking first
+    /// is asked on the terminal instead, and the token waits for the intended host.
+    func issue(_ secret: String, for logins: [String]? = nil) -> String {
         var bytes = [UInt8](repeating: 0, count: 24)
         _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
         let token = bytes.map { String(format: "%02x", $0) }.joined()
-        lock.withLock { secrets[token] = secret }
+        lock.withLock { secrets[token] = Grant(secret: secret, logins: logins?.map { $0.lowercased() }) }
         DispatchQueue.global().asyncAfter(deadline: .now() + 300) { [weak self] in
             _ = self?.lock.withLock { self?.secrets.removeValue(forKey: token) }
         }
@@ -139,22 +169,49 @@ final class AskpassBroker: @unchecked Sendable {
     private func serve() {
         while true {
             let client = accept(listener, nil, nil)
-            guard client >= 0 else { continue }
-            var buffer = [UInt8](repeating: 0, count: 128)
-            let count = read(client, &buffer, buffer.count)
-            if count > 0 {
-                let token = String(decoding: buffer[0..<count], as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-                if let secret = lock.withLock({ secrets.removeValue(forKey: token) }) {
-                    let reply = Array((secret + "\n").utf8)
-                    _ = reply.withUnsafeBufferPointer { write(client, $0.baseAddress, $0.count) }
-                }
+            guard client >= 0 else {
+                // A broken listener must not spin a core.
+                if errno == EBADF || errno == EINVAL { return }
+                usleep(50_000)
+                continue
             }
+            answer(client)
             close(client)
         }
     }
 
-    /// The helper side: exchanges `token` for its secret, or nil if it was used up or expired.
-    static func redeem(token: String, socket path: String) -> String? {
+    /// One request: "token\nprompt\n". Only this account's processes are answered, and a client that
+    /// connects and sends nothing is dropped after two seconds instead of holding up every later login.
+    private func answer(_ client: Int32) {
+        var uid = uid_t(), gid = gid_t()
+        guard getpeereid(client, &uid, &gid) == 0, uid == getuid() else { return }
+        var timeout = timeval(tv_sec: 2, tv_usec: 0)
+        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        var request = [UInt8]()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        while request.count < 4096, request.filter({ $0 == 10 }).count < 2 {
+            let count = read(client, &buffer, buffer.count)
+            guard count > 0 else { break }
+            request += buffer[0..<count]
+        }
+        let lines = String(decoding: request, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard let token = lines.first?.trimmingCharacters(in: .whitespaces), !token.isEmpty else { return }
+        let prompt = (lines.count > 1 ? lines[1] : "").lowercased()
+        let secret: String? = lock.withLock {
+            guard let grant = secrets[token] else { return nil }
+            if let logins = grant.logins, !logins.contains(where: { prompt.contains($0 + "'s password") }) { return nil }
+            secrets.removeValue(forKey: token)
+            return grant.secret
+        }
+        if let secret {
+            let reply = Array((secret + "\n").utf8)
+            _ = reply.withUnsafeBufferPointer { write(client, $0.baseAddress, $0.count) }
+        }
+    }
+
+    /// The helper side: exchanges `token` for its secret, or nil if it was used up, expired, or meant for
+    /// another host's `prompt`.
+    static func redeem(token: String, socket path: String, prompt: String = "") -> String? {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0, var address = unixAddress(path) else { return nil }
         defer { close(fd) }
@@ -162,7 +219,7 @@ final class AskpassBroker: @unchecked Sendable {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
         }
         guard connected == 0 else { return nil }
-        let request = Array((token + "\n").utf8)
+        let request = Array((token + "\n" + prompt.replacingOccurrences(of: "\n", with: " ") + "\n").utf8)
         _ = request.withUnsafeBufferPointer { write(fd, $0.baseAddress, $0.count) }
         var reply = Data()
         var buffer = [UInt8](repeating: 0, count: 4096)
@@ -203,12 +260,9 @@ enum HelperMode {
             FileHandle.standardOutput.write(Data((answer + "\n").utf8))
             return 0
         case "tailcat-proxy":
-            // ProxyCommand: become the bundled tailcat, piping ssh to the peer's port.
+            // ProxyCommand: pipe ssh to the peer's port through the bundled tailcat.
             guard let address = AskpassBroker.redeem(token: token, socket: socket), let tailcat = Tailcat.executable else { return 1 }
-            let port = arguments.count > 1 ? arguments[1] : "22"
-            let argv: [UnsafeMutablePointer<CChar>?] = [strdup(tailcat), strdup(address), strdup(port), nil]
-            execv(tailcat, argv)
-            return 127
+            return TailcatProxy.run(tailcat: tailcat, address: address, port: UInt16(arguments.count > 1 ? arguments[1] : "22") ?? 22)
         default:
             return 2
         }
@@ -223,7 +277,7 @@ enum HelperMode {
     static func askpass(prompt: String, token: String, socket: String,
                         terminal: (String, Bool) -> String? = askOnTerminal) -> String? {
         if prompt.lowercased().contains("password"), !token.isEmpty,
-           let secret = AskpassBroker.redeem(token: token, socket: socket) {
+           let secret = AskpassBroker.redeem(token: token, socket: socket, prompt: prompt) {
             return secret
         }
         return terminal(prompt, isSecretPrompt(prompt))
@@ -261,4 +315,136 @@ func hasChildProcess(of pid: pid_t, named name: String) -> Bool {
         if String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self) == name { return true }
     }
     return false
+}
+
+/// ssh's ProxyCommand for a Tailcat peer. The bundled tailcat runs as a local SOCKS5 proxy, which needs no
+/// address on its command line, and the peer's secret address travels to it over the loopback socket, so
+/// other accounts on this Mac can't read it from the process list. Then bytes are relayed both ways.
+enum TailcatProxy {
+    static func run(tailcat: String, address: String, port: UInt16) -> Int32 {
+        let name = Array(address.utf8)
+        // SOCKS5 carries a host name of at most 255 bytes; anything longer falls back to an argument.
+        guard name.count <= 255, let proxyPort = freeLoopbackPort() else {
+            let argv: [UnsafeMutablePointer<CChar>?] = [strdup(tailcat), strdup(address), strdup(String(port)), nil]
+            execv(tailcat, argv)
+            return 127
+        }
+        let proxy = Process()
+        proxy.executableURL = URL(fileURLWithPath: tailcat)
+        proxy.arguments = ["socks", "--listen=127.0.0.1:\(proxyPort)"]
+        proxy.standardInput = FileHandle.nullDevice
+        proxy.standardOutput = FileHandle.nullDevice
+        proxy.standardError = FileHandle.nullDevice
+        guard (try? proxy.run()) != nil else { return 1 }
+        defer { if proxy.isRunning { proxy.terminate() } }
+
+        // tailcat needs a moment to start listening.
+        var fd: Int32 = -1
+        for _ in 0..<100 {
+            fd = connectLoopback(proxyPort)
+            if fd >= 0 { break }
+            usleep(100_000)
+        }
+        guard fd >= 0 else { report("tailcat didn't start its local proxy."); return 1 }
+        defer { close(fd) }
+        guard handshake(fd, name: name, port: port) else { return 1 }
+        relay(fd)
+        return 0
+    }
+
+    private static func handshake(_ fd: Int32, name: [UInt8], port: UInt16) -> Bool {
+        guard send(fd, [5, 1, 0]), let greeting = receive(fd, 2), greeting == [5, 0] else {
+            report("tailcat's local proxy refused the connection."); return false
+        }
+        guard send(fd, [5, 1, 0, 3, UInt8(name.count)] + name + [UInt8(port >> 8), UInt8(port & 0xFF)]),
+              let reply = receive(fd, 4) else {
+            report("tailcat's local proxy stopped answering."); return false
+        }
+        guard reply[1] == 0 else {
+            report("Couldn't reach the Tailcat peer (SOCKS error \(reply[1])). Check that it's still serving and the address is right.")
+            return false
+        }
+        // The rest of the reply is the bound address: IPv4, a name, or IPv6, then a port.
+        let rest: Int
+        switch reply[3] {
+        case 1: rest = 4 + 2
+        case 4: rest = 16 + 2
+        case 3: rest = Int(receive(fd, 1)?.first ?? 0) + 2
+        default: return false
+        }
+        return receive(fd, rest) != nil
+    }
+
+    /// Copies ssh's standard input to the peer and the peer's replies to standard output until either side closes.
+    private static func relay(_ fd: Int32) {
+        let done = DispatchSemaphore(value: 0)
+        Thread.detachNewThread {
+            pump(from: STDIN_FILENO, to: fd)
+            shutdown(fd, SHUT_WR)
+            done.signal()
+        }
+        Thread.detachNewThread {
+            pump(from: fd, to: STDOUT_FILENO)
+            done.signal()
+        }
+        done.wait()
+    }
+
+    private static func pump(from source: Int32, to target: Int32) {
+        var buffer = [UInt8](repeating: 0, count: 65536)
+        while true {
+            let count = read(source, &buffer, buffer.count)
+            guard count > 0 else { return }
+            guard send(target, Array(buffer[0..<count])) else { return }
+        }
+    }
+
+    private static func send(_ fd: Int32, _ bytes: [UInt8]) -> Bool {
+        var offset = 0
+        while offset < bytes.count {
+            let written = bytes[offset...].withUnsafeBufferPointer { write(fd, $0.baseAddress, $0.count) }
+            guard written > 0 else { return false }
+            offset += written
+        }
+        return true
+    }
+
+    private static func receive(_ fd: Int32, _ count: Int) -> [UInt8]? {
+        var bytes = [UInt8](repeating: 0, count: count)
+        var offset = 0
+        while offset < count {
+            let got = bytes[offset...].withUnsafeMutableBufferPointer { read(fd, $0.baseAddress, $0.count) }
+            guard got > 0 else { return nil }
+            offset += got
+        }
+        return bytes
+    }
+
+    private static func freeLoopbackPort() -> UInt16? {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+        var address = sockaddr_in(sin_len: UInt8(MemoryLayout<sockaddr_in>.size), sin_family: sa_family_t(AF_INET),
+                                  sin_port: 0, sin_addr: in_addr(s_addr: inet_addr("127.0.0.1")), sin_zero: (0, 0, 0, 0, 0, 0, 0, 0))
+        let bound = withUnsafePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } }
+        guard bound == 0 else { return nil }
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        _ = withUnsafeMutablePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(fd, $0, &length) } }
+        return UInt16(bigEndian: address.sin_port)
+    }
+
+    private static func connectLoopback(_ port: UInt16) -> Int32 {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { return -1 }
+        var address = sockaddr_in(sin_len: UInt8(MemoryLayout<sockaddr_in>.size), sin_family: sa_family_t(AF_INET),
+                                  sin_port: port.bigEndian, sin_addr: in_addr(s_addr: inet_addr("127.0.0.1")), sin_zero: (0, 0, 0, 0, 0, 0, 0, 0))
+        let connected = withUnsafePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } }
+        if connected == 0 { return fd }
+        close(fd)
+        return -1
+    }
+
+    private static func report(_ message: String) {
+        FileHandle.standardError.write(Data(("Herb's Terminal: " + message + "\n").utf8))
+    }
 }

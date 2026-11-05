@@ -1,12 +1,12 @@
 import AppKit
 
 /// A reversible change made by an explorer, kept for Undo / Redo.
-enum FileChange: Equatable {
+enum FileChange: Equatable, Sendable {
     case created([URL])
     case moved([Move])
     case trashed([Move])
 
-    struct Move: Equatable {
+    struct Move: Equatable, Sendable {
         let from: URL
         let to: URL
     }
@@ -265,12 +265,11 @@ struct SFTPTransfer {
         defer { try? source.close() }
         let handle = try client.open(part, flags: Self.write | Self.create | Self.exclusive, mode: mode)
         do {
-            var offset: UInt64 = 0
-            while let chunk = try source.read(upToCount: 32768), !chunk.isEmpty {
+            try client.writeAll(handle) {
                 try checkCancelled()
-                try client.write(handle, offset: offset, bytes: chunk)
-                offset += UInt64(chunk.count)
+                guard let chunk = try source.read(upToCount: 32768), !chunk.isEmpty else { return nil }
                 progress(Int64(chunk.count))
+                return chunk
             }
             try client.close(handle)
             try client.rename(part, remote)
@@ -300,13 +299,9 @@ struct SFTPTransfer {
             defer { try? target.close() }
             let handle = try client.open(remote, flags: Self.read)
             defer { try? client.close(handle) }
-            var offset: UInt64 = 0
-            while true {
+            try client.readAll(handle) { chunk in
                 try checkCancelled()
-                let chunk = try client.read(handle, offset: offset)
-                if chunk.isEmpty { break }
                 try target.write(contentsOf: chunk)
-                offset += UInt64(chunk.count)
                 progress(Int64(chunk.count))
             }
             try FileManager.default.moveItem(at: part, to: local)
@@ -334,14 +329,27 @@ struct SFTPTransfer {
         let output = try client.open(target, flags: Self.write | Self.create | Self.exclusive, mode: (attributes.mode ?? 0o644) & 0o777)
         var closed = false
         defer { if !closed { try? client.close(output) } }
-        var offset: UInt64 = 0
-        while true {
+        // One channel can't read and write in the same pipeline, so the file passes through a private
+        // temporary file here: pipelined in, then pipelined out.
+        let staging = FileManager.default.temporaryDirectory.appendingPathComponent("herbsterminal-copy-\(UUID().uuidString)")
+        guard FileManager.default.createFile(atPath: staging.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
+            throw FileIssue("Couldn't stage the copy on this Mac.")
+        }
+        defer { try? FileManager.default.removeItem(at: staging) }
+        let sink = try FileHandle(forWritingTo: staging)
+        try client.readAll(input) { chunk in
             try checkCancelled()
-            let chunk = try client.read(input, offset: offset)
-            if chunk.isEmpty { break }
-            try client.write(output, offset: offset, bytes: chunk)
-            offset += UInt64(chunk.count)
-            progress(Int64(chunk.count))
+            try sink.write(contentsOf: chunk)
+            progress(Int64(chunk.count) / 2)
+        }
+        try sink.close()
+        let back = try FileHandle(forReadingFrom: staging)
+        defer { try? back.close() }
+        try client.writeAll(output) {
+            try checkCancelled()
+            guard let chunk = try back.read(upToCount: 32768), !chunk.isEmpty else { return nil }
+            progress(Int64(chunk.count) - Int64(chunk.count) / 2)
+            return chunk
         }
         // Some servers report a full disk or quota only when the file is closed.
         closed = true
@@ -365,9 +373,7 @@ struct SFTPTransfer {
         let handle = try client.open(path, flags: Self.read)
         defer { try? client.close(handle) }
         var data = Data()
-        while true {
-            let chunk = try client.read(handle, offset: UInt64(data.count))
-            if chunk.isEmpty { break }
+        try client.readAll(handle) { chunk in
             data.append(chunk)
             guard data.count <= limit else { throw FileIssue("“\((path as NSString).lastPathComponent)” is too big to edit here.") }
         }
@@ -383,10 +389,11 @@ struct SFTPTransfer {
         let handle = try client.open(part, flags: Self.write | Self.create | Self.exclusive, mode: mode)
         do {
             var offset = 0
-            while offset < data.count {
+            try client.writeAll(handle) {
+                guard offset < data.count else { return nil }
                 let chunk = data.subdata(in: offset..<min(data.count, offset + 32768))
-                try client.write(handle, offset: UInt64(offset), bytes: chunk)
                 offset += chunk.count
+                return chunk
             }
             try client.close(handle)
             try client.rename(part, path, replace: true)
@@ -398,13 +405,32 @@ struct SFTPTransfer {
     }
 
     /// Deletes a remote file or folder tree. SFTP only removes empty folders, so children go first.
-    func remove(_ path: String) throws {
+    ///
+    /// `asRoot` (Administrator mode): SFTP removes by path, so another account that could change a folder
+    /// in the tree could swap it for a link mid-delete and point root's deletes elsewhere. As root, a
+    /// folder is only emptied when root owns it and the folder holding it and no other account can write to
+    /// them; otherwise nothing more is deleted and the error says why. Links are removed, never followed.
+    func remove(_ path: String, asRoot: Bool = false, top: Bool = true) throws {
         let attributes = try client.stat(path)
         if attributes.directory {
-            for entry in try client.list(path) { try remove(remoteJoin(path, entry.name)) }
+            if asRoot {
+                if top { try requireRootOnly(parentPath(path), try client.stat(parentPath(path)), deleting: path) }
+                try requireRootOnly(path, attributes, deleting: path)
+            }
+            for entry in try client.list(path) { try remove(remoteJoin(path, entry.name), asRoot: asRoot, top: false) }
             try client.remove(path, directory: true)
         } else {
             try client.remove(path)
+        }
+    }
+
+    private func requireRootOnly(_ folder: String, _ attributes: RemoteAttributes, deleting path: String) throws {
+        let mode = attributes.mode ?? 0o7777
+        // Group write is fine for root's and the administrators' groups, whose members can use sudo anyway.
+        let trustedGroup = attributes.gid == 0 || attributes.gid == 80
+        guard attributes.uid == 0, mode & 0o002 == 0, mode & 0o020 == 0 || trustedGroup else {
+            throw FileIssue("“\((path as NSString).lastPathComponent)” wasn't deleted as root: \(folder) can be changed by another account, "
+                + "which could redirect the deletion. Turn off Administrator mode to delete it with your own account's access.")
         }
     }
 

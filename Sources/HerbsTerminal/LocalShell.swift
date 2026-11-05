@@ -101,7 +101,7 @@ final class LocalShell: ObservableObject, Identifiable {
         start()
         var environment: [String: String] = [:]
         if let password, !password.isEmpty, let broker = AskpassBroker.shared {
-            environment = broker.environment(token: broker.issue(password))
+            environment = broker.environment(token: broker.issue(password, for: SSHControl.passwordLogins(endpoint)))
         }
         let arguments = SSHControl.masterOptions + endpoint.sshArguments()
         do {

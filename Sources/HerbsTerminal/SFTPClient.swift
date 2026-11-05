@@ -162,13 +162,27 @@ final class SFTPClient {
         try? input.fileHandleForWriting.close()
         if process.isRunning { process.terminate() }
     }
+    /// How long a reply may take before the server counts as gone. A link that hangs without dropping
+    /// would otherwise stall the explorer, and a transfer, for good.
+    nonisolated(unsafe) static var replyTimeout: Int32 = 30_000
+
     private func exact(_ n: Int) throws -> Data {
         var data = Data()
+        let fd = output.fileHandleForReading.fileDescriptor
+        var buffer = [UInt8](repeating: 0, count: min(max(n, 1), 65536))
         while data.count < n {
-            guard let chunk = try output.fileHandleForReading.read(upToCount: n-data.count), !chunk.isEmpty else {
+            var ready = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+            let waited = poll(&ready, 1, Self.replyTimeout)
+            if waited == 0 {
+                stop()
+                throw FileIssue("The server stopped responding to SFTP for \(Self.replyTimeout / 1000) seconds, so the request was abandoned. Check the network and the SSH session, then try again.")
+            }
+            if waited < 0, errno == EINTR { continue }
+            let count = Darwin.read(fd, &buffer, min(buffer.count, n - data.count))
+            guard count > 0 else {
                 throw FileIssue("SFTP channel closed. Check the SSH session and whether the server permits SFTP.")
             }
-            data.append(chunk)
+            data.append(contentsOf: buffer[0..<count])
         }
         return data
     }
@@ -274,6 +288,87 @@ final class SFTPClient {
             return bytes
         } catch let s as SFTPStatus where s.code == 1 { return Data() }
     }
+    /// Reads `handle` to its end with up to `depth` requests in flight, as OpenSSH's sftp does, so a slow
+    /// link costs one round trip per `depth` chunks instead of per chunk. `sink` gets the bytes in order;
+    /// if it throws (a cancel), the replies still on their way are drained so the channel stays usable.
+    func readAll(_ handle: Data, depth: Int = 16, chunk: UInt32 = 32768, sink: (Data) throws -> Void) throws {
+        var pending: [UInt32: (offset: UInt64, length: UInt32)] = [:]
+        var received: [UInt64: Data] = [:]
+        var next: UInt64 = 0, delivered: UInt64 = 0
+        var reachedEnd = false
+        func post(_ offset: UInt64, _ length: UInt32) throws {
+            sequence &+= 1
+            var p = Packet()
+            p.number(UInt8(5)); p.number(sequence); p.blob(handle); p.number(offset); p.number(length)
+            try send(p)
+            pending[sequence] = (offset, length)
+        }
+        do {
+            while true {
+                while !reachedEnd, pending.count < depth {
+                    try post(next, chunk)
+                    next += UInt64(chunk)
+                }
+                if pending.isEmpty { break }
+                var reply = try receive()
+                let kind = try reply.take(UInt8.self)
+                guard let request = pending.removeValue(forKey: try reply.take(UInt32.self)) else { throw FileIssue("Mismatched SFTP reply.") }
+                if kind == 101 {
+                    let code = try reply.take(UInt32.self)
+                    guard code == 1 else { throw SFTPStatus(code: code, message: try reply.text()) }
+                    reachedEnd = true
+                    continue
+                }
+                guard kind == 103 else { throw FileIssue("Unexpected SFTP response.") }
+                let bytes = try reply.bytes()
+                if bytes.isEmpty { reachedEnd = true; continue }
+                received[request.offset] = bytes
+                // A short read: ask again for the rest of that range.
+                if bytes.count < Int(request.length) {
+                    try post(request.offset + UInt64(bytes.count), request.length - UInt32(bytes.count))
+                }
+                while let ready = received.removeValue(forKey: delivered) {
+                    try sink(ready)
+                    delivered += UInt64(ready.count)
+                }
+            }
+        } catch {
+            for _ in pending { _ = try? receive() }
+            throw error
+        }
+        guard received.isEmpty else { throw FileIssue("The server skipped part of the file; nothing was saved.") }
+    }
+
+    /// Writes what `source` returns (nil or empty at the end) from offset 0, with up to `depth` writes in
+    /// flight. On an error the outstanding replies are drained first.
+    func writeAll(_ handle: Data, depth: Int = 16, source: () throws -> Data?) throws {
+        var pending = Set<UInt32>()
+        var offset: UInt64 = 0
+        var finished = false
+        do {
+            while true {
+                while !finished, pending.count < depth {
+                    guard let bytes = try source(), !bytes.isEmpty else { finished = true; break }
+                    sequence &+= 1
+                    var p = Packet()
+                    p.number(UInt8(6)); p.number(sequence); p.blob(handle); p.number(offset); p.blob(bytes)
+                    try send(p)
+                    pending.insert(sequence)
+                    offset += UInt64(bytes.count)
+                }
+                if pending.isEmpty { break }
+                var reply = try receive()
+                let kind = try reply.take(UInt8.self)
+                guard pending.remove(try reply.take(UInt32.self)) != nil, kind == 101 else { throw FileIssue("Mismatched SFTP reply.") }
+                let code = try reply.take(UInt32.self)
+                if code != 0 { throw SFTPStatus(code: code, message: try reply.text()) }
+            }
+        } catch {
+            for _ in pending { _ = try? receive() }
+            throw error
+        }
+    }
+
     func write(_ handle: Data, offset: UInt64, bytes: Data) throws {
         _ = try request(6, 101) { $0.blob(handle); $0.number(offset); $0.blob(bytes) }
     }
