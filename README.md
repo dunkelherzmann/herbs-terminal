@@ -4,8 +4,6 @@
 
 Each tab pairs a shell with an SSH-aware file explorer. When the shell connects to another machine, the explorer follows it to the same host and account — shell, files, transfers, text editing, and permissions all in one tab.
 
-![Herb's Terminal icon](Assets/HerbsTerminal.png)
-
 ## Features
 
 - **SSH-aware file explorer** — in the style of Thunar, with a built-in text editor; follows the shell when you SSH to another host
