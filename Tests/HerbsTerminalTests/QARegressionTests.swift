@@ -1,4 +1,5 @@
 import CryptoKit
+import SQLite3
 import Foundation
 import Testing
 @testable import HerbsTerminal
@@ -18,40 +19,6 @@ private let testKey = SymmetricKey(size: .bits256)
 @MainActor
 private func store(at url: URL) throws -> CredentialStore {
     try CredentialStore(databaseURL: url, vault: CryptoVault(keyProvider: StaticKeyProvider(key: testKey)))
-}
-
-@Test @MainActor
-func renamedBuildsFindTheLoginsTheMigrationMoved() throws {
-    let support = try scratch()
-    defer { try? FileManager.default.removeItem(at: support) }
-    let defaults = try #require(UserDefaults(suiteName: "qa-\(UUID().uuidString)"))
-    try FileManager.default.createDirectory(at: support.appendingPathComponent("Herb's Terminal"), withIntermediateDirectories: true)
-    let old = try store(at: support.appendingPathComponent("Herb's Terminal/logins.sqlite3"))
-    try old.save(SSHLogin(host: "nas.local", port: 22, username: "herb", password: "pw"))
-
-    RenameMigration.run(defaults: defaults, oldSettings: [:], support: support, caches: support.appendingPathComponent("caches"))
-    // The store's default location is the one the migration filled.
-    let reopened = try store(at: RenameMigration.loginDatabase(support))
-    #expect(reopened.logins.map(\.host) == ["nas.local"])
-}
-
-@Test
-func loginsSavedInTheStrayFolderMoveInAndNothingIsDeleted() throws {
-    let support = try scratch()
-    defer { try? FileManager.default.removeItem(at: support) }
-    let stray = support.appendingPathComponent("Herb's Terminal")
-    try FileManager.default.createDirectory(at: stray, withIntermediateDirectories: true)
-    try FileManager.default.createDirectory(at: RenameMigration.supportFolder(support), withIntermediateDirectories: true)
-    try Data("newer".utf8).write(to: stray.appendingPathComponent("logins.sqlite3"))
-    try Data("older".utf8).write(to: RenameMigration.loginDatabase(support))
-
-    RenameMigration.moveLoginDatabase(support: support)
-
-    #expect(try Data(contentsOf: RenameMigration.loginDatabase(support)) == Data("newer".utf8))
-    #expect(!FileManager.default.fileExists(atPath: stray.path))
-    let kept = try FileManager.default.contentsOfDirectory(atPath: RenameMigration.supportFolder(support).path)
-        .filter { $0.hasPrefix("logins-before-") }
-    #expect(kept.count == 1)
 }
 
 @Test @MainActor
@@ -165,4 +132,45 @@ func manageLoginsKnowsWhichLoginsArePlainText() throws {
     // Locked, the encrypted ones are hidden and counted.
     logins.lock()
     #expect(logins.logins.isEmpty && logins.lockedCount == 1)
+}
+
+@Test @MainActor
+func anAdministratorPasswordSetByAnEarlierBuildStillUnlocks() throws {
+    let root = try scratch()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let url = root.appendingPathComponent("logins.sqlite3")
+    let first = try CredentialStore(databaseURL: url, iterations: 1000)
+    try first.setAdminPassword("correct horse battery")
+    try first.save(SSHLogin(host: "nas.local", port: 22, username: "herb", password: "pw"))
+
+    // Rewrite the stored check value the way an earlier build did, with another prefix.
+    var db: OpaquePointer?
+    try #require(sqlite3_open(url.path, &db) == SQLITE_OK)
+    defer { sqlite3_close(db) }
+    func meta(_ key: String) -> Data? {
+        var statement: OpaquePointer?
+        sqlite3_prepare_v2(db, "SELECT value FROM meta WHERE key = ?;", -1, &statement, nil)
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_text(statement, 1, key, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+        guard sqlite3_step(statement) == SQLITE_ROW, let bytes = sqlite3_column_blob(statement, 0) else { return nil }
+        return Data(bytes: bytes, count: Int(sqlite3_column_bytes(statement, 0)))
+    }
+    let salt = try #require(meta("salt"))
+    let rounds = try #require(meta("iterations").flatMap { Int(String(decoding: $0, as: UTF8.self)) })
+    let key = try CredentialStore.deriveKey(password: "correct horse battery", salt: salt, iterations: rounds)
+    let old = try CryptoVault(keyProvider: StaticKeyProvider(key: key)).encrypt("earlier-admin-password-check-v1")
+    let combined = old.nonce + old.tag + old.ciphertext
+    var update: OpaquePointer?
+    sqlite3_prepare_v2(db, "UPDATE meta SET value = ? WHERE key = 'check';", -1, &update, nil)
+    _ = combined.withUnsafeBytes { sqlite3_bind_blob(update, 1, $0.baseAddress, Int32(combined.count), unsafeBitCast(-1, to: sqlite3_destructor_type.self)) }
+    #expect(sqlite3_step(update) == SQLITE_DONE)
+    sqlite3_finalize(update)
+
+    let reopened = try CredentialStore(databaseURL: url, iterations: 1000)
+    #expect(reopened.isLocked && reopened.verify("correct horse battery") && !reopened.verify("wrong"))
+    try reopened.unlock("correct horse battery")
+    #expect(reopened.logins.map(\.host) == ["nas.local"])
+    // The check value was upgraded, so it keeps working.
+    #expect(meta("check") != combined)
+    #expect(try CredentialStore(databaseURL: url, iterations: 1000).verify("correct horse battery"))
 }

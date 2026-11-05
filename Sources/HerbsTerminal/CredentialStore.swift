@@ -71,8 +71,8 @@ final class CredentialStore: ObservableObject {
         if let databaseURL {
             fileURL = databaseURL
         } else {
-            try FileManager.default.createDirectory(at: RenameMigration.supportFolder(), withIntermediateDirectories: true)
-            fileURL = RenameMigration.loginDatabase()
+            try FileManager.default.createDirectory(at: AppFolders.support(), withIntermediateDirectories: true)
+            fileURL = AppFolders.loginDatabase()
         }
 
         var dbPointer: OpaquePointer?
@@ -180,9 +180,11 @@ final class CredentialStore: ObservableObject {
             throw StoreError("The Administrator Password settings are missing.")
         }
         let candidate = CryptoVault(keyProvider: StaticKeyProvider(key: try Self.deriveKey(password: password, salt: salt, iterations: rounds)))
-        guard let payload = Self.split(check), (try? candidate.decrypt(payload)) == Self.checkPhrase else {
+        guard let payload = Self.split(check), let opened = try? candidate.decrypt(payload), Self.isCheckValue(opened) else {
             throw StoreError("That Administrator Password is not correct.")
         }
+        // Check values written by earlier builds are replaced with the current one.
+        if opened != Self.checkPhrase { try? setMeta("check", Self.combined(candidate.encrypt(Self.checkPhrase))) }
         vault = candidate
         try reload()
     }
@@ -200,7 +202,7 @@ final class CredentialStore: ObservableObject {
               let rounds = metaString("iterations").flatMap(Int.init),
               let key = try? Self.deriveKey(password: password, salt: salt, iterations: rounds),
               let payload = Self.split(check) else { return false }
-        return (try? CryptoVault(keyProvider: StaticKeyProvider(key: key)).decrypt(payload)) == Self.checkPhrase
+        return (try? CryptoVault(keyProvider: StaticKeyProvider(key: key)).decrypt(payload)).map(Self.isCheckValue) ?? false
     }
 
     /// Protects a secret kept elsewhere in Herb's Terminal (a Tailcat address) the same way as login passwords.
@@ -371,6 +373,10 @@ final class CredentialStore: ObservableObject {
     // MARK: Crypto helpers
 
     private static let checkPhrase = "herbsterminal-admin-password-check-v1"
+
+    /// AES-GCM only decrypts with the right key, so a check value that opens proves the password; the
+    /// prefix has changed between builds, the suffix hasn't.
+    static func isCheckValue(_ text: String) -> Bool { text.hasSuffix("-admin-password-check-v1") }
 
     static func deriveKey(password: String, salt: Data, iterations: Int) throws -> SymmetricKey {
         var key = [UInt8](repeating: 0, count: 32)
