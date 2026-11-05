@@ -6,7 +6,8 @@ APP_NAME="HerbsTerminal"
 DISPLAY_NAME="Herb's Terminal"
 BUNDLE_ID="org.herbsterminal.app"
 MIN_SYSTEM_VERSION="15.0"
-VERSION="1.0.0"
+# The version rises with every commit on main; see script/version.sh.
+VERSION="$(sh "$(dirname "${BASH_SOURCE[0]}")/version.sh")"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"

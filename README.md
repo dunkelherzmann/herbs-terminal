@@ -102,6 +102,10 @@ dist/                  build output (gitignored)
 - Administrator mode uploads use unguessable temporary filenames and never write through existing files or preserve setuid/setgid bits
 - The SSH socket folder is verified to be a real directory owned by the current user with mode `0700`
 
+## Versioning
+
+Versions are `major.minor.patch`. [`VERSION`](VERSION) holds the major and minor number, and the patch number is the count of commits since `VERSION` last changed, so it rises with every push to `main`. Editing `VERSION` (to `1.1`, say) starts the next series at `1.1.0`. `script/version.sh` prints the current version, and the builds use it.
+
 ## Open source
 
 Herb's Terminal is free and open source under the [MIT License](LICENSE): use it, change it and share it, for personal or commercial work. Just keep the copyright and license notice with any copy. Third-party components keep their own licenses; see [NOTICES](NOTICES).
