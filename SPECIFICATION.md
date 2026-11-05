@@ -22,6 +22,10 @@ It covers the everyday features of the stock macOS Terminal and Ptyxis. It adds:
 - **Building:** `script/build_and_run.sh` builds and signs `dist/Herb's Terminal.app` with bundle ID `org.herbsterminal.app`.
   - `--bundle` assembles the app without touching a running copy.
   - `--verify` builds the app and checks it.
+- **Signing for other Macs:**
+  - Without a certificate the app is signed ad hoc and runs only on the Mac that built it.
+  - With `SIGN_IDENTITY` set to a Developer ID Application certificate, the app and its helper are signed with the hardened runtime and a secure timestamp.
+  - `script/notarize.sh` then has Apple notarize the app and staples the ticket, so it opens anywhere without Gatekeeper warnings.
 - **Icon:** a dark glass tile in the style of the macOS Terminal icon, with a centered prompt that reads `> HT_`. `script/make_icon.swift` draws it and writes `Assets/HerbsTerminal.icns`.
 - **Local Network permission:** the app declares a Local Network usage description, so macOS can ask for that permission and SSH to machines on the LAN works.
 - **Tests:** `script/test.sh` runs the test suite, including real SFTP transfers through the system SFTP server.
@@ -51,7 +55,7 @@ It covers the everyday features of the stock macOS Terminal and Ptyxis. It adds:
     - Color preset: the theme list.
     - Import iTerm2 Color Preset….
     - Restore Defaults.
-  - Toggle Full Screen, Settings…, About.
+  - Toggle Full Screen, Settings…, and About, which shows the author (dunkelherzmann) and a link to the project on GitHub.
 - **Hover hints:** every control shows a short bubble saying what it is and what it does. It appears after about half a second, in the titlebar too, and while the app is in the background. Screen readers get the same description.
 
 ### Tabs
@@ -62,6 +66,7 @@ It covers the everyday features of the stock macOS Terminal and Ptyxis. It adds:
 - **Switching:** ⌘1–⌘8 pick a tab by position, and ⌘9 picks the last tab. ⇧⌘[ and ⇧⌘] go to the previous and next tab. Keyboard focus moves to the selected tab.
 - **Closing:**
   - ⌘W closes the current tab. When only one tab is left, ⌘W closes the window.
+  - Typing `exit` closes the pane, then the tab, and closes the window when it was the last terminal. In an SSH session, `exit` ends the session and returns to the local shell.
   - Closing a tab, a window or the app asks first if a shell is running another program or an SSH session (Settings ▸ Terminal).
 - **Where new tabs start:** in the current tab's folder or in your home folder, as set in Settings. A profile can also set its own start folder.
 - **Session restore:** when the app quits, each window's tabs are saved with their folder, panes, explorer folder and name, and they reopen at the next launch.
@@ -207,6 +212,7 @@ These shortcuts act on the file list when it has focus. In the terminal, ⌘C an
 - **On a host:**
   - Moving is undoable, copying happens on the host, and deleting asks first and removes whole folders.
   - Pasting files from this Mac uploads them.
+  - Copied items paste into Finder, or the local explorer, as real files and folders. They're downloaded at the moment they're pasted.
   - A folder can't be moved or copied into itself.
 - **Creating and renaming:** right-click an empty area for New Folder and New File, and right-click an item to rename it. New items get a free "untitled" name. On this Mac both actions are undoable; on a host, renaming is.
 
@@ -280,7 +286,7 @@ Right-click one or more items and choose **Get Info…**.
 - Only the salt, the round count and an encrypted check value are stored; the Administrator Password itself never is.
 - Saved logins are locked when the app starts and unlock once per session.
 - Changing the Administrator Password re-encrypts every login in one step.
-- Tailcat peer addresses are protected the same way.
+- Tailcat peer addresses are protected the same way, and are re-encoded whenever the Administrator Password is created, changed or removed.
 
 **Plain text**
 
@@ -297,11 +303,14 @@ Right-click one or more items and choose **Get Info…**.
 
 - **Opening it:** with an Administrator Password set, the window asks for it first. **Skip** still opens the window, showing only plain-text logins, with a bar to unlock the rest.
 - **Top bar:**
-  - **New** and **Edit**: a form for host, port, username and password.
+  - **New** and **Edit**: a form for host, port, username and password. **Show password** shows the stored password as text, for plain-text logins or once the Administrator Password has been entered.
   - **Import**.
-  - **Export**.
-  - **Create Administrator Password** (or **Modify Administrator Password** once one is set).
-- **In the list:** double-click a login to edit it. Right-click, or press Delete, to remove one after a confirmation whose default is Cancel.
+  - **Export**: exports only the ticked logins.
+  - **Create Administrator Password** (or **Modify Administrator Password** once one is set). Leaving both new password fields blank removes the Administrator Password, after a confirmation; saved logins are then stored as plain text, unprotected.
+- **In the list:**
+  - The first column has a checkbox for each login that ticks it for Export; the checkbox in its heading ticks or unticks them all.
+  - Double-click a login to edit it.
+  - Right-click, or press Delete, to remove one after a confirmation whose default is Cancel.
 
 **Import and export**
 
@@ -343,14 +352,15 @@ Tailcat connects machines that can't reach each other by IP. Herb's Terminal run
 
 - **Add a peer:**
   - Enter a name, a username and the peer's secret address.
-  - Mark it **Persistent** (the peer keeps a saved server key) or **One-time** (the address ends with its server).
+  - Mark it **One-time** (the address ends with its server; the default) or **Persistent** (the peer keeps a saved server key).
   - Addresses are protected like saved logins.
 - **Ping** reports whether the route is Direct or Relayed, with the latency.
 - **Connect** opens the shell and explorer through Tailcat.
   - ssh's ProxyCommand is the app's helper, which swaps a one-time token for the address and then runs as the bundled tailcat.
   - So the address never appears in ssh's arguments or in history.
 - **Remove** forgets a peer on this Mac.
-- **Share this Mac:** runs `tailcat serve` for SSH, either one-time or persistent, and shows the address with Copy and Stop.
+- The panel starts empty each time it opens; nothing typed but not added is kept.
+- **Share this Mac:** runs `tailcat serve` for SSH, one-time (the default) or persistent, and shows the address with Copy and Stop.
   - It needs Remote Login turned on.
   - Sharing stops when the app quits.
 - SSH host verification and authentication stay on inside the tunnel.

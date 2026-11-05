@@ -66,8 +66,18 @@ PLIST
 # Sign the assembled bundle under its bundle identifier. Without this the linker's ad-hoc signature
 # names the binary "HerbsTerminal-<hash>", macOS Local Network privacy can't match it to the bundle ID,
 # and ssh to LAN addresses fails with "No route to host".
-codesign --force --sign - --identifier "$BUNDLE_ID.tailcat" "$APP_CONTENTS/Helpers/tailcat"
-codesign --force --sign - --identifier "$BUNDLE_ID" "$APP_BUNDLE"
+#
+# With SIGN_IDENTITY set to a Developer ID Application certificate (for example
+# SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"), the helper and the app are signed with it,
+# with the hardened runtime and a secure timestamp, ready for script/notarize.sh. Otherwise the signature
+# is ad hoc, which runs on this Mac only.
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+SIGN_OPTIONS=(--force --sign "$SIGN_IDENTITY")
+if [[ "$SIGN_IDENTITY" != "-" ]]; then
+  SIGN_OPTIONS+=(--options runtime --timestamp)
+fi
+codesign "${SIGN_OPTIONS[@]}" --identifier "$BUNDLE_ID.tailcat" "$APP_CONTENTS/Helpers/tailcat"
+codesign "${SIGN_OPTIONS[@]}" --identifier "$BUNDLE_ID" "$APP_BUNDLE"
 
 open_app() {
   /usr/bin/open -n "$APP_BUNDLE"

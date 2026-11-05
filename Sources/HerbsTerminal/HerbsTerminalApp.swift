@@ -11,6 +11,25 @@ enum AppMain {
     }
 }
 
+/// Herb's Terminal ▸ About: the name, the author and a link to the project.
+@MainActor
+enum AboutPanel {
+    static let projectURL = URL(string: "https://github.com/dunkelherzmann/herbs-terminal")!
+
+    static func show() {
+        let centered = NSMutableParagraphStyle()
+        centered.alignment = .center
+        let base: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                                                   .foregroundColor: NSColor.labelColor, .paragraphStyle: centered]
+        let credits = NSMutableAttributedString(string: "By dunkelherzmann\n", attributes: base)
+        var link = base
+        link[.link] = projectURL
+        credits.append(NSAttributedString(string: projectURL.absoluteString, attributes: link))
+        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "Herb's Terminal", .credits: credits])
+        NSApp.activate()
+    }
+}
+
 /// Where the app keeps its own files, for every store that needs one.
 enum AppFolders {
     static func support(_ base: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]) -> URL {

@@ -91,7 +91,7 @@ public struct SessionToolbar<Actions: View>: View {
                         .fixedSize()
                         .hint("Main Menu\nTabs, windows, zoom, themes, appearance and settings.").accessibilityLabel("Main Menu")
                 }
-                .padding(.leading, gap * 2 + buttonWidth)
+                .padding(.leading, gap)
             }
             .padding(.leading, 82).padding(.trailing, 10)
         }

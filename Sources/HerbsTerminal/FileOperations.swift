@@ -176,12 +176,29 @@ final class FileClipboard {
 
     func finishCut() { cutCount = nil; remote = nil }
 
-    func writeRemote(_ paths: [String], on endpoint: RemoteEndpoint, cut: Bool) {
+    /// Remote items: Herb's Terminal pastes them on the host (or uploads them elsewhere), and Finder or the
+    /// local explorer gets real files. `fetch` downloads one item to a local URL; it runs only when something
+    /// asks for the files, so copying never downloads anything by itself.
+    func writeRemote(_ paths: [String], on endpoint: RemoteEndpoint, cut: Bool,
+                     fetch: (@Sendable (String, URL) throws -> Void)? = nil) {
         pasteboard.clearContents()
-        pasteboard.setString(paths.joined(separator: "\n"), forType: .string)
+        provider = fetch.map { RemoteFileProvider(fetch: $0) }
+        if let provider {
+            let items = paths.map { path -> NSPasteboardItem in
+                let item = NSPasteboardItem()
+                item.setString(path, forType: RemoteFileProvider.pathType)
+                item.setDataProvider(provider, forTypes: [.fileURL])
+                return item
+            }
+            pasteboard.writeObjects(items)
+        } else {
+            pasteboard.setString(paths.joined(separator: "\n"), forType: .string)
+        }
         remote = (endpoint, paths, cut, pasteboard.changeCount)
         cutCount = nil
     }
+
+    private var provider: RemoteFileProvider?
 
     func readRemote(for endpoint: RemoteEndpoint) -> (paths: [String], cut: Bool)? {
         guard let remote, remote.count == pasteboard.changeCount, remote.endpoint == endpoint else { return nil }
@@ -189,6 +206,36 @@ final class FileClipboard {
     }
 
     var hasContent: Bool { remote?.count == pasteboard.changeCount || !readLocal().urls.isEmpty }
+}
+
+/// Downloads a copied remote item when an app pastes it, into a staging folder that is emptied each launch
+/// and whenever new remote items are copied.
+final class RemoteFileProvider: NSObject, NSPasteboardItemDataProvider {
+    static let pathType = NSPasteboard.PasteboardType("org.herbsterminal.remote-path")
+    static let staging = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("HerbsTerminal/Clipboard", isDirectory: true)
+
+    private let fetch: @Sendable (String, URL) throws -> Void
+    private let folder: URL
+
+    init(fetch: @escaping @Sendable (String, URL) throws -> Void) {
+        self.fetch = fetch
+        try? FileManager.default.removeItem(at: Self.staging)
+        folder = Self.staging.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        super.init()
+    }
+
+    func pasteboard(_ pasteboard: NSPasteboard?, item: NSPasteboardItem, provideDataForType type: NSPasteboard.PasteboardType) {
+        guard type == .fileURL, let path = item.string(forType: Self.pathType) else { return }
+        let target = folder.appendingPathComponent((path as NSString).lastPathComponent)
+        do {
+            if !FileManager.default.fileExists(atPath: target.path) { try fetch(path, target) }
+            item.setString(target.absoluteString, forType: .fileURL)
+        } catch {
+            NSLog("Herb's Terminal: couldn't fetch %@ for the clipboard: %@", path, error.localizedDescription)
+        }
+    }
 }
 
 /// Streams files and folders over one SFTP channel. Uploads land under a temporary name and are
