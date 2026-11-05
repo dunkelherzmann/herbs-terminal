@@ -10,6 +10,11 @@ final class SessionLegend: ObservableObject, @preconcurrency LocalProcessTermina
     private(set) var remoteLocation: String? = nil
     @Published private(set) var title: String
     @Published private(set) var subtitle = "~"
+    @Published private(set) var columns = 0
+    @Published private(set) var rows = 0
+    /// True for a moment after the terminal's size changes.
+    @Published private(set) var showingSize = false
+    private var hideSize: DispatchWorkItem?
 
     init() { title = initialTitle }
 
@@ -41,7 +46,7 @@ final class SessionLegend: ObservableObject, @preconcurrency LocalProcessTermina
                 if proc_name(foreground, &name, UInt32(name.count)) > 0 {
                     let program = String(decoding: name.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
                     if !["sh", "bash", "zsh", "fish", "ksh", "tcsh", "csh"].contains(program) {
-                        next += " — " + (commandLine(foreground) ?? program)
+                        next += " — " + redactCredentials(commandLine(foreground) ?? program)
                     }
                 }
             }
@@ -106,9 +111,42 @@ final class SessionLegend: ObservableObject, @preconcurrency LocalProcessTermina
     func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
         if let view = source as? LocalProcessTerminalView { refresh(view) }
     }
+    /// Called when the shell exits; a split pane closes itself.
+    var onExit: (() -> Void)?
+    /// Called after the terminal's columns or rows change.
+    var onResize: (() -> Void)?
+
     func processTerminated(source: TerminalView, exitCode: Int32?) {
         exited = true
+        DispatchQueue.main.async { [weak self] in self?.onExit?() }
         if let view = source as? LocalProcessTerminalView { refresh(view) }
     }
-    func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
+    /// Shows "columns × rows" briefly when the terminal is resized, as Terminal does in its title.
+    func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {
+        let first = columns == 0
+        columns = newCols
+        rows = newRows
+        onResize?()
+        guard !first else { return }   // not when the tab first opens
+        showingSize = true
+        hideSize?.cancel()
+        let hide = DispatchWorkItem { [weak self] in self?.showingSize = false }
+        hideSize = hide
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: hide)
+    }
+}
+
+/// Hides secrets a command line may carry before it is shown as the window title: `user:password@host`
+/// in a destination or URL, and the values of `-p`/`--password`/`*_TOKEN=`-style arguments.
+func redactCredentials(_ commandLine: String) -> String {
+    var text = commandLine
+    let patterns = [
+        #"([A-Za-z][A-Za-z0-9+.-]*://)?([^\s:/@]+):[^\s@/]+@"#: "$1$2:•••@",
+        #"(?i)(--?(?:pass(?:word)?|token|secret|api[-_]?key)[= ])\S+"#: "$1•••",
+        #"(?i)\b([A-Z0-9_]*(?:PASS(?:WORD)?|TOKEN|SECRET|KEY)=)\S+"#: "$1•••",
+    ]
+    for (pattern, template) in patterns {
+        text = text.replacingOccurrences(of: pattern, with: template, options: .regularExpression)
+    }
+    return text
 }

@@ -1,0 +1,2 @@
+tailcat 0.7.0 (arm64), from https://github.com/tailscale/tailcat via the Homebrew bottle.
+Bundled into HerbsTerminal.app/Contents/Helpers so the app never depends on a system or Homebrew copy.

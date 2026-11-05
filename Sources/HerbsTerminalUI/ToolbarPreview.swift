@@ -13,8 +13,7 @@ private struct ToolbarPreview: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             SessionToolbar(layout: $state.layout, newTab: { state.panel = "New Tab" },
                            multiHost: { state.panel = "Multi-Host Commands" },
-                           tailcat: { state.panel = "Tailcat Peers" },
-                           remoteControl: { state.panel = "Remote Control" }, search: { state.panel = "Find" }) {
+                           tailcat: { state.panel = "Tailcat Peers" }, search: { state.panel = "Find" }) {
                 Button("New Window") { state.panel = "New Window" }
             }
         }

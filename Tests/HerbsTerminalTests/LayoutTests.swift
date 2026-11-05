@@ -16,7 +16,7 @@ func switchingLayoutsKeepsShell() async throws {
     try await Task.sleep(for: .milliseconds(250))
     let pid = shell.view.process.shellPid
     try #require(pid > 0)
-    for layout in [SessionLayout.split, .explorer, .terminal] {
+    for layout in [SessionLayout.explorer, .terminal] {
         state.layout = layout
         try await Task.sleep(for: .milliseconds(200))
         #expect(shell.view.process.shellPid == pid)
@@ -35,7 +35,7 @@ func terminalUsesFactoryBasicProfile() throws {
     #expect(shell.view.font.fontName == stock.fontName)
     #expect(shell.view.font.pointSize == stock.pointSize)
     for dark in [false, true] {
-        shell.applyColors(dark: dark)
+        shell.applyColors(dark: dark, settings: ProfileSettings())
         #expect(shell.view.nativeForegroundColor == (dark ? NSColor.white : NSColor.black))
         #expect(shell.view.nativeBackgroundColor == (dark ? NSColor.black : NSColor.white))
     }
@@ -64,11 +64,16 @@ func tabsKeepIndependentShellsAndSearchReopensTerminal() async throws {
     #expect(workspace.selected === first)
     #expect(first.shell.view.process.shellPid == pid)
     #expect(kill(pid, 0) == 0)
+    // With the explorer filling the window, Find searches files and keeps the explorer.
     first.state.layout = .explorer
     try await Task.sleep(for: .milliseconds(150))
     first.state.find()
+    #expect(first.state.layout == .explorer)
+    #expect(first.state.explorerFindRequest == 1)
+    first.state.layout = .terminal
+    try await Task.sleep(for: .milliseconds(150))
+    first.state.find()
     try await Task.sleep(for: .milliseconds(250))
-    #expect(first.state.layout == .terminal)
     #expect(first.shell.view.subviews.contains { String(describing: type(of: $0)).contains("FindBar") && !$0.isHidden })
 }
 
@@ -98,6 +103,35 @@ func headerCentersOnWindowControls() async throws {
             #expect(abs(difference) <= 0.5)
         }
     }
+}
+
+@Test @MainActor
+func singleTabToolbarIsNotCoveredByTerminal() async throws {
+    _ = NSApplication.shared
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 960, height: 540),
+                          styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                          backing: .buffered, defer: false)
+    window.titleVisibility = .hidden
+    window.titlebarAppearsTransparent = true
+    let workspace = Workspace()
+    let content = NSHostingView(rootView: WorkspaceView(workspace: workspace))
+    window.contentView = content
+    window.orderBack(nil)
+    defer { window.orderOut(nil); window.contentView = nil; workspace.tabs.forEach { $0.shell.close() } }
+    try await Task.sleep(for: .milliseconds(400))
+    #expect(workspace.tabs.count == 1)
+    let rep = try #require(content.bitmapImageRepForCachingDisplay(in: content.bounds))
+    content.cacheDisplay(in: content.bounds, to: rep)
+    // Sample the toolbar band (left of the centered title) and the terminal body below it.
+    let scale = CGFloat(rep.pixelsHigh) / content.bounds.height
+    func pixel(_ x: CGFloat, _ yFromTop: CGFloat) -> NSColor? {
+        rep.colorAt(x: Int(x * scale), y: Int(yFromTop * scale))?.usingColorSpace(.sRGB)
+    }
+    let bar = try #require(pixel(300, 14))
+    let terminal = try #require(pixel(300, 300))
+    let difference = abs(bar.redComponent - terminal.redComponent) + abs(bar.greenComponent - terminal.greenComponent)
+        + abs(bar.blueComponent - terminal.blueComponent)
+    #expect(difference > 0.03)
 }
 
 @Test @MainActor

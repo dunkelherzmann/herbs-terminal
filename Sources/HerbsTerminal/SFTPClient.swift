@@ -16,6 +16,11 @@ struct RemoteAttributes: Equatable, Sendable {
     let size: UInt64?
     let mode: UInt32?
     let modified: UInt32?
+    var uid: UInt32? = nil
+    var gid: UInt32? = nil
+    /// Account names, when a folder listing gave them (SFTP itself only carries the numbers).
+    var owner: String? = nil
+    var group: String? = nil
     var kind: UInt32 { (mode ?? 0) & 0o170000 }
     var directory: Bool { kind == 0o040000 }
     var link: Bool { kind == 0o120000 }
@@ -53,14 +58,15 @@ private struct Packet {
     mutating func attributes() throws -> RemoteAttributes {
         let flags = try take(UInt32.self)
         let size = flags & 1 != 0 ? try take(UInt64.self) : nil
-        if flags & 2 != 0 { _ = try take(UInt64.self) }
+        var uid: UInt32?, gid: UInt32?
+        if flags & 2 != 0 { uid = try take(UInt32.self); gid = try take(UInt32.self) }
         let mode = flags & 4 != 0 ? try take(UInt32.self) : nil
         var modified: UInt32?
         if flags & 8 != 0 { _ = try take(UInt32.self); modified = try take(UInt32.self) }
         if flags & 0x80000000 != 0 {
             for _ in 0..<(try take(UInt32.self)) { _ = try bytes(); _ = try bytes() }
         }
-        return RemoteAttributes(size: size, mode: mode, modified: modified)
+        return RemoteAttributes(size: size, mode: mode, modified: modified, uid: uid, gid: gid)
     }
 }
 
@@ -78,18 +84,26 @@ struct RemoteEndpoint: Equatable, Sendable {
     let host: String
     let port: Int
     let username: String
+    /// Set for peers reached over Tailcat instead of a direct address.
+    var proxyCommand: String?
 
-    var label: String { "\(username)@\(host)" }
+    /// For display. A password typed into the user name (`user:pass@host`) is never shown.
+    var label: String { "\(username.split(separator: ":", maxSplits: 1).first.map(String.init) ?? username)@\(host)" }
 
-    init(host: String, port: Int = 22, username: String) {
+    init(host: String, port: Int = 22, username: String, proxyCommand: String? = nil) {
         self.host = host
         self.port = port
         self.username = username
+        self.proxyCommand = proxyCommand
     }
 
+    /// ssh arguments that reach this endpoint through the tab's shared connection. `extra` comes first
+    /// because ssh keeps the first value it sees for an option.
     func sshArguments(_ extra: [String] = []) -> [String] {
         var args = ["-p", String(port)]
         args.append(contentsOf: extra)
+        args += ["-o", "ControlPath=\(SSHControl.controlPath)"]
+        if let proxyCommand { args += ["-o", "ProxyCommand=\(proxyCommand)"] }
         args.append("\(username)@\(host)")
         return args
     }
@@ -118,7 +132,8 @@ final class SFTPClient {
         try self.init(executable: "/usr/bin/ssh", arguments: endpoint.sshArguments(["-o", "ProxyCommand=/usr/bin/false", "-o", "BatchMode=yes", "-T", "-s"]) + ["sftp"])
     }
 
-    init(executable: String, arguments: [String]) throws {
+    /// `preamble` is written before the SFTP handshake, e.g. the password line `sudo -S` reads.
+    init(executable: String, arguments: [String], preamble: Data? = nil) throws {
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         process.standardInput = input
@@ -126,6 +141,7 @@ final class SFTPClient {
         process.standardError = FileHandle.nullDevice
         try process.run()
         do {
+            if let preamble { try input.fileHandleForWriting.write(contentsOf: preamble) }
             var initPacket = Packet()
             initPacket.number(UInt8(1)); initPacket.number(UInt32(3))
             try send(initPacket)
@@ -206,8 +222,13 @@ final class SFTPClient {
                 guard count > 0 else { throw FileIssue("Empty SFTP directory response.") }
                 for _ in 0..<count {
                     let name = try page.text()
-                    _ = try page.bytes()
-                    let attr = try page.attributes()
+                    // The long name reads like `ls -l`: mode, links, owner, group, …
+                    let columns = String(decoding: try page.bytes(), as: UTF8.self).split(separator: " ", omittingEmptySubsequences: true)
+                    var attr = try page.attributes()
+                    if columns.count > 4 {
+                        attr.owner = String(columns[2])
+                        attr.group = String(columns[3])
+                    }
                     if name == "." || name == ".." { continue }
                     try validateFileName(name)
                     items.append(RemoteEntry(name: name, attributes: attr))
@@ -233,6 +254,10 @@ final class SFTPClient {
     }
     func permissions(_ path: String, _ mode: UInt32) throws {
         _ = try request(9, 101) { $0.string(path); $0.number(UInt32(4)); $0.number(mode & 0o7777) }
+    }
+    /// chown by number; SFTP always sets both.
+    func owner(_ path: String, uid: UInt32, gid: UInt32) throws {
+        _ = try request(9, 101) { $0.string(path); $0.number(UInt32(2)); $0.number(uid); $0.number(gid) }
     }
     func open(_ path: String, flags: UInt32, mode: UInt32 = 0o600) throws -> Data {
         var p = try request(3, 102) {
