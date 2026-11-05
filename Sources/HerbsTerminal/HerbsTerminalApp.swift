@@ -11,7 +11,7 @@ enum AppMain {
     }
 }
 
-/// Herb's Terminal ▸ About: the name, the author and a link to the project.
+/// Herb's Terminal ▸ About: the name, the version (from the bundle), what it is, the author and a link to the project.
 @MainActor
 enum AboutPanel {
     static let projectURL = URL(string: "https://github.com/dunkelherzmann/herbs-terminal")!
@@ -21,7 +21,7 @@ enum AboutPanel {
         centered.alignment = .center
         let base: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
                                                    .foregroundColor: NSColor.labelColor, .paragraphStyle: centered]
-        let credits = NSMutableAttributedString(string: "By dunkelherzmann\n", attributes: base)
+        let credits = NSMutableAttributedString(string: "A terminal for administrators.\n\nBy dunkelherzmann\n", attributes: base)
         var link = base
         link[.link] = projectURL
         credits.append(NSAttributedString(string: projectURL.absoluteString, attributes: link))
