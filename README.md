@@ -77,4 +77,13 @@ dist/                  build output (gitignored)
 
 ## License
 
-Copyright © 2026 Herbert Cisneros. All rights reserved.
+Copyright © 2026 Herbert Cisneros. Creative direction and design by Herbert Cisneros; source code developed with AI coding assistance.
+
+This project is dual-licensed:
+
+| Use case | License |
+|---|---|
+| Personal, open-source, or non-commercial — **provided you publish your modifications under the same terms** | [AGPLv3](LICENSE) — free |
+| Commercial use, or any use where you do not want to publish your source | [Commercial license](LICENSE-COMMERCIAL) — contact the author |
+
+The short version: **use it freely and share your improvements, or pay to keep them private.**
