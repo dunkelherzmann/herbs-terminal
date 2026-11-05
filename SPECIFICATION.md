@@ -169,6 +169,8 @@ These follow macOS Terminal:
   - The socket lives in `/tmp/herbs-<uid>`, which must be a real folder owned by you with mode 0700. Unix socket paths must stay under 104 bytes, which is why the folder name is short.
 - No command line, password or token appears on screen or in shell history.
 - **Saved passwords:** a saved password reaches ssh through `SSH_ASKPASS`, which is the app itself in helper mode. It trades a one-time token over a private socket.
+  - The token only answers a password prompt for the saved login's own `user@host` (as given, or as `~/.ssh/config` resolves it). A ProxyJump host that asks first is asked on the terminal instead.
+  - The socket answers only processes of your own account, and a client that connects and stays silent is dropped after two seconds.
 - Host-key questions, one-time codes and retries are asked in the terminal as usual.
 - The tab checks the shared connection. It attaches the explorer at the remote home folder once the login succeeds, and detaches when ssh exits or the link drops.
 
@@ -221,6 +223,9 @@ These shortcuts act on the file list when it has focus. In the terminal, ⌘C an
 
 - Uploads and downloads work for single files and whole folder trees.
 - A progress strip under the file list has Cancel and Retry. Retry runs a failed or cancelled transfer again from the start.
+- **Speed:** up to 16 requests are kept in flight, as OpenSSH's `sftp` does, so transfers stay fast on slow or distant links.
+- **Hung links:** a server that stops answering for 30 seconds ends the request with an error instead of stalling; the explorer opens a fresh channel, so Reload works again.
+- **This Mac:** copy, move and Move to Trash run in the background with a "Copying…" note, so large folders never freeze the window.
 - **Uploads are staged:** each file is written under an unguessable temporary name, opened exclusively, then renamed into place. A dropped connection never leaves a half-written file, and nothing already at that name is written through.
 - Name clashes get new names, never overwrites.
 - Links to folders inside a tree are skipped, so a link that loops back can't make a transfer run forever.
@@ -271,6 +276,7 @@ Right-click one or more items and choose **Get Info…**.
   - It's checked first, so a wrong password can't hang the session.
   - It's never stored.
   - Accounts with password-free sudo aren't asked.
+- **Deleting as root:** a folder is only emptied when root owns it and the folder holding it and no other account can write to them. Otherwise another account could swap part of the tree for a link mid-delete. The delete stops with an explanation; turn off Administrator mode to delete it with your own access.
 - A red bar marks Administrator mode until you leave it. On a host, it ends with the SSH session it runs over.
 
 ## 6. Saved logins
@@ -345,7 +351,7 @@ Right-click one or more items and choose **Get Info…**.
 **Run Command on Hosts** (Shell menu) runs one command on several machines without typing into any session.
 
 - **Targets:** selected saved logins and the tab's live connection, all at the same time. Each runs over its own ssh channel, with strict host-key checking and no retries.
-- **Results:** each host's outcome, exit code, duration and output.
+- **Results:** each host's outcome, exit code, duration and output. Output is kept up to 64 KB per host while the command runs; the rest is dropped and marked as truncated.
 
 ## 8. Tailcat peers
 
@@ -358,7 +364,7 @@ Tailcat connects machines that can't reach each other by IP. Herb's Terminal run
 - **Ping** reports whether the route is Direct or Relayed, with the latency.
 - **Connect** opens the shell and explorer through Tailcat.
   - ssh's ProxyCommand is the app's helper, which swaps a one-time token for the address and then runs as the bundled tailcat.
-  - So the address never appears in ssh's arguments or in history.
+  - The bundled tailcat runs as a local SOCKS proxy and receives the address over the loopback socket, so the address never appears in ssh's or tailcat's arguments, in the process list, or in history.
 - **Remove** forgets a peer on this Mac.
 - The panel starts empty each time it opens; nothing typed but not added is kept.
 - **Share this Mac:** runs `tailcat serve` for SSH, one-time (the default) or persistent, and shows the address with Copy and Stop.

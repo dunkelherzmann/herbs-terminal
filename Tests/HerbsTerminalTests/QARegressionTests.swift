@@ -275,3 +275,105 @@ func exportSessionSavesTheWholeTextUnderTheTabNameAndTime() throws {
     #expect(Workspace.sessionFileName(title: "Terminal 2", date: date) == "Terminal 2 2026-11-06 09-05.txt")
     #expect(Workspace.sessionFileName(title: "logs/prod: web", date: date) == "logs-prod- web 2026-11-06 09-05.txt")
 }
+
+@Test
+func aSavedPasswordWaitsForItsOwnHostsPrompt() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("tx-\(UUID().uuidString.prefix(8))")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let broker = try AskpassBroker(directory: directory, helperPath: "/bin/true")
+    let token = broker.issue("target-secret", for: ["herb@nas.local", "herb@192.0.2.5"])
+    var asked: [String] = []
+    let terminal: (String, Bool) -> String? = { prompt, _ in asked.append(prompt); return "typed" }
+    // A ProxyJump bastion asking first is answered on the terminal, and the password stays for the target.
+    #expect(HelperMode.askpass(prompt: "ops@bastion's password: ", token: token, socket: broker.socketPath, terminal: terminal) == "typed")
+    #expect(HelperMode.askpass(prompt: "herb@192.0.2.5's password: ", token: token, socket: broker.socketPath, terminal: terminal) == "target-secret")
+    #expect(asked == ["ops@bastion's password: "])
+
+    // A client that connects and never writes doesn't hold up the next one for long.
+    let stalled = socket(AF_UNIX, SOCK_STREAM, 0)
+    var address = sockaddr_un()
+    address.sun_family = sa_family_t(AF_UNIX)
+    withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: broker.socketPath.utf8) }
+    _ = withUnsafePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(stalled, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) } }
+    defer { close(stalled) }
+    let started = Date()
+    let next = broker.issue("next")
+    #expect(AskpassBroker.redeem(token: next, socket: broker.socketPath) == "next")
+    #expect(Date().timeIntervalSince(started) < 5)
+}
+
+@Test
+func asRootFoldersOtherAccountsCanChangeAreNotEmptied() throws {
+    let root = try scratch()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let shared = root.appendingPathComponent("shared")
+    try FileManager.default.createDirectory(at: shared.appendingPathComponent("inner"), withIntermediateDirectories: true)
+    try Data("x".utf8).write(to: shared.appendingPathComponent("inner/file"))
+    let transfer = SFTPTransfer(client: try localSFTP())
+    // Not root's, so as root it's refused and everything stays.
+    #expect(throws: (any Error).self) { try transfer.remove(shared.path, asRoot: true) }
+    #expect(FileManager.default.fileExists(atPath: shared.appendingPathComponent("inner/file").path))
+    // With the user's own access it's deleted as before.
+    try transfer.remove(shared.path)
+    #expect(!FileManager.default.fileExists(atPath: shared.path))
+}
+
+@Test
+func pipelinedTransfersKeepEveryByte() throws {
+    let root = try scratch()
+    defer { try? FileManager.default.removeItem(at: root) }
+    // An odd size, so the last chunk is short; ~1.3 MB keeps many requests in flight.
+    var bytes = Data(count: 1_300_003)
+    for index in bytes.indices { bytes[index] = UInt8(truncatingIfNeeded: index &* 31 &+ 7) }
+    let original = root.appendingPathComponent("big.bin")
+    try bytes.write(to: original)
+    let transfer = SFTPTransfer(client: try localSFTP())
+    try transfer.upload(original, to: root.appendingPathComponent("up.bin").path)
+    try transfer.download(root.appendingPathComponent("up.bin").path, to: root.appendingPathComponent("down.bin"))
+    try transfer.copy(root.appendingPathComponent("down.bin").path, to: root.appendingPathComponent("copy.bin").path)
+    for name in ["up.bin", "down.bin", "copy.bin"] {
+        #expect(try Data(contentsOf: root.appendingPathComponent(name)) == bytes, "\(name)")
+    }
+    #expect(try transfer.readAll(original.path, limit: 2_000_000) == bytes)
+    // Cancelling midway leaves the channel usable for the next request.
+    var cancelled = SFTPTransfer(client: try localSFTP())
+    var chunks = 0
+    cancelled.isCancelled = { chunks += 1; return chunks > 3 }
+    #expect(throws: (any Error).self) { try cancelled.download(original.path, to: root.appendingPathComponent("partial.bin")) }
+    #expect(try cancelled.client.stat(original.path, follow: true).size == UInt64(bytes.count))
+}
+
+@Test
+func aServerThatStopsAnsweringTimesOut() throws {
+    let saved = SFTPClient.replyTimeout
+    SFTPClient.replyTimeout = 1000
+    defer { SFTPClient.replyTimeout = saved }
+    // A fake server: answers the SFTP version handshake, then never replies again.
+    let client = try SFTPClient(executable: "/bin/sh", arguments: ["-c", "printf '\\000\\000\\000\\005\\002\\000\\000\\000\\003'; cat >/dev/null"])
+    let started = Date()
+    #expect(throws: (any Error).self) { try client.stat("/", follow: true) }
+    #expect(Date().timeIntervalSince(started) < 10)
+}
+
+@Test
+func hostCommandOutputIsCappedWhileItRuns() async throws {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/sh")
+    process.arguments = ["-c", "yes 0123456789 | head -c 3000000"]
+    let target = HostTarget(endpoint: RemoteEndpoint(host: "local", username: "me"), password: nil, source: "test")
+    let result = await MultiHostModel.execute(process, target: target)
+    #expect(result.output.hasSuffix("… output truncated"))
+    #expect(result.output.utf8.count < MultiHostModel.outputLimit + 100)
+}
+
+@Test
+func tailcatProxyKeepsTheAddressOffTheCommandLineAndFailsCleanly() throws {
+    let tailcat = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Vendor/tailcat/tailcat").path
+    try #require(FileManager.default.isExecutableFile(atPath: tailcat))
+    let started = Date()
+    // An address no peer serves: the local SOCKS proxy starts, refuses the dial, and the helper exits with 1.
+    #expect(TailcatProxy.run(tailcat: tailcat, address: "tcnotarealaddress", port: 22) == 1)
+    #expect(Date().timeIntervalSince(started) < 30)
+}

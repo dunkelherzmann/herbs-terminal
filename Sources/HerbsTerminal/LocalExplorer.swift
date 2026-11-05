@@ -11,6 +11,8 @@ private struct Entry: Identifiable, Sendable {
 @MainActor
 private final class DirectoryListing: ObservableObject {
     @Published var revision = 0
+    /// Copy, move or trash work running in the background.
+    @Published var working: String?
     @Published var entries: [Entry] = []
     @Published var error: String?
     @Published var devices = LocalPlaces.devices()
@@ -127,6 +129,15 @@ struct LocalExplorer: View {
                 }
                 Divider()
                 if filter.active { FilterBar(filter: filter); Divider() }
+                if let working = listing.working {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(working).font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    Divider()
+                }
                 if let error = listing.error {
                     Text(error).padding()
                     if let administratorToggle, isPermissionError(error) {
@@ -235,16 +246,32 @@ struct LocalExplorer: View {
     private func trash(_ urls: Set<URL>) { trash(Array(urls)) }
     private func cut(_ urls: [URL]) { FileClipboard.shared.writeLocal(urls, cut: true) }
     private func copy(_ urls: [URL]) { FileClipboard.shared.writeLocal(urls, cut: false) }
-    private func trash(_ urls: [URL]) { perform { log.record(try LocalFiles.trash(urls)) } }
+    private func trash(_ urls: [URL]) {
+        inBackground("Moving to Trash…", { try LocalFiles.trash(urls) }) { log.record($0) }
+    }
 
     private func paste() {
         let (urls, cut) = FileClipboard.shared.readLocal()
         guard !urls.isEmpty else { NSSound.beep(); return }
-        perform {
-            let change = cut ? try LocalFiles.move(urls, into: directory) : try LocalFiles.copy(urls, into: directory)
+        let folder = directory
+        inBackground(cut ? "Moving…" : "Copying…", {
+            cut ? try LocalFiles.move(urls, into: folder) : try LocalFiles.copy(urls, into: folder)
+        }) { change in
             log.record(change)
             if cut { FileClipboard.shared.finishCut() }
             if case .created(let created) = change { selection.ids = Set(created) }
+        }
+    }
+
+    /// Copy, move and trash can take a long time (big folders, other volumes), so they run off the main
+    /// thread: the window and every terminal keep working, and the folder reloads when they finish.
+    private func inBackground(_ title: String, _ work: @escaping @Sendable () throws -> FileChange,
+                              then record: @escaping (FileChange) -> Void) {
+        listing.working = title
+        Task {
+            do { record(try await Task.detached(operation: work).value) } catch { NSAlert(error: error).runModal() }
+            listing.working = nil
+            listing.revision += 1
         }
     }
 
