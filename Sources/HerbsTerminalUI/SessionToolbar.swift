@@ -6,7 +6,7 @@ public enum SessionLayout {
 
 public struct SessionToolbar<Actions: View>: View {
     @Binding private var layout: SessionLayout
-    private let newTab, connect, multiHost, tailcat, search: () -> Void
+    private let newTab, connect, multiHost, tailcat, search, exportSession: () -> Void
     private let title, subtitle: String
     private let connectedTo: String?
     private let restoreSize, saveSizeAsDefault: () -> Void
@@ -19,7 +19,7 @@ public struct SessionToolbar<Actions: View>: View {
     public init(layout: Binding<SessionLayout>, title: String = "Terminal", subtitle: String = "~", newTab: @escaping () -> Void,
                 connect: @escaping () -> Void = {}, connectedTo: String? = nil,
                 restoreSize: @escaping () -> Void = {}, saveSizeAsDefault: @escaping () -> Void = {}, multiHost: @escaping () -> Void, tailcat: @escaping () -> Void,
-                search: @escaping () -> Void, multiHostActive: Bool = false,
+                search: @escaping () -> Void, exportSession: @escaping () -> Void = {}, multiHostActive: Bool = false,
                 @ViewBuilder menu: () -> Actions) {
         _layout = layout
         self.title = title
@@ -33,6 +33,7 @@ public struct SessionToolbar<Actions: View>: View {
         self.multiHost = multiHost
         self.tailcat = tailcat
         self.search = search
+        self.exportSession = exportSession
         self.menu = menu()
     }
 
@@ -52,7 +53,7 @@ public struct SessionToolbar<Actions: View>: View {
                     Button("Restore Default Size", action: restoreSize)
                     Button("Make Current Size the Default", action: saveSizeAsDefault)
                 }
-                .frame(maxWidth: max(0, geometry.size.width - 440 - 2 * buttonWidth))
+                .frame(maxWidth: max(0, geometry.size.width - 474 - 2 * buttonWidth))
                 .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
                 .hint([title, subtitle].joined(separator: " ")
                       + "\nDouble-click to return the window and text to their default size; right-click to make the current size the default.")
@@ -71,6 +72,8 @@ public struct SessionToolbar<Actions: View>: View {
                 }
                 Spacer()
                 HStack(spacing: gap) {
+                    button("Export Session", "square.and.arrow.up",
+                           help: "Export Session (⌘S)\nSave everything in this terminal, scrollback included, to a text file.", exportSession)
                     button("Switch Terminal / Explorer", layout == .explorer ? "terminal" : "folder",
                            help: layout == .explorer ? "Show Terminal\nReplace the file explorer with this tab's shell." : "Show File Explorer\nBrowse files on the host this tab is connected to.") {
                         layout = layout == .explorer ? .terminal : .explorer

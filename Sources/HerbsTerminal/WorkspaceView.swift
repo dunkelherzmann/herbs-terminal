@@ -186,6 +186,40 @@ final class Workspace: ObservableObject {
         Task { await model.load() }
     }
 
+    /// Export Session (⌘S): the focused terminal's whole text, scrollback included, to a text file named
+    /// after the tab and the time, for example "Terminal 2 2026-11-06 00-35.txt". In an editor tab, ⌘S saves.
+    func exportSession() {
+        if let editor = selected.editor { editor.save(); return }
+        let text = Self.sessionText(selected.focusedShell)
+        let panel = NSSavePanel()
+        panel.title = "Export Session"
+        panel.allowedContentTypes = [.plainText]
+        panel.nameFieldStringValue = Self.sessionFileName(title: selected.title)
+        let write = { (response: NSApplication.ModalResponse) in
+            guard response == .OK, let url = panel.url else { return }
+            do { try Data(text.utf8).write(to: url, options: .atomic) } catch { NSAlert(error: error).runModal() }
+        }
+        if let window { panel.beginSheetModal(for: window, completionHandler: write) } else { write(panel.runModal()) }
+    }
+
+    /// Everything the terminal holds: the scrollback and the screen (the main screen even while a
+    /// full-screen program such as vim shows its own), without the empty lines below the last output.
+    static func sessionText(_ shell: LocalShell) -> String {
+        var lines = String(decoding: shell.view.getTerminal().getBufferAsData(kind: .normal), as: UTF8.self)
+            .components(separatedBy: "\n")
+        while let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty { lines.removeLast() }
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    /// "<tab name> <yyyy-MM-dd HH-mm>.txt", with characters that can't be in a file name replaced.
+    static func sessionFileName(title: String, date: Date = Date()) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd HH-mm"
+        let name = title.map { "/:\\".contains($0) ? "-" : $0 }
+        return String(name).trimmingCharacters(in: .whitespaces) + " " + formatter.string(from: date) + ".txt"
+    }
+
     /// ⌘1–⌘9: the tab at that position; ⌘9 is the last tab, as in Terminal and Safari.
     func selectTab(number index: Int) {
         // In MultiExec the numbers are the grid's: one per terminal, as its caption shows.
@@ -739,6 +773,7 @@ private struct ActiveWorkspace: View {
                            multiHost: { workspace.multiExec.toggle() },
                            tailcat: { workspace.panel = .tailcat },
                            search: { if let editor = tab.editor { editor.find() } else { tab.state.find() } },
+                           exportSession: { workspace.exportSession() },
                            multiHostActive: workspace.multiExec) {
                 Button("New Tab") { workspace.add() }.help("Open another local terminal in this window.")
                 Button("New Window") { openWindow(id: "session") }.help("Open a new Herb's Terminal window.")
