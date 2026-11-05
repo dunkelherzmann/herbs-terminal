@@ -17,9 +17,9 @@ struct GapClosingTests {
         let root = try scratch()
         defer { try? FileManager.default.removeItem(at: root) }
         let support = root.appendingPathComponent("Support"), caches = root.appendingPathComponent("Caches")
-        try FileManager.default.createDirectory(at: support.appendingPathComponent("HerbsTerminal"), withIntermediateDirectories: true)
-        try Data("db".utf8).write(to: support.appendingPathComponent("HerbsTerminal/logins.sqlite3"))
-        try FileManager.default.createDirectory(at: caches.appendingPathComponent("HerbsTerminal/ssh"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: support.appendingPathComponent("Herb's Terminal"), withIntermediateDirectories: true)
+        try Data("db".utf8).write(to: support.appendingPathComponent("Herb's Terminal/logins.sqlite3"))
+        try FileManager.default.createDirectory(at: caches.appendingPathComponent("Herb's Terminal/ssh"), withIntermediateDirectories: true)
         let defaults = try #require(UserDefaults(suiteName: "gaps-\(UUID().uuidString)"))
         defaults.set("Nord", forKey: "terminalTheme")
 
@@ -28,7 +28,7 @@ struct GapClosingTests {
         #expect(defaults.string(forKey: "terminalTheme") == "Nord")   // a newer value wins
         #expect(defaults.string(forKey: "appearance") == "Dark")
         #expect(FileManager.default.fileExists(atPath: support.appendingPathComponent("HerbsTerminal/logins.sqlite3").path))
-        #expect(!FileManager.default.fileExists(atPath: caches.appendingPathComponent("HerbsTerminal").path))
+        #expect(!FileManager.default.fileExists(atPath: caches.appendingPathComponent("Herb's Terminal").path))
         // Runs once.
         defaults.removeObject(forKey: "appearance")
         RenameMigration.run(defaults: defaults, oldSettings: ["appearance": "Light"], support: support, caches: caches)

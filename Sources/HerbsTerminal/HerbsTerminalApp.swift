@@ -13,10 +13,10 @@ enum AppMain {
     }
 }
 
-/// The app was called HerbsTerminal. Its settings and saved data move over once, before anything reads them.
+/// One-time migration of settings and saved data from the previous app identity.
 enum RenameMigration {
-    static let oldDomain = "org.herbsterminal.app"
-    static let doneKey = "migratedFromHerbsTerminal"
+    static let oldDomain = "org.herbsterminal.old"
+    static let doneKey = "migratedFromOldApp"
 
     /// Where the app keeps its own files, for every store that needs one.
     static func supportFolder(_ support: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]) -> URL {
@@ -28,7 +28,7 @@ enum RenameMigration {
     }
 
     /// Builds after the rename kept logins in "Herb's Terminal/" while everything else, including the
-    /// migrated HerbsTerminal data, went to "HerbsTerminal/". The newer database moves in; a copy already there
+    /// migrated legacy app data, went to "HerbsTerminal/". The newer database moves in; a copy already there
     /// is set aside, never deleted. Retried at each launch until nothing is left behind.
     static func moveLoginDatabase(support: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]) {
         let fileManager = FileManager.default
@@ -57,12 +57,12 @@ enum RenameMigration {
         guard !defaults.bool(forKey: doneKey) else { return }
         for (key, value) in oldSettings ?? [:] where defaults.object(forKey: key) == nil { defaults.set(value, forKey: key) }
         let fileManager = FileManager.default
-        let oldFolder = support.appendingPathComponent("HerbsTerminal"), newFolder = supportFolder(support)
+        let oldFolder = support.appendingPathComponent("Herb's Terminal"), newFolder = supportFolder(support)
         if fileManager.fileExists(atPath: oldFolder.path), !fileManager.fileExists(atPath: newFolder.path) {
             try? fileManager.moveItem(at: oldFolder, to: newFolder)
         }
         // The old cache only held sockets and one-shot launchers; nothing there is worth keeping.
-        try? fileManager.removeItem(at: caches.appendingPathComponent("HerbsTerminal"))
+        try? fileManager.removeItem(at: caches.appendingPathComponent("Herb's Terminal"))
         defaults.set(true, forKey: doneKey)
     }
 }

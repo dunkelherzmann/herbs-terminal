@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Follow TDD (RED-GREEN-REFACTOR) and Verification-Before-Completion. Every task ends with an independently testable deliverable and verified test suite execution.
 
-**Goal:** Implement Phase 1 of HerbsTerminal: encrypted SQLite/Keychain credential store, CSV import/export with duplicate conflict resolution, "Connect via SSH" UI sheet with saved account picker, host-following remote explorer, and SFTP file operations.
+**Goal:** Implement Phase 1 of Herb's Terminal: encrypted SQLite/Keychain credential store, CSV import/export with duplicate conflict resolution, "Connect via SSH" UI sheet with saved account picker, host-following remote explorer, and SFTP file operations.
 
 **Architecture:** 
 1. `CredentialVault`: SQLite3 store (`herbsterminal_logins.db`) with AES-GCM encrypted passwords using a 256-bit symmetric key stored in macOS Keychain.

@@ -25,8 +25,8 @@ func renamedBuildsFindTheLoginsTheMigrationMoved() throws {
     let support = try scratch()
     defer { try? FileManager.default.removeItem(at: support) }
     let defaults = try #require(UserDefaults(suiteName: "qa-\(UUID().uuidString)"))
-    try FileManager.default.createDirectory(at: support.appendingPathComponent("HerbsTerminal"), withIntermediateDirectories: true)
-    let old = try store(at: support.appendingPathComponent("HerbsTerminal/logins.sqlite3"))
+    try FileManager.default.createDirectory(at: support.appendingPathComponent("Herb's Terminal"), withIntermediateDirectories: true)
+    let old = try store(at: support.appendingPathComponent("Herb's Terminal/logins.sqlite3"))
     try old.save(SSHLogin(host: "nas.local", port: 22, username: "herb", password: "pw"))
 
     RenameMigration.run(defaults: defaults, oldSettings: [:], support: support, caches: support.appendingPathComponent("caches"))
