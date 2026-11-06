@@ -119,8 +119,8 @@ Sources/
 Tests/
   HerbsTerminalTests/  unit and integration tests
 linux/                 the Linux version: Swift package, Flatpak manifest, desktop file, icons
-windows/               the Windows version (early): Swift package, Win32 UI, ConPTY
   Sources/HerbsTerminal/Shared/   links to the macOS sources both versions share
+windows/               the Windows version (early): Swift package, Win32 UI, ConPTY
 Assets/                app icon source files
 Vendor/tailcat/        bundled tailcat binary + license
 script/                build, signing, icon generation, and test scripts
