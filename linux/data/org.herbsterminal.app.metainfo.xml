@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.herbsterminal.app</id>
+  <name>Herb's Terminal</name>
+  <summary>A terminal for administrators</summary>
+  <developer id="io.github.dunkelherzmann">
+    <name>dunkelherzmann</name>
+  </developer>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <url type="homepage">https://github.com/dunkelherzmann/herbs-terminal</url>
+  <url type="bugtracker">https://github.com/dunkelherzmann/herbs-terminal/issues</url>
+  <description>
+    <p>Each tab pairs a shell with a file explorer. When the shell connects to another machine over SSH, the explorer
+    follows it to the same host and account: shell, files, transfers, text editing and permissions in one tab.</p>
+    <ul>
+      <li>An SSH-aware file explorer in the style of Thunar, with a built-in text editor</li>
+      <li>MultiExec, which types into several terminals at once</li>
+      <li>An encrypted login vault</li>
+      <li>Administrator mode, for working on files as root</li>
+      <li>Tailcat pairing, for reaching machines that can't reach each other by IP</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">org.herbsterminal.app.desktop</launchable>
+  <content_rating type="oars-1.1"/>
+  <provides>
+    <binary>herbs-terminal</binary>
+  </provides>
+  <releases>
+    <release version="1.0.0" date="2026-11-06"/>
+  </releases>
+</component>

@@ -60,3 +60,15 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+-------------------------------------------------------------------------------
+
+The Linux version (the Flatpak) also contains:
+
+VTE (https://gitlab.gnome.org/GNOME/vte), version 0.82.4, under the GNU Lesser General Public License
+version 3 or later (https://www.gnu.org/licenses/lgpl-3.0.html). It is built unmodified from the official
+release tarball by linux/org.herbsterminal.app.yml, and links dynamically, so it can be replaced.
+VTE itself includes fast_float (Apache-2.0 / MIT / BSL-1.0), {fmt} (MIT) and simdutf (Apache-2.0 / MIT).
+
+It runs on the GNOME runtime from Flathub (GTK 4, libadwaita, GtkSourceView, GLib and others), which is
+installed separately and carries its own licenses.
