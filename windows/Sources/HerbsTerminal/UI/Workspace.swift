@@ -7,6 +7,8 @@ final class Workspace: WindowObject {
     static let className = "HerbsTerminalWindow"
     private static let aboutCommand: UINT_PTR = 0x1000
     private static let settingsCommand: UINT_PTR = 0x1010
+    private static let connectCommand: UINT_PTR = 0x1020
+    private static let loginsCommand: UINT_PTR = 0x1030
 
     private(set) var hwnd: HWND?
     private var tabs: [TerminalPane] = []
@@ -16,7 +18,7 @@ final class Workspace: WindowObject {
     private var observers: [ObservationToken] = []
 
     private enum Hit: Equatable {
-        case none, tab(Int), close(Int), newTab
+        case none, tab(Int), close(Int), newTab, connect
     }
 
     init() {
@@ -26,6 +28,8 @@ final class Workspace: WindowObject {
         setDarkTitleBar(hwnd, appIsDark)
         if let menu = GetSystemMenu(hwnd, false) {
             AppendMenuW(menu, UINT(MF_SEPARATOR), 0, nil)
+            withWide("Connect via SSH…\tCtrl+Shift+K") { _ = AppendMenuW(menu, UINT(MF_STRING), Self.connectCommand, $0) }
+            withWide("Manage Logins…") { _ = AppendMenuW(menu, UINT(MF_STRING), Self.loginsCommand, $0) }
             withWide("Settings…\tCtrl+,") { _ = AppendMenuW(menu, UINT(MF_STRING), Self.settingsCommand, $0) }
             withWide("About Herb's Terminal") { _ = AppendMenuW(menu, UINT(MF_STRING), Self.aboutCommand, $0) }
         }
@@ -44,14 +48,36 @@ final class Workspace: WindowObject {
     var activePane: TerminalPane? { tabs.indices.contains(active) ? tabs[active] : nil }
 
     func newTab() {
-        guard let hwnd else { return }
+        addPane()?.start()
+    }
+
+    /// A new, selected tab whose process the caller starts.
+    private func addPane() -> TerminalPane? {
+        guard let hwnd else { return nil }
         let pane = TerminalPane(parent: hwnd, settings: TerminalProfile.shared.settings(for: nil))
         pane.onTitleChange = { [weak self] _ in self?.refreshTitles() }
         pane.onExit = { [weak self] pane in self?.close(pane) }
         tabs.append(pane)
         layout()
         select(tabs.count - 1)
-        pane.start()
+        return pane
+    }
+
+    // MARK: SSH
+
+    func showConnect() {
+        ConnectDialog.run(owner: hwnd) { [weak self] login in self?.connectSSH(login) }
+    }
+
+    /// Opens the login in a new tab running Windows' ssh. A saved or typed password reaches ssh only through the
+    /// askpass broker.
+    func connectSSH(_ login: SSHLogin) {
+        let endpoint = RemoteEndpoint(host: login.host, port: login.port, username: login.username)
+        addPane()?.startSSH(endpoint, password: login.password.isEmpty ? nil : login.password)
+    }
+
+    func showLogins() {
+        ManageLoginsWindow.show(owner: hwnd)
     }
 
     /// Ends every tab's shell without asking (the app is quitting).
@@ -112,6 +138,7 @@ final class Workspace: WindowObject {
             if letter("T") { newTab(); return true }
             if letter("W") { closeTab(at: active); return true }
             if letter("N") { App.newWindow(); return true }
+            if letter("K") { showConnect(); return true }
             if key == VK_TAB { select((active - 1 + tabs.count) % tabs.count); return true }
         }
         if control && !shift && !alt {
@@ -195,13 +222,15 @@ final class Workspace: WindowObject {
         var tabs: [RECT]
         var closes: [RECT]
         var newTab: RECT
+        var connect: RECT
     }
 
     private var geometry: TabGeometry {
         let strip = stripRect
         let margin = scaled(6, dpi: dpi), gap = scaled(2, dpi: dpi)
         let plusWidth = scaled(32, dpi: dpi)
-        let available = strip.right - 2 * margin - plusWidth
+        let connectWidth = scaled(48, dpi: dpi)
+        let available = strip.right - 2 * margin - plusWidth - connectWidth - gap
         let count = Int32(max(1, tabs.count))
         let width = max(scaled(60, dpi: dpi), min(scaled(220, dpi: dpi), (available - gap * (count - 1)) / count))
         var rects: [RECT] = [], closes: [RECT] = []
@@ -217,7 +246,8 @@ final class Workspace: WindowObject {
             x += width + gap
         }
         return TabGeometry(tabs: rects, closes: closes,
-                           newTab: RECT(left: x + gap, top: top, right: x + gap + plusWidth, bottom: strip.bottom))
+                           newTab: RECT(left: x + gap, top: top, right: x + gap + plusWidth, bottom: strip.bottom),
+                           connect: RECT(left: x + 2 * gap + plusWidth, top: top, right: x + 2 * gap + plusWidth + connectWidth, bottom: strip.bottom))
     }
 
     private func hitTest(_ lParam: LPARAM) -> Hit {
@@ -228,7 +258,8 @@ final class Workspace: WindowObject {
             if inside(g.closes[index]) { return .close(index) }
             if inside(g.tabs[index]) { return .tab(index) }
         }
-        return inside(g.newTab) ? .newTab : .none
+        if inside(g.newTab) { return .newTab }
+        return inside(g.connect) ? .connect : .none
     }
 
     private func paintStrip(_ dc: HDC?) {
@@ -273,6 +304,11 @@ final class Workspace: WindowObject {
         SetTextColor(dc, text)
         var glyph = Array("+".utf16)
         DrawTextW(dc, &glyph, Int32(glyph.count), &plus, UINT(DT_SINGLELINE | DT_VCENTER | DT_CENTER))
+        // Connect via SSH, beside New Tab as on the Mac and Linux toolbars.
+        var connect = g.connect
+        if hover == .connect { fill(dc, connect, blend(chrome, text, 0.15)) }
+        var ssh = Array("SSH".utf16)
+        DrawTextW(dc, &ssh, Int32(ssh.count), &connect, UINT(DT_SINGLELINE | DT_VCENTER | DT_CENTER))
     }
 
     // MARK: Messages
@@ -306,6 +342,7 @@ final class Workspace: WindowObject {
             case .tab(let index): select(index)
             case .close(let index): closeTab(at: index)
             case .newTab: newTab()
+            case .connect: showConnect()
             case .none: break
             }
             return 0
@@ -335,6 +372,14 @@ final class Workspace: WindowObject {
             InvalidateRect(hwnd, &strip, false)
             return 0
         case WM_SYSCOMMAND:
+            if wParam & 0xFFF0 == Self.connectCommand {
+                showConnect()
+                return 0
+            }
+            if wParam & 0xFFF0 == Self.loginsCommand {
+                showLogins()
+                return 0
+            }
             if wParam & 0xFFF0 == Self.settingsCommand {
                 showSettings()
                 return 0

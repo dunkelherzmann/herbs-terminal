@@ -21,7 +21,7 @@ let package = Package(
             linkerSettings: [
                 .linkedLibrary("user32"), .linkedLibrary("gdi32"), .linkedLibrary("comctl32"),
                 .linkedLibrary("shell32"), .linkedLibrary("ole32"), .linkedLibrary("dwmapi"),
-                .linkedLibrary("comdlg32"), .linkedLibrary("uxtheme"),
+                .linkedLibrary("comdlg32"), .linkedLibrary("uxtheme"), .linkedLibrary("advapi32"),
                 .unsafeFlags(["-Xlinker", "/SUBSYSTEM:WINDOWS", "-Xlinker", "/ENTRY:mainCRTStartup",
                               // Common Controls 6: current-style buttons, drop-downs and fields.
                               "-Xlinker", "/MANIFEST:EMBED",

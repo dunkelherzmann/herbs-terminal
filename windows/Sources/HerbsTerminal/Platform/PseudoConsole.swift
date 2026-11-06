@@ -15,7 +15,8 @@ final class PseudoConsole: @unchecked Sendable {
 
     /// Starts `commandLine` in `directory` with a `columns` × `rows` console. `notify` is posted to `window`
     /// when output is waiting, and `exited` when the shell ends.
-    init(commandLine: String, directory: String?, columns: Int, rows: Int, window: HWND) throws {
+    /// `extraEnvironment` is added to the app's own environment for this process only (ssh's askpass settings).
+    init(commandLine: String, directory: String?, extraEnvironment: [String: String] = [:], columns: Int, rows: Int, window: HWND) throws {
         var inputRead: HANDLE?, inputWrite: HANDLE?, outputRead: HANDLE?, outputWrite: HANDLE?
         guard CreatePipe(&inputRead, &inputWrite, nil, 0), CreatePipe(&outputRead, &outputWrite, nil, 0) else {
             throw FileIssue("Couldn't create the pipes for the shell.")
@@ -55,16 +56,25 @@ final class PseudoConsole: @unchecked Sendable {
         startup.lpAttributeList = attributes
         var info = PROCESS_INFORMATION()
         var command = commandLine.wide
+        // The app's environment plus `extraEnvironment`, as a sorted block of "NAME=value\0" ending with "\0".
+        var block: [WCHAR]? = nil
+        if !extraEnvironment.isEmpty {
+            var variables = ProcessInfo.processInfo.environment
+            for (name, value) in extraEnvironment { variables[name] = value }
+            block = variables.keys.sorted { $0.uppercased() < $1.uppercased() }
+                .flatMap { Array("\($0)=\(variables[$0]!)".utf16) + [0] } + [0]
+        }
+        let flags = DWORD(EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT)
         let started = withUnsafeMutablePointer(to: &startup) { pointer in
             pointer.withMemoryRebound(to: STARTUPINFOW.self, capacity: 1) { startupInfo in
-                if let directory {
-                    return withWide(directory) {
-                        CreateProcessW(nil, &command, nil, nil, false, DWORD(EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT),
-                                       nil, $0, startupInfo, &info)
+                func create(_ environment: UnsafeMutableRawPointer?) -> Bool {
+                    if let directory {
+                        return withWide(directory) { CreateProcessW(nil, &command, nil, nil, false, flags, environment, $0, startupInfo, &info) }
                     }
+                    return CreateProcessW(nil, &command, nil, nil, false, flags, environment, nil, startupInfo, &info)
                 }
-                return CreateProcessW(nil, &command, nil, nil, false, DWORD(EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT),
-                                      nil, nil, startupInfo, &info)
+                guard block != nil else { return create(nil) }
+                return block!.withUnsafeMutableBytes { create($0.baseAddress) }
             }
         }
         guard started else {
@@ -127,6 +137,14 @@ final class PseudoConsole: @unchecked Sendable {
     func resize(columns: Int, rows: Int) {
         guard let console, !closed else { return }
         ResizePseudoConsole(console, COORD(X: SHORT(clamping: columns), Y: SHORT(clamping: rows)))
+    }
+
+    /// The process's exit code once it has ended.
+    var exitCode: DWORD? {
+        guard let process else { return nil }
+        var code: DWORD = 0
+        guard GetExitCodeProcess(process, &code), code != DWORD(STILL_ACTIVE) else { return nil }
+        return code
     }
 
     var hasExited: Bool {
