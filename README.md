@@ -1,6 +1,6 @@
 # Herb's Terminal
 
-**Herb's Terminal** is a native macOS terminal for administrators. It runs on Apple silicon Macs (macOS 15+) and manages local files and remote Linux, macOS, and Windows machines over SSH.
+**Herb's Terminal** is a terminal for administrators. It runs in and manages local files and remote Linux, macOS, and Windows machines over SSH.
 
 Each tab pairs a shell with an SSH-aware file explorer. When the shell connects to another machine, the explorer follows it to the same host and account — shell, files, transfers, text editing, and permissions all in one tab.
 
