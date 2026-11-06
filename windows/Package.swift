@@ -21,7 +21,11 @@ let package = Package(
             linkerSettings: [
                 .linkedLibrary("user32"), .linkedLibrary("gdi32"), .linkedLibrary("comctl32"),
                 .linkedLibrary("shell32"), .linkedLibrary("ole32"), .linkedLibrary("dwmapi"),
-                .unsafeFlags(["-Xlinker", "/SUBSYSTEM:WINDOWS", "-Xlinker", "/ENTRY:mainCRTStartup"]),
+                .linkedLibrary("comdlg32"), .linkedLibrary("uxtheme"),
+                .unsafeFlags(["-Xlinker", "/SUBSYSTEM:WINDOWS", "-Xlinker", "/ENTRY:mainCRTStartup",
+                              // Common Controls 6: current-style buttons, drop-downs and fields.
+                              "-Xlinker", "/MANIFEST:EMBED",
+                              "-Xlinker", "/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'"]),
             ]),
     ]
 )

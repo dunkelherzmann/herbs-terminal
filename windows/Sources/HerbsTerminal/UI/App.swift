@@ -11,11 +11,13 @@ enum App {
         SetCurrentProcessExplicitAppUserModelID(withWide("HerbsTerminal.App") { UnsafeMutablePointer(mutating: $0) })
         registerClass(Workspace.className)
         registerClass(TerminalPane.className, style: UINT(CS_DBLCLKS))
+        registerClass(SettingsWindow.className, background: GetSysColorBrush(COLOR_WINDOW))
         newWindow()
 
         var message = MSG()
         while GetMessageW(&message, nil, 0, 0) {
             if let workspace = workspace(for: message.hwnd), workspace.shortcut(message) { continue }
+            if SettingsWindow.dialogMessage(&message) { continue }
             TranslateMessage(&message)
             DispatchMessageW(&message)
         }

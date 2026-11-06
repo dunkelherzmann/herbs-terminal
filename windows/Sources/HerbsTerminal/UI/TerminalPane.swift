@@ -42,7 +42,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     }
 
     /// Starts the shell. Call once the pane has its size, so the shell starts with the right grid.
-    func start(commandLine: String = DefaultShell.commandLine, directory: String? = nil) {
+    func start(commandLine: String = ShellChoice.commandLine, directory: String? = nil) {
         guard let hwnd, session == nil else { return }
         let start = directory ?? ProcessInfo.processInfo.environment["USERPROFILE"]
         do {

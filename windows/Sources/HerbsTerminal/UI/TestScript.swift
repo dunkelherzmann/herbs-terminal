@@ -6,7 +6,7 @@ import WinSDK
 ///   HerbsTerminal.exe --type "dir\r" --type "exit\r" --capture C:\shot.bmp
 ///
 /// Each `--type` goes straight to the active terminal 1.5 s apart (`\r` is Enter, `\e` is Escape, `\t` alone
-/// opens a new tab); `--capture` then saves the window as a BMP and quits. The window opens without taking focus,
+/// opens a new tab, a lone `\s` opens Settings); `--capture` then saves the window as a BMP and quits. The window opens without taking focus,
 /// and nothing is typed into other windows.
 @MainActor
 enum TestScript {
@@ -15,7 +15,7 @@ enum TestScript {
     static var active: Bool { !steps.isEmpty }
 
     private enum Step {
-        case type(String), newTab, capture(String)
+        case type(String), newTab, settings, capture(String)
     }
 
     private static func parse(_ arguments: [String]) -> [Step] {
@@ -25,7 +25,7 @@ enum TestScript {
             switch arguments[index] {
             case "--type":
                 let text = arguments[index + 1]
-                if text == "\\t" { steps.append(.newTab) } else {
+                if text == "\\t" { steps.append(.newTab) } else if text == "\\s" { steps.append(.settings) } else {
                     steps.append(.type(text.replacingOccurrences(of: "\\r", with: "\r").replacingOccurrences(of: "\\e", with: "\u{1b}")))
                 }
             case "--capture": capture = arguments[index + 1]
@@ -43,8 +43,12 @@ enum TestScript {
         switch steps.removeFirst() {
         case .type(let text): workspace.activePane?.send(text)
         case .newTab: workspace.newTab()
+        case .settings: workspace.showSettings()
         case .capture(let path):
             if let hwnd = workspace.hwnd { capture(hwnd, to: path) }
+            if let settings = SettingsWindow.openWindow {
+                capture(settings, to: (path as NSString).deletingPathExtension + "-settings.bmp")
+            }
             PostQuitMessage(0)
         }
         return !steps.isEmpty
