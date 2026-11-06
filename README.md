@@ -103,7 +103,7 @@ The Flatpak asks for broad access, as terminals do: it runs your shell and `ssh`
 A native Win32 version is under way in [`windows/`](windows/README.md): tabs and a full-color terminal running PowerShell through ConPTY work today; the explorer and SSH come next. Build it with the Swift toolchain for Windows and Visual Studio Build Tools:
 
 ```powershell
-windows\devuild.ps1 -Run
+windows\dev\build.ps1 -Run
 ```
 
 ## Built with
