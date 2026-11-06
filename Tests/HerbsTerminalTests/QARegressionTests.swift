@@ -277,6 +277,25 @@ func exportSessionSavesTheWholeTextUnderTheTabNameAndTime() throws {
 }
 
 @Test
+func aSavedPasswordAnswersKeyboardInteractivePrompts() throws {
+    // PAM servers ask through keyboard-interactive: "(user@host) Password:" instead of "user@host's password:".
+    #expect(AskpassBroker.isPasswordPrompt("(herb@nas.local) Password: ", for: "herb@nas.local"))
+    #expect(AskpassBroker.isPasswordPrompt("herb@nas.local's password: ", for: "herb@nas.local"))
+    #expect(!AskpassBroker.isPasswordPrompt("(ops@bastion) Password: ", for: "herb@nas.local"))
+    #expect(!AskpassBroker.isPasswordPrompt("(herb@nas.local) Verification code: ", for: "herb@nas.local"))
+
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("kb-\(UUID().uuidString.prefix(8))")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let broker = try AskpassBroker(directory: directory, helperPath: "/bin/true")
+    let token = broker.issue("target-secret", for: ["herb@nas.local"])
+    var asked: [String] = []
+    let terminal: (String, Bool) -> String? = { prompt, _ in asked.append(prompt); return "typed" }
+    #expect(HelperMode.askpass(prompt: "(herb@nas.local) Password: ", token: token, socket: broker.socketPath, terminal: terminal) == "target-secret")
+    #expect(asked.isEmpty)
+}
+
+@Test
 func aSavedPasswordWaitsForItsOwnHostsPrompt() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("tx-\(UUID().uuidString.prefix(8))")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
