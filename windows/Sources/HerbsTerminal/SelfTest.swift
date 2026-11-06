@@ -10,6 +10,7 @@ enum SelfTest {
         let passed = (try? ok()) ?? false
         if !passed { failures += 1 }
         print("\(passed ? "PASS" : "FAIL")  \(name)")
+        fflush(stdout)
     }
 
     static func run() -> Int32 {

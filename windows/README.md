@@ -4,6 +4,18 @@ A native Win32 version of Herb's Terminal, in Swift. The terminal emulator is Sw
 
 **Status: early.** The window looks like the Mac and Linux versions, and the terminal, Settings and SSH with saved logins work; the file explorer and the rest are still to come (see the roadmap below).
 
+## Running it
+
+The app is self-contained: the `HerbsTerminal-windows` folder holds `HerbsTerminal.exe` and every DLL it needs (the Swift runtime, Foundation and the Microsoft C++ runtime), so nothing has to be installed. Unzip `Herbs-Terminal-<version>-windows-x86_64.zip` (or copy the folder) anywhere and open `HerbsTerminal.exe`. It runs on Windows 10 1809 or later and Windows 11, and uses Windows' own OpenSSH client for SSH.
+
+Build the folder and the zip into `dist\` with:
+
+```powershell
+windows\dev\build.ps1 -Package
+```
+
+The script checks every DLL the app imports, following each file's own imports, and stops if anything other than a part of Windows would be missing. Windows doesn't trust a downloaded `.exe` that isn't code-signed yet, so the first launch of a downloaded copy may show SmartScreen's "Windows protected your PC": choose **More info ▸ Run anyway**.
+
 ## Building
 
 You need:
@@ -17,11 +29,12 @@ Then, from PowerShell in the repository:
 windows\dev\build.ps1 -Run        # build and start the app
 windows\dev\build.ps1 -SelfTest   # build and run the headless checks
 windows\dev\build.ps1 -Release    # optimized build
+windows\dev\build.ps1 -Package    # self-contained folder and zip in dist\
 ```
 
 The script finds Visual Studio itself and sets up the MSVC environment, so it works from any PowerShell window. It copies the sources shared with the other versions (listed in `shared.txt`) into `Sources\HerbsTerminal\Shared` before each build; those copies are gitignored, so edit the originals.
 
-The app is `windows\.build\out\Products\Debug-windows-x86_64\HerbsTerminal.exe` (or `Release-…`).
+A development build is `windows\.build\out\Products\Debug-windows-x86_64\HerbsTerminal.exe` (or `Release-…`). It loads the Swift runtime from the toolchain, so it runs only on a PC with Swift installed; use `-Package` for a copy that runs anywhere.
 
 ## What works
 
@@ -82,4 +95,4 @@ Steps run 1.5 s apart. `--type` sends text straight into the active terminal (`\
 3. File explorer: local files, then remote over SFTP, with the transfer queue and the text editor
 4. Split panes, MultiExec, session restore, Export Session
 5. Mouse reporting for full-screen programs, find in scrollback, IME composition window
-6. App icon, an installer (MSIX or a zip), and code signing
+6. App icon, an installer (MSIX), and code signing
