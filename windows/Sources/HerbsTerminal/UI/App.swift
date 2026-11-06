@@ -14,6 +14,7 @@ enum App {
         registerClass(SettingsWindow.className, background: GetSysColorBrush(COLOR_WINDOW))
         registerClass(FormDialog.className, background: GetSysColorBrush(COLOR_WINDOW))
         registerClass(ManageLoginsWindow.className, background: GetSysColorBrush(COLOR_WINDOW))
+        DarkMenus.apply(dark: appIsDark)
         newWindow()
 
         var message = MSG()
@@ -32,6 +33,15 @@ enum App {
 
     static func newWindow() {
         workspaces.append(Workspace())
+    }
+
+    /// Quit: asks each window to close (each asks first if shells are running); stops at the first that stays.
+    static func quit() {
+        for workspace in workspaces {
+            guard let hwnd = workspace.hwnd else { continue }
+            SendMessageW(hwnd, UINT(WM_CLOSE), 0, 0)
+            if workspace.hwnd != nil { return }
+        }
     }
 
     static func windowClosed(_ workspace: Workspace) {

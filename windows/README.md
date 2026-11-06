@@ -2,7 +2,7 @@
 
 A native Win32 version of Herb's Terminal, in Swift. The terminal emulator is SwiftTerm's engine (the same one the Mac app uses), shells run in a Windows pseudo console (ConPTY), and the screen is painted with GDI. The login vault is the Mac app's own code, compiled unchanged: small `CryptoKit`, `CommonCrypto`, `SQLite3` and `Darwin` modules give it Apple's names on Windows CNG, the system's `winsqlite3` and the Universal CRT, so a vault made on a Mac or on Linux opens here.
 
-**Status: early.** The terminal, Settings and SSH with saved logins work; the file explorer and the rest are still to come (see the roadmap below).
+**Status: early.** The window looks like the Mac and Linux versions, and the terminal, Settings and SSH with saved logins work; the file explorer and the rest are still to come (see the roadmap below).
 
 ## Building
 
@@ -25,7 +25,11 @@ The app is `windows\.build\out\Products\Debug-windows-x86_64\HerbsTerminal.exe` 
 
 ## What works
 
-- Tabs, each running PowerShell 7 (`pwsh`) when it's installed, otherwise Windows PowerShell
+- **The window, laid out as on Linux:** the toolbar takes the title bar's place, with the Main Menu, New Tab and Connect via SSH on the left, the tab's title in the middle, Export Session, the explorer switch, MultiExec, Tailcat Peers and Search on the right, and minimize, maximize and close at the right end (with Windows 11's snap layouts on maximize). Toolbar buttons never take the keyboard from the terminal, and each shows a hover hint after about half a second. The explorer, MultiExec, Tailcat and Search buttons are there but greyed out until those features arrive
+- **Main Menu**, item for item as on Linux: New Tab, New Window, Connect via SSH, Open Tabs, Zoom, Appearance (System / Light / Dark, color presets, iTerm2 import, Restore Defaults), the Shell submenu (Export Session, tabs, Disconnect, Clear to Start, Clear Scrollback, Reset, Hard Reset; splits, profiles, MultiExec and Run Command on Hosts greyed out for now), Toggle Full Screen, Settings, Manage Logins, About and Quit. Menus and hints follow dark mode
+- **Tab strip**: tabs are numbered "Terminal 1", "Terminal 2"… (the lowest free number), double-click or Ctrl+Shift+I to rename, drag to reorder, middle-click to close, right-click for Rename, Move Left/Right and Close. The title shows what the shell reports; double-click it for the default window size and zoom, right-click to make the current size the default
+- **Export Session** (Ctrl+Shift+S): everything in the terminal, scrollback included, to a text file named after the tab and the time
+- Each tab runs PowerShell 7 (`pwsh`) when it's installed, otherwise Windows PowerShell
 - Full color (16, 256 and 24-bit), bold, italic, underline, strikethrough, dim, inverse; wide (CJK) characters
 - Scrollback with the mouse wheel and Shift+Page Up / Down; full-screen programs scroll with the wheel
 - Mouse selection (double-click selects a word), copy and paste as in Windows Terminal: Ctrl+C copies when text is selected, Ctrl+V pastes, right-click copies or pastes; bracketed paste
@@ -43,6 +47,13 @@ The app is `windows\.build\out\Products\Debug-windows-x86_64\HerbsTerminal.exe` 
 | Ctrl+Shift+T | New tab |
 | Ctrl+Shift+W | Close tab |
 | Ctrl+Shift+N | New window |
+| Ctrl+Shift+S | Export Session |
+| Ctrl+Shift+I | Rename tab |
+| Ctrl+Shift+Page Up / Down | Move tab left / right |
+| Ctrl+Shift+L, Ctrl+Alt+K | Clear to Start, Clear Scrollback |
+| Ctrl+Alt+R, Ctrl+Alt+Shift+R | Reset, Hard Reset |
+| F11 | Full screen |
+| Ctrl+Shift+Q | Quit |
 | Ctrl+Tab, Ctrl+Page Down | Next tab |
 | Ctrl+Shift+Tab, Ctrl+Page Up | Previous tab |
 | Alt+1–8, Alt+9 | Tab 1–8, last tab |
@@ -62,11 +73,11 @@ Scripted runs drive the app from the command line instead of simulated keystroke
 HerbsTerminal.exe --type "Get-ChildItem\r" --type "\t" --type "ver\r" --capture shot.bmp
 ```
 
-Steps run 1.5 s apart. `--type` sends text straight into the active terminal (`\r` is Enter, `\e` Escape); a lone `\t` opens a new tab, `\s` Settings, `\k` Connect via SSH, `\l` Manage Logins, and `\f` followed by `value|value|…#button` fills the open dialog and presses that button (`+check` as the last value ticks its checkbox). `--ssh user@host:port` (after `--ssh-password`) opens an SSH tab directly. `--capture` saves the window, and any open Settings, Manage Logins or dialog beside it, as BMPs and quits. The window opens without taking focus.
+Steps run 1.5 s apart. `--type` sends text straight into the active terminal (`\r` is Enter, `\e` Escape); a lone `\t` opens a new tab, `\s` Settings, `\k` Connect via SSH, `\l` Manage Logins, `\m` the Main Menu, `\c<id>` a menu command, and `\f` followed by `value|value|…#button` fills the open dialog and presses that button (`+check` as the last value ticks its checkbox). `--ssh user@host:port` (after `--ssh-password`) opens an SSH tab directly. `--capture` saves the window, and any open Settings, Manage Logins, dialog or menu beside it, as BMPs and quits. The window opens without taking focus.
 
 ## Roadmap
 
-1. Main Menu, named profiles (Settings edits the default profile today), dark-mode Settings
+1. Named profiles (Settings edits the default profile today), dark-mode Settings and dialogs, Find in Terminal
 2. SSH follow-ups: noticing an `ssh` typed in a local tab, the connection details window, saved hosts and MultiExec targets
 3. File explorer: local files, then remote over SFTP, with the transfer queue and the text editor
 4. Split panes, MultiExec, session restore, Export Session
