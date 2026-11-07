@@ -18,6 +18,7 @@ final class SettingsWindow {
         if let open { open.window.present(); return }
         let settings = SettingsWindow()
         open = settings
+        settings.window.owner = settings
         settings.window.present()
     }
 

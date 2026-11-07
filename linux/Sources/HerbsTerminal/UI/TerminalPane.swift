@@ -597,8 +597,11 @@ extension TerminalPane {
         let helper = Host.helperCommand.map(shellQuote).joined(separator: " ")
         let script = """
         #!/bin/sh
-        # Herb's Terminal: hands ssh a saved password once; every other question is asked on the terminal.
-        if answer=$(\(helper) "$1" 2>/dev/null); then printf '%s\\n' "$answer"; exit 0; fi
+        # Herb's Terminal: hands ssh a saved password once; every other question (a new host's fingerprint, a retry,
+        # a one-time code) is asked here on the terminal. The app is asked only for passwords, and never asks itself.
+        case "$1" in
+          *assword*) if answer=$(HERBSTERMINAL_ASK_ON_TERMINAL=no \(helper) "$1" 2>/dev/null </dev/null); then printf '%s\\n' "$answer"; exit 0; fi ;;
+        esac
         printf '%s' "$1" > /dev/tty 2>/dev/null || exit 1
         case "$1" in *assword*|*assphrase*|*ode*|*PIN*|*OTP*|*oken*) secret=1 ;; *) secret=0 ;; esac
         [ "$secret" = 1 ] && stty -echo < /dev/tty

@@ -148,6 +148,44 @@ enum LoginVaultPrompts {
         return alert.runModal() == .alertSecondButtonReturn
     }
 
+    /// The Lock / Unlock button in Tailcat Peers: one window for the Administrator Password that protects saved logins
+    /// and Tailcat addresses. Locked, it asks for the password to unlock; unlocked, it locks (no password needed to
+    /// make things safer). Either way it offers to change the Administrator Password. Without one, there is nothing
+    /// to lock, so it offers to create one.
+    static func manage(_ store: CredentialStore) {
+        guard store.protection == .adminPassword else {
+            if store.protection == .unset { explainSetup(store) } else { createOrModify(store) }
+            return
+        }
+        var message: String?
+        while true {
+            let locked = store.isLocked
+            let alert = NSAlert()
+            alert.messageText = locked ? "Unlock Saved Logins" : "Lock Saved Logins"
+            alert.informativeText = message ?? (locked
+                ? "Enter the Administrator Password to use saved logins and Tailcat addresses this session."
+                : "Locking hides saved logins and Tailcat addresses until the Administrator Password is entered again.")
+            let field = secureField("Administrator Password")
+            if locked {
+                alert.accessoryView = stack([field])
+                alert.window.initialFirstResponder = field
+            }
+            alert.addButton(withTitle: locked ? "Unlock" : "Lock")
+            alert.addButton(withTitle: "Cancel").keyEquivalent = "\u{1B}"
+            alert.addButton(withTitle: "Change Administrator Password…")
+            switch alert.runModal() {
+            case .alertFirstButtonReturn:
+                guard locked else { store.lock(); return }
+                do { try store.unlock(field.stringValue); return } catch { message = error.localizedDescription }
+            case .alertThirdButtonReturn:
+                createOrModify(store)
+                return
+            default:
+                return
+            }
+        }
+    }
+
     /// Asks for the Administrator Password to unlock saved logins for this session.
     @discardableResult
     static func unlock(_ store: CredentialStore, cancelTitle: String = "Cancel", detail: String? = nil) -> Bool {

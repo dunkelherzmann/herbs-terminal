@@ -369,12 +369,17 @@ Tailcat connects machines that can't reach each other by IP. Herb's Terminal run
 - **Connect** opens the shell and explorer through Tailcat.
   - ssh's ProxyCommand is the app's helper, which swaps a one-time token for the address and then runs as the bundled tailcat.
   - The bundled tailcat runs as a local SOCKS proxy and receives the address over the loopback socket, so the address never appears in ssh's or tailcat's arguments, in the process list, or in history.
+  - When the peer is reached but nothing answers SSH there, the terminal says so and how to turn SSH on (Remote Login on a Mac, the SSH service on Linux), before ssh's own "Connection closed" line.
 - **Remove** forgets a peer on this Mac.
 - The panel starts empty each time it opens; nothing typed but not added is kept.
 - **Share this Mac:** runs `tailcat serve` for SSH, one-time (the default) or persistent, and shows the address with Copy and Stop.
-  - It needs Remote Login turned on.
+  - It needs Remote Login turned on. **Start Sharing** checks first: when nothing on this Mac answers SSH, it doesn't share and says to turn on Remote Login in System Settings › General › Sharing.
   - Sharing stops when the app quits.
 - SSH host verification and authentication stay on inside the tunnel.
+- **Unlock… / Lock…** (bottom left, opposite Done) shows whether saved logins and Tailcat addresses are locked.
+  - Its hover bubble explains that it unlocks or locks the safe storage of Tailcat addresses and saved logins with the Administrator Password, or, without one, that they are stored as plain text. VoiceOver reads "Unlock Saved Logins" or "Lock Saved Logins".
+  - Clicking it opens a window. When locked, it asks for the Administrator Password, with **Unlock**, **Cancel** and **Change Administrator Password…**. When unlocked, **Lock** locks again without a password. With no Administrator Password set, it explains the protection and offers to create one.
+  - So a locked store can be unlocked in the Tailcat Peers window itself, without going through Connect via SSH.
 
 ## 9. Accessibility
 
@@ -419,7 +424,7 @@ The Linux version is the same app on GTK 4, libadwaita and VTE, packaged as the 
 - One long-lived `sh` on the host answers the app's questions about a tab's shell: its folder, the foreground program and whether an `ssh` runs under it.
 - `/tmp/herbs-<uid>` is shared with the host: the shared-connection sockets, the one-shot launchers and the password helper live there.
 - **Saved passwords:** ssh on the host can't run the sandboxed executable, so its `SSH_ASKPASS` is a small script that asks the app through `flatpak run` for the saved password, and asks every other question on the terminal. The one-time token, socket and per-account checks are those of section 4.
-- **Tailcat:** the ProxyCommand runs the app's helper through `flatpak run` in the same way.
+- **Tailcat:** the ProxyCommand runs the app's helper through `flatpak run` in the same way. **Start Sharing** checks for the computer's SSH service instead of Remote Login, and suggests `sudo systemctl enable --now sshd` when nothing answers.
 - **The explorer** shows the host's files: home folders, removable drives, `/opt`, `/srv` and `/tmp` at their own paths, the system folders through the Flatpak's read-only view of them. Administrator mode runs the host's own `sftp-server` under `sudo`, so as root it sees and changes everything.
 
 ### Window and toolbar

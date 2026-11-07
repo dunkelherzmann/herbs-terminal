@@ -23,9 +23,10 @@ enum Dialogs {
     }
 
     /// Asks a question; returns the chosen id. `cancel` is what Esc and closing answer. `defaultID` is what Return
-    /// chooses; destructive questions keep Cancel as the default.
+    /// chooses; destructive questions keep Cancel as the default. `collect` runs as soon as a button is chosen,
+    /// while the dialog still exists: read fields in `extra` there, because they're gone once this returns.
     static func ask(_ parent: Widget?, _ heading: String, _ body: String = "", choices: [Choice], defaultID: String? = nil,
-                    cancel: String, extra: Widget? = nil) async -> String {
+                    cancel: String, extra: Widget? = nil, collect: (() -> Void)? = nil) async -> String {
         let dialog = adw_alert_dialog_new(heading, body.isEmpty ? nil : body)!
         let alert: UnsafeMutablePointer<AdwAlertDialog> = c(dialog)
         for choice in choices {
@@ -41,6 +42,7 @@ enum Dialogs {
         if let extra { adw_alert_dialog_set_extra_child(alert, extra) }
         return await withCheckedContinuation { continuation in
             herb_alert_choose(c(dialog), anchor(parent), responseTrampoline, Unmanaged.passRetained(ResponseBox { response in
+                collect?()
                 continuation.resume(returning: response)
             }).toOpaque())
         }
@@ -88,10 +90,11 @@ enum Dialogs {
                 }
             }
         }
+        var values: [String] = []
         let answer = await ask(parent, heading, body, choices: [Choice("cancel", "Cancel"), Choice("ok", ok, okStyle)],
-                               defaultID: "ok", cancel: "cancel", extra: list)
+                               defaultID: "ok", cancel: "cancel", extra: list, collect: { values = entries.map { text(of: $0) } })
         guard answer == "ok" else { return nil }
-        return entries.map { text(of: $0) }
+        return values
     }
 
     /// A file or folder name, with the part before the extension selected.
@@ -139,6 +142,9 @@ final class ToolWindow {
     let header: Widget
     let content: Widget
     var onClose: (() -> Void)?
+    /// The object that runs this window (its buttons call into it with weak references). The window keeps it
+    /// alive until it's destroyed; without this, a dialog's controller was freed once shown and its buttons did nothing.
+    var owner: AnyObject?
 
     init(title: String, width: Int32, height: Int32 = -1, resizable: Bool = false, parent: Widget? = nil) {
         window = adw_window_new()!
@@ -160,7 +166,11 @@ final class ToolWindow {
             args.returns(false)
         }
         App.shared.retain(self)
-        on(window, "destroy") { [weak self] _ in if let self { App.shared.release(self) } }
+        on(window, "destroy") { [weak self] _ in
+            guard let self else { return }
+            self.owner = nil
+            App.shared.release(self)
+        }
     }
 
     func present() { gtk_window_present(c(window)) }

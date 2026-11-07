@@ -73,6 +73,51 @@ enum LoginVaultPrompts {
 
     /// Asks for the Administrator Password to unlock saved logins for this session.
     @discardableResult
+    /// The Lock / Unlock button in Tailcat Peers: one window for the Administrator Password that protects saved logins
+    /// and Tailcat addresses. Locked, it asks for the password to unlock; unlocked, it locks (no password needed to
+    /// make things safer). Either way it offers to change the Administrator Password. Without one, there is nothing
+    /// to lock, so it offers to create one.
+    static func manage(_ store: CredentialStore, parent: Widget?) async {
+        guard store.protection == .adminPassword else {
+            if store.protection == .unset { await explainSetup(store, parent: parent) } else { await createOrModify(store, parent: parent) }
+            return
+        }
+        var message: String?
+        while true {
+            let locked = store.isLocked
+            var extra: Widget?
+            var input: Widget?
+            if locked {
+                let field = entry(password: true)
+                accessibleLabel(field, "Administrator Password")
+                herb_set_bool(raw(field), "activates-default", 1)
+                extra = box(.vertical, spacing: 4, [label("Administrator Password", classes: ["caption", "dim-label"]), field])
+                after(milliseconds: 80) { gtk_widget_grab_focus(field) }
+                input = field
+            }
+            var typed = ""
+            let answer = await Dialogs.ask(parent, locked ? "Unlock Saved Logins" : "Lock Saved Logins",
+                                           message ?? (locked ? "Enter the Administrator Password to use saved logins and Tailcat addresses this session."
+                                                              : "Locking hides saved logins and Tailcat addresses until the Administrator Password is entered again."),
+                                           choices: [.init("change", "Change Administrator Password…"), .init("cancel", "Cancel"),
+                                                     .init(locked ? "unlock" : "lock", locked ? "Unlock" : "Lock", .suggested)],
+                                           defaultID: locked ? "unlock" : "lock", cancel: "cancel", extra: extra,
+                                           collect: { if let input { typed = text(of: input) } })
+            switch answer {
+            case "unlock":
+                do { try store.unlock(typed); return } catch { message = error.localizedDescription }
+            case "lock":
+                store.lock()
+                return
+            case "change":
+                await createOrModify(store, parent: parent)
+                return
+            default:
+                return
+            }
+        }
+    }
+
     static func unlock(_ store: CredentialStore, parent: Widget?, cancelTitle: String = "Cancel", detail: String? = nil) async -> Bool {
         var message: String?
         while store.isLocked {
@@ -83,11 +128,12 @@ enum LoginVaultPrompts {
             herb_set_bool(raw(input), "activates-default", 1)
             append(list, label(field.label, classes: ["caption", "dim-label"]), input)
             after(milliseconds: 80) { gtk_widget_grab_focus(input) }
+            var typed = ""
             let answer = await Dialogs.ask(parent, "Unlock Saved Logins", message ?? detail ?? "Enter the Administrator Password to use your saved logins.",
                                            choices: [.init("cancel", cancelTitle), .init("unlock", "Unlock", .suggested)],
-                                           defaultID: "unlock", cancel: "cancel", extra: list)
+                                           defaultID: "unlock", cancel: "cancel", extra: list, collect: { typed = text(of: input) })
             guard answer == "unlock" else { return false }
-            do { try store.unlock(text(of: input)) } catch { message = error.localizedDescription }
+            do { try store.unlock(typed) } catch { message = error.localizedDescription }
         }
         return true
     }
@@ -162,6 +208,7 @@ final class SSHConnectDialog {
 
     static func show(parent: Widget?, connect: @escaping (SSHLogin) -> Void) {
         let dialog = SSHConnectDialog(parent: parent, connect: connect)
+        dialog.window.owner = dialog
         dialog.window.present()
         Task { await dialog.firstUse() }
     }
@@ -332,6 +379,7 @@ final class ManageLoginsWindow {
                                                detail: "Enter the Administrator Password to see your encrypted logins. Skip to see only logins stored as plain text.")
             }
             let window = ManageLoginsWindow(store: store, parent: parent)
+            window.window.owner = window
             open = window
             window.window.present()
         }
@@ -566,9 +614,9 @@ enum LoginEditor {
             if let message { append(content, label(message, classes: ["caption", "error-text"], wrap: true)) }
             after(milliseconds: 80) { gtk_widget_grab_focus(fields[0]) }
             let answer = await Dialogs.ask(parent, original == nil ? "New Login" : "Edit Login",
-                                           choices: [.init("cancel", "Cancel"), .init("save", "Save", .suggested)], defaultID: "save", cancel: "cancel", extra: content)
+                                           choices: [.init("cancel", "Cancel"), .init("save", "Save", .suggested)], defaultID: "save", cancel: "cancel",
+                                           extra: content, collect: { values = fields.map { text(of: $0) } })
             guard answer == "save" else { return }
-            values = fields.map { text(of: $0) }
             let login = SSHLogin(host: values[0].trimmingCharacters(in: .whitespacesAndNewlines), port: Int(values[1].trimmingCharacters(in: .whitespaces)) ?? 0,
                                  username: values[2].trimmingCharacters(in: .whitespacesAndNewlines), password: values[3])
             do {

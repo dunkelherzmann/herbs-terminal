@@ -77,17 +77,33 @@ enum SSHControl {
     }
 
     @discardableResult
+    /// Runs `/usr/bin/ssh arguments` with no input or output and returns its exit status (-1 if it couldn't start).
+    /// It waits on this one child with waitpid rather than Foundation's Process: in the Linux app GLib also handles
+    /// SIGCHLD, Process sometimes never learned that ssh had exited, and the connection monitor waited forever.
     static func run(_ arguments: [String], environment: [String: String]? = nil) -> Int32 {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
-        process.arguments = arguments
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        if let environment { process.environment = environment }
-        do { try process.run() } catch { return -1 }
-        process.waitUntilExit()
-        return process.terminationStatus
+        let path = "/usr/bin/ssh"
+        let argv: [UnsafeMutablePointer<CChar>?] = ([path] + arguments).map { strdup($0) } + [nil]
+        let env = (environment ?? ProcessInfo.processInfo.environment).map { "\($0.key)=\($0.value)" }
+        let envp: [UnsafeMutablePointer<CChar>?] = env.map { strdup($0) } + [nil]
+        defer { argv.forEach { free($0) }; envp.forEach { free($0) } }
+        #if os(Linux)
+        var actions = posix_spawn_file_actions_t()
+        #else
+        var actions: posix_spawn_file_actions_t?
+        #endif
+        posix_spawn_file_actions_init(&actions)
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
+        posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0)
+        posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0)
+        var pid: pid_t = 0
+        guard posix_spawn(&pid, path, &actions, nil, argv, envp) == 0 else { return -1 }
+        var status: Int32 = 0
+        while waitpid(pid, &status, 0) == -1 {
+            guard errno == EINTR else { return -1 }
+        }
+        // WIFEXITED / WEXITSTATUS, which Swift doesn't import as macros.
+        return status & 0x7f == 0 ? (status >> 8) & 0xff : -1
     }
 }
 
@@ -261,7 +277,15 @@ enum HelperMode {
         switch mode {
         case "askpass":
             let prompt = arguments.count > 1 ? arguments[1] : "Password: "
-            guard let answer = askpass(prompt: prompt, token: token, socket: socket) else { return 1 }
+            // The Linux host script asks everything but saved passwords itself: from inside the Flatpak this process
+            // isn't in the terminal's foreground group, and asking there would stop it (and ssh) for good.
+            let terminal: (String, Bool) -> String?
+            if environment["HERBSTERMINAL_ASK_ON_TERMINAL"] == "no" {
+                terminal = { _, _ in nil }
+            } else {
+                terminal = { prompt, secret in askOnTerminal(prompt, secret: secret) }
+            }
+            guard let answer = askpass(prompt: prompt, token: token, socket: socket, terminal: terminal) else { return 1 }
             FileHandle.standardOutput.write(Data((answer + "\n").utf8))
             return 0
         case "tailcat-proxy":
@@ -353,8 +377,21 @@ enum TailcatProxy {
         guard fd >= 0 else { report("tailcat didn't start its local proxy."); return 1 }
         defer { close(fd) }
         guard handshake(fd, name: name, port: port) else { return 1 }
-        relay(fd)
+        guard relay(fd) else {
+            // tailcat reached the peer, but the peer's tailcat found nothing listening on the port and hung up.
+            report("The Tailcat peer was reached, but nothing answered SSH on port \(port) there. On that computer, turn on SSH: "
+                   + "on a Mac, Remote Login in System Settings › General › Sharing; on Linux, the SSH service (sshd).")
+            return 1
+        }
         return 0
+    }
+
+    /// Whether something on this computer accepts connections on `port`; a Tailcat share passes peers to it.
+    static func acceptsLocalConnections(on port: UInt16) -> Bool {
+        let fd = connectLoopback(port)
+        guard fd >= 0 else { return false }
+        close(fd)
+        return true
     }
 
     private static func handshake(_ fd: Int32, name: [UInt8], port: UInt16) -> Bool {
@@ -381,26 +418,39 @@ enum TailcatProxy {
     }
 
     /// Copies ssh's standard input to the peer and the peer's replies to standard output until either side closes.
-    private static func relay(_ fd: Int32) {
+    /// False when the peer hung up without sending a byte: nothing answered on its end.
+    static func relay(_ fd: Int32, input: Int32 = STDIN_FILENO, output: Int32 = STDOUT_FILENO) -> Bool {
         let done = DispatchSemaphore(value: 0)
+        let silent = SilentPeer()
         Thread.detachNewThread {
-            pump(from: STDIN_FILENO, to: fd)
+            _ = pump(from: input, to: fd)
             shutdown(fd, SHUT_WR)
             done.signal()
         }
         Thread.detachNewThread {
-            pump(from: fd, to: STDOUT_FILENO)
+            if pump(from: fd, to: output) == 0 { silent.mark() }
             done.signal()
         }
         done.wait()
+        return !silent.isMarked
     }
 
-    private static func pump(from source: Int32, to target: Int32) {
+    private final class SilentPeer: @unchecked Sendable {
+        private let lock = NSLock()
+        private var marked = false
+        func mark() { lock.withLock { marked = true } }
+        var isMarked: Bool { lock.withLock { marked } }
+    }
+
+    /// Copies until `source` ends or `target` fails; returns the number of bytes copied.
+    private static func pump(from source: Int32, to target: Int32) -> Int {
         var buffer = [UInt8](repeating: 0, count: 65536)
+        var total = 0
         while true {
             let count = read(source, &buffer, buffer.count)
-            guard count > 0 else { return }
-            guard send(target, Array(buffer[0..<count])) else { return }
+            guard count > 0 else { return total }
+            guard send(target, Array(buffer[0..<count])) else { return total }
+            total += count
         }
     }
 

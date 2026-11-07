@@ -431,3 +431,53 @@ func titleReturnsToThisMacWhenTheRemoteSessionEnds() {
     #expect(shell.legend.title == local)
     #expect(shell.legend.subtitle == "~")
 }
+
+@Test
+func askpassLeavesOtherQuestionsToTheLinuxScriptWhenToldNotToUseTheTerminal() {
+    // The Linux host script asks a new host's fingerprint question itself; the helper, run from inside the
+    // Flatpak, must answer "no answer" at once instead of reaching for the terminal (where it would be stopped).
+    let status = HelperMode.run(environment: ["HERBSTERMINAL_HELPER": "askpass", "HERBSTERMINAL_ASK_ON_TERMINAL": "no"],
+                                arguments: ["herbs-terminal", "Are you sure you want to continue connecting (yes/no/[fingerprint])? "])
+    #expect(status == 1)
+}
+
+@Test
+func sshControlRunReportsTheRealExitStatus() {
+    // run waits on its own ssh with waitpid, so it returns even where something else handles SIGCHLD (the Linux app).
+    #expect(SSHControl.run(["-V"]) == 0)
+    #expect(SSHControl.run(["-O", "check", "-o", "ControlPath=/nonexistent/herbs-test-%C", "user@example.invalid"]) == 255)
+}
+
+@Test
+func tailcatProxyTellsAPeerThatHangsUpSilentlyFromOneThatAnswers() throws {
+    func relay(peerSends reply: [UInt8]) throws -> Bool {
+        var peer: [Int32] = [0, 0], input: [Int32] = [0, 0], output: [Int32] = [0, 0]
+        try #require(socketpair(AF_UNIX, SOCK_STREAM, 0, &peer) == 0 && pipe(&input) == 0 && pipe(&output) == 0)
+        defer { [peer[0], input[0], input[1], output[0], output[1]].forEach { close($0) } }
+        // The far end answers (or not) and hangs up; ssh's side stays open, as it does while waiting for a banner.
+        if !reply.isEmpty { _ = reply.withUnsafeBufferPointer { write(peer[1], $0.baseAddress, $0.count) } }
+        close(peer[1])
+        return TailcatProxy.relay(peer[0], input: input[0], output: output[1])
+    }
+    #expect(try relay(peerSends: []) == false)
+    #expect(try relay(peerSends: Array("SSH-2.0-OpenSSH_10.2\r\n".utf8)) == true)
+}
+
+@Test
+func tailcatSharingChecksThatSomethingAnswersOnTheLocalPort() throws {
+    let listener = socket(AF_INET, SOCK_STREAM, 0)
+    try #require(listener >= 0)
+    var address = sockaddr_in(sin_len: UInt8(MemoryLayout<sockaddr_in>.size), sin_family: sa_family_t(AF_INET),
+                              sin_port: 0, sin_addr: in_addr(s_addr: inet_addr("127.0.0.1")), sin_zero: (0, 0, 0, 0, 0, 0, 0, 0))
+    var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+    let ready = withUnsafeMutablePointer(to: &address) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+            bind(listener, $0, length) == 0 && listen(listener, 1) == 0 && getsockname(listener, $0, &length) == 0
+        }
+    }
+    try #require(ready)
+    let port = UInt16(bigEndian: address.sin_port)
+    #expect(TailcatProxy.acceptsLocalConnections(on: port))
+    close(listener)
+    #expect(!TailcatProxy.acceptsLocalConnections(on: port))
+}

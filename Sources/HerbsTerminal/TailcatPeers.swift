@@ -110,7 +110,9 @@ final class TailcatPeerStore: ObservableObject {
         guard Tailcat.executable != nil else { throw FileIssue("This Herb's Terminal build is missing its bundled tailcat helper.") }
         guard let broker = AskpassBroker.shared else { throw FileIssue("The Herb's Terminal secret helper is unavailable.") }
         let token = broker.issue(try address(of: peer))
-        let proxy = "HERBSTERMINAL_HELPER=tailcat-proxy HERBSTERMINAL_SECRET_TOKEN=\(token) HERBSTERMINAL_SECRET_SOCKET=\(shellQuote(broker.socketPath)) "
+        // ssh runs a ProxyCommand as `exec <command>`, and `exec VAR=value program` looks for a program named
+        // "VAR=value"; env sets the variables instead.
+        let proxy = "/usr/bin/env HERBSTERMINAL_HELPER=tailcat-proxy HERBSTERMINAL_SECRET_TOKEN=\(token) HERBSTERMINAL_SECRET_SOCKET=\(shellQuote(broker.socketPath)) "
             + "\(shellQuote(broker.helperPath)) %p"
         return RemoteEndpoint(host: "tailcat-" + peer.name.filter { $0.isLetter || $0.isNumber || $0 == "-" },
                               port: peer.port, username: peer.username, proxyCommand: proxy)
@@ -161,8 +163,14 @@ final class TailcatShare: ObservableObject {
     func start(persistent: Bool) async {
         guard let tailcat = Tailcat.executable else { error = "This Herb's Terminal build is missing its bundled tailcat helper."; return }
         stop()
+        error = nil
         starting = true
         defer { starting = false }
+        // tailcat hands each peer to this computer's port 22; without an SSH server there, the peer's ssh is cut off.
+        guard await Task.detached(operation: { TailcatProxy.acceptsLocalConnections(on: 22) }).value else {
+            error = "Turn on Remote Login first: nothing on this Mac answers SSH, so a peer couldn't log in. It's in System Settings › General › Sharing."
+            return
+        }
         self.persistent = persistent
         let addressFile = SSHControl.directory.appendingPathComponent("share-\(UUID().uuidString).addr")
         let process = Process()
@@ -328,6 +336,7 @@ struct TailcatPeersView: View {
             }
 
             HStack {
+                VaultLockButton()
                 Spacer()
                 Button("Done", action: dismiss).keyboardShortcut(.cancelAction)
                     .hint("Done (Esc)\nClose this panel. Sharing keeps running until you stop it or quit Herb's Terminal.")
@@ -368,5 +377,24 @@ struct TailcatPeersView: View {
         case .relayed(let detail): "Relayed · \(detail)"
         case .unreachable(let reason): "Unreachable · \(reason)"
         }
+    }
+}
+
+/// Bottom left in Tailcat Peers, opposite Done: locks or unlocks the safe storage of Tailcat addresses (and saved
+/// logins), and offers to change the Administrator Password. It reads what a click does: Unlock… or Lock….
+struct VaultLockButton: View {
+    @ObservedObject private var store = CredentialStore.shared ?? CredentialStore.unavailable()
+
+    var body: some View {
+        let locked = store.isLocked
+        Button { LoginVaultPrompts.manage(store) } label: {
+            Label(locked ? "Unlock…" : "Lock…", systemImage: locked ? "lock" : "lock.open")
+        }
+        .disabled(CredentialStore.unavailableReason != nil)
+        .hint(store.protection == .adminPassword
+              ? (locked ? "Unlock\nUnlock the safe storage of Tailcat addresses and saved logins with the Administrator Password, or change the password."
+                        : "Lock\nLock the safe storage of Tailcat addresses and saved logins until the Administrator Password is entered again, or change the password.")
+              : "Lock\nTailcat addresses and saved logins are stored as plain text. Create an Administrator Password to lock them.")
+        .accessibilityLabel(locked ? "Unlock Saved Logins" : "Lock Saved Logins")
     }
 }
