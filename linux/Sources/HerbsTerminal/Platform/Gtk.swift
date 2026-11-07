@@ -154,6 +154,12 @@ func append(_ container: Widget, _ children: Widget?...) {
 }
 
 func removeChildren(_ container: Widget) {
+    // A focused widget that is removed (a selectable label, say) stays the window's focus, and the next frame
+    // crashed inside GTK. Move the focus off anything being removed first.
+    if let root = gtk_widget_get_root(container), let focus = gtk_root_get_focus(root),
+       focus == container || gtk_widget_is_ancestor(focus, container) != 0 {
+        gtk_root_set_focus(root, nil)
+    }
     while let child = gtk_widget_get_first_child(container) { gtk_box_remove(c(container), child) }
 }
 
