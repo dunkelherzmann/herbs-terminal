@@ -23,4 +23,4 @@ Items marked *found in testing* were found while testing other work, not reporte
   - [x] Linux: fixed in 1.0.35 (#9).
   - [ ] Windows: in #5. Not yet built.
   - [x] Mac: already even; no change needed.
-- [ ] **Linux: Connect via SSH doesn't work.** Saved logins can't be managed or saved, and connecting to a host fails. Works on the Mac. *Reported 2026-11-07 · Linux.* Fix in #12, confirmed working on Aurora; ticked once released.
+- [ ] **Linux: Connect via SSH doesn't work.** Saved logins can't be managed or saved, and connecting to a host fails. Works on the Mac. *Reported 2026-11-07 · Linux.* Fix in #12; not yet retested.
