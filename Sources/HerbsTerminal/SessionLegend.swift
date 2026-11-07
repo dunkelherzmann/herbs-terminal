@@ -25,7 +25,10 @@ final class SessionLegend: ObservableObject, @preconcurrency LocalProcessTermina
             self.title = target
             self.subtitle = location ?? "/"
         } else {
-            self.title = reportedTitle.isEmpty ? initialTitle : reportedTitle
+            // Titles reported while connected came from the remote shell; when the session ends (exit or a
+            // dropped link) the tab is back on this Mac and shows its user@host until the local shell names it.
+            reportedTitle = ""
+            self.title = initialTitle
             self.subtitle = "~"
         }
     }

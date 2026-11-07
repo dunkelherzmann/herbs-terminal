@@ -402,3 +402,17 @@ func takeScreenshotPicturesTheWholeWindow() throws {
     let middle = try #require(bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2))
     #expect(middle.alphaComponent == 1)
 }
+
+@Test @MainActor
+func titleReturnsToThisMacWhenTheRemoteSessionEnds() {
+    // The remote shell names the tab while connected; when the session ends (exit or a dropped link),
+    // the tab shows this Mac's user@host again, not the remote title.
+    let shell = LocalShell()
+    let local = shell.legend.title
+    shell.legend.setRemote(target: "admin@server", location: "/home/admin")
+    shell.legend.setTerminalTitle(source: shell.view, title: "admin@server: ~")
+    #expect(shell.legend.title == "admin@server")
+    shell.legend.setRemote(target: nil)
+    #expect(shell.legend.title == local)
+    #expect(shell.legend.subtitle == "~")
+}
