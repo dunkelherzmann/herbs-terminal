@@ -113,8 +113,7 @@ final class WindowChrome {
         var right = x - s(8)
         for item in [Item.search, .peers, .multiExec, .explorer, .screenshot, .export] {
             rects[item] = RECT(left: right - glyphWidth, top: glyphTop, right: right, bottom: glyphTop + glyphHeight)
-            right -= glyphWidth + gap
-            if item == .search { right -= gap } // Search stands a little apart, as on Linux.
+            right -= glyphWidth + gap   // Search sits as close to Tailcat Peers as the other buttons, as on Linux.
         }
         // The title takes what the window can spare in the middle, centered on the window when it fits.
         let titleWidth = measure(state.title, fonts.title) + (state.subtitle.isEmpty ? 0 : s(5) + measure(state.subtitle, fonts.subtitle))
