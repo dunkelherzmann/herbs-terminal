@@ -18,7 +18,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
       Retry, staged uploads, new names instead of overwriting; copy between this PC and a host with the clipboard.
 - [x] **4. Text editor** (#20) (§5): open text files as a tab, Find, Wrap Lines, status line, encodings and line endings
       kept, Save locally and to hosts, unsaved-changes prompts.
-- [ ] **5. Get Info on hosts** (§5): permissions, owner and group, Apply to enclosed items.
+- [x] **5. Get Info on hosts** (#PR) (§5): permissions, owner and group, Apply to enclosed items.
 - [ ] **6. Administrator mode on hosts** (§5): SFTP under `sudo` over the tab's connection, the red bar.
 - [ ] **7. Undo and Redo** in the explorer (§5), and bookmarks per host.
 - [ ] **8. Split panes** (§2): Split Vertically / Horizontally, Close Pane, Next / Previous Pane, the focused

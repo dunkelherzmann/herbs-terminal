@@ -15,6 +15,8 @@ import WinSDK
 ///   (copy, cut, paste, newFolder, newFile, delete, deletePermanently, showHidden, reload, selectAll, up, back, edit).
 /// - With a text editor tab active, `--type` types into it, and `--editor-do NAME` runs save, wrap, find=TEXT,
 ///   next, previous, done or end.
+/// - `--explorer-do info` opens Get Info for a host's selected items; `--info-do NAME` then runs owner=NAME,
+///   group=NAME, octal=DIGITS, recursive, apply, revert or close in it.
 /// - `--ssh user@host:port` opens an SSH tab directly; `--ssh-password` before it gives the password.
 /// - `--capture FILE` saves the main window (and any open Settings, Manage Logins or dialog beside it) as BMPs
 ///   and quits.
@@ -26,7 +28,7 @@ enum TestScript {
     static var active: Bool { !steps.isEmpty }
 
     private enum Step {
-        case editorDo(String), type(String), newTab, settings, connect, logins, menu, menuCommand(UINT), drop([String]), explorer, explore(String), select([String]), explorerDo(String), form([String], Int), ssh(SSHLogin), capture(String)
+        case infoDo(String), editorDo(String), type(String), newTab, settings, connect, logins, menu, menuCommand(UINT), drop([String]), explorer, explore(String), select([String]), explorerDo(String), form([String], Int), ssh(SSHLogin), capture(String)
     }
 
     private static func parse(_ arguments: [String]) -> [Step] {
@@ -60,6 +62,7 @@ enum TestScript {
             case "--select": steps.append(.select(value.split(separator: "|").map(String.init)))
             case "--explorer-do": steps.append(.explorerDo(value))
             case "--editor-do": steps.append(.editorDo(value))
+            case "--info-do": steps.append(.infoDo(value))
             case "--ssh-password": password = value
             case "--ssh":
                 let target = value.split(separator: "@", maxSplits: 1).map(String.init)
@@ -83,6 +86,7 @@ enum TestScript {
         case .type(let text):
             if let editor = workspace.activeEditor { editor.type(text) } else { workspace.activePane?.send(text) }
         case .editorDo(let name): workspace.activeEditor?.perform(named: name)
+        case .infoDo(let name): GetInfoWindow.current?.perform(named: name)
         case .newTab: workspace.newTab()
         case .settings: workspace.showSettings()
         case .connect: workspace.showConnect()
@@ -102,6 +106,7 @@ enum TestScript {
             if let settings = SettingsWindow.openWindow { capture(settings, to: base + "-settings.bmp") }
             if let logins = ManageLoginsWindow.openWindow { capture(logins, to: base + "-logins.bmp") }
             if let dialog = FormDialog.current?.window { capture(dialog, to: base + "-dialog.bmp") }
+            if let info = GetInfoWindow.current?.window { capture(info, to: base + "-info.bmp") }
             // An open popup menu (class #32768) is captured from the screen, since it doesn't draw for PrintWindow.
             if let menu = withWide("#32768", { FindWindowW($0, nil) }), IsWindowVisible(menu) {
                 captureScreen(of: menu, to: base + "-menu.bmp")
