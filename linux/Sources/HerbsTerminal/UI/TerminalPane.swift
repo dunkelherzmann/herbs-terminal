@@ -172,9 +172,11 @@ final class TerminalPane {
         var envv: [String]? = nil
         let directory: String
         if Host.isFlatpak {
-            // flatpak-spawn doesn't hand the PTY over as the shell's controlling terminal, which job control and the
-            // foreground checks need; setsid --ctty takes it on the host, as Ptyxis's host agent does.
-            let claim = ["/bin/sh", "-c", "if command -v setsid >/dev/null 2>&1; then exec setsid --ctty --wait \"$@\"; else exec \"$@\"; fi", "sh"]
+            // Job control and the foreground checks need the PTY as the shell's controlling terminal. Some Flatpak
+            // versions hand it over already; then taking it again fails ("Operation not permitted") and the shell
+            // would end at once. Otherwise setsid --ctty takes it on the host, as Ptyxis's host agent does.
+            let claim = ["/bin/sh", "-c", "if (exec </dev/tty) 2>/dev/null || ! command -v setsid >/dev/null 2>&1; then exec \"$@\"; "
+                         + "else exec setsid --ctty --wait \"$@\"; fi", "sh"]
             argv = Host.argv(claim + inner, environment: environment, directory: startDirectory)
             directory = "/"
         } else {
