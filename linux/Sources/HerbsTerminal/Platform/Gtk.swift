@@ -136,6 +136,20 @@ func stringBox(_ done: @escaping @MainActor (String?) -> Void) -> UnsafeMutableR
     Unmanaged.passRetained(StringBox(done)).toOpaque()
 }
 
+/// A drop target for files and folders from file managers or the app itself; `dropped` gets their local paths.
+func filesDropTarget(_ dropped: @escaping @MainActor ([String]) -> Void) -> OpaquePointer {
+    let target = herb_files_drop_target()!
+    on(target, "drop") { args in
+        guard let value = args.value(1) else { args.returns(false); return }
+        herb_drop_read_paths(value, receivedTrampoline, stringBox { text in
+            let paths = text.map { $0.split(separator: "\n").map(String.init) } ?? []
+            if !paths.isEmpty { dropped(paths) }
+        })
+        args.returns(true)
+    }
+    return target
+}
+
 // MARK: Builders
 
 enum Orientation { case horizontal, vertical

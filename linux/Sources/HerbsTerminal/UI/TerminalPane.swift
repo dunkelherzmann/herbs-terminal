@@ -483,16 +483,10 @@ final class TerminalPane {
         shortcuts.add("<Control><Shift>a") { [weak self] in self?.selectAll() }
 
         // Like Terminal: dropped files and folders are typed as shell-quoted paths, followed by a space.
-        let drop = gtk_drop_target_new(herb_type_file_list(), GDK_ACTION_COPY)!
-        on(drop, "drop") { [weak self] args in
-            guard let self, let value = args.value(1), let text = takeString(herb_drop_paths(value)), !text.isEmpty else {
-                args.returns(false); return
-            }
-            self.sendAsUser(text.split(separator: "\n").map { shellQuote(String($0)) }.joined(separator: " ") + " ")
-            self.focus()
-            args.returns(true)
-        }
-        gtk_widget_add_controller(terminal, c(drop))
+        gtk_widget_add_controller(terminal, filesDropTarget { [weak self] paths in
+            self?.sendAsUser(paths.map(shellQuote).joined(separator: " ") + " ")
+            self?.focus()
+        })
     }
 
     private func showMenu(x: Double, y: Double) {

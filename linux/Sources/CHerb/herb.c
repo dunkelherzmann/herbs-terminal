@@ -360,6 +360,104 @@ char *herb_drop_paths(const GValue *value) {
     return g_string_free(text, FALSE);
 }
 
+typedef struct {
+    HerbReceived done;
+    void *data;
+    GdkDrop *drop;
+    GOutputStream *out;
+} HerbDropRead;
+
+static void herb_drop_done(HerbDropRead *read, char *paths) {
+    if (paths && !*paths) g_clear_pointer(&paths, g_free);
+    gdk_drop_finish(read->drop, paths ? GDK_ACTION_COPY : 0);
+    read->done(read->data, paths);
+    g_free(paths);
+    g_object_unref(read->drop);
+    g_clear_object(&read->out);
+    g_free(read);
+}
+
+/// file:// URIs as paths; anything else (smb://, http://) has no local path and is left out.
+static char *herb_uri_list_paths(const char *text) {
+    char **uris = g_uri_list_extract_uris(text);
+    GString *paths = g_string_new(NULL);
+    for (char **uri = uris; uri && *uri; uri++) {
+        char *path = g_filename_from_uri(*uri, NULL, NULL);
+        if (path) {
+            if (paths->len) g_string_append_c(paths, '\n');
+            g_string_append(paths, path);
+            g_free(path);
+        }
+    }
+    g_strfreev(uris);
+    return g_string_free(paths, FALSE);
+}
+
+static void herb_drop_spliced(GObject *source, GAsyncResult *result, gpointer user_data) {
+    HerbDropRead *read = user_data;
+    char *paths = NULL;
+    if (g_output_stream_splice_finish(G_OUTPUT_STREAM(source), result, NULL) >= 0) {
+        GMemoryOutputStream *memory = G_MEMORY_OUTPUT_STREAM(read->out);
+        char *text = g_strndup(g_memory_output_stream_get_data(memory), g_memory_output_stream_get_data_size(memory));
+        paths = herb_uri_list_paths(text);
+        g_free(text);
+    }
+    herb_drop_done(read, paths);
+}
+
+static void herb_drop_stream(GObject *source, GAsyncResult *result, gpointer user_data) {
+    HerbDropRead *read = user_data;
+    GInputStream *input = gdk_drop_read_finish(GDK_DROP(source), result, NULL, NULL);
+    if (!input) { herb_drop_done(read, NULL); return; }
+    read->out = g_memory_output_stream_new_resizable();
+    g_output_stream_splice_async(read->out, input,
+                                 G_OUTPUT_STREAM_SPLICE_CLOSE_SOURCE | G_OUTPUT_STREAM_SPLICE_CLOSE_TARGET,
+                                 G_PRIORITY_DEFAULT, NULL, herb_drop_spliced, read);
+    g_object_unref(input);
+}
+
+static void herb_drop_value(GObject *source, GAsyncResult *result, gpointer user_data) {
+    HerbDropRead *read = user_data;
+    const GValue *value = gdk_drop_read_value_finish(GDK_DROP(source), result, NULL);
+    herb_drop_done(read, value ? herb_drop_paths(value) : NULL);
+}
+
+static gboolean herb_files_accept(GtkDropTargetAsync *target, GdkDrop *drop, gpointer user_data) {
+    GdkContentFormats *formats = gdk_drop_get_formats(drop);
+    return gdk_content_formats_contain_mime_type(formats, "text/uri-list")
+        || gdk_content_formats_contain_gtype(formats, GDK_TYPE_FILE_LIST);
+}
+
+/// Every hover is answered with a copy, which is what a drop here means. Without these answers a drag from
+/// Dolphin (KDE on Wayland) never reached the "drop" handler.
+static GdkDragAction herb_files_hover(GtkDropTargetAsync *target, GdkDrop *drop, double x, double y, gpointer user_data) {
+    return GDK_ACTION_COPY;
+}
+
+GtkEventController *herb_files_drop_target(void) {
+    GdkContentFormatsBuilder *builder = gdk_content_formats_builder_new();
+    gdk_content_formats_builder_add_mime_type(builder, "text/uri-list");
+    gdk_content_formats_builder_add_gtype(builder, GDK_TYPE_FILE_LIST);
+    GtkDropTargetAsync *target = gtk_drop_target_async_new(gdk_content_formats_builder_free_to_formats(builder), GDK_ACTION_COPY);
+    g_signal_connect(target, "accept", G_CALLBACK(herb_files_accept), NULL);
+    g_signal_connect(target, "drag-enter", G_CALLBACK(herb_files_hover), NULL);
+    g_signal_connect(target, "drag-motion", G_CALLBACK(herb_files_hover), NULL);
+    return GTK_EVENT_CONTROLLER(target);
+}
+
+void herb_drop_read_paths(const GValue *value, HerbReceived done, void *data) {
+    HerbDropRead *read = g_new0(HerbDropRead, 1);
+    read->done = done;
+    read->data = data;
+    read->drop = g_object_ref(GDK_DROP(g_value_get_object(value)));
+    if (gdk_content_formats_contain_mime_type(gdk_drop_get_formats(read->drop), "text/uri-list")) {
+        static const char *mime_types[] = { "text/uri-list", NULL };
+        gdk_drop_read_async(read->drop, mime_types, G_PRIORITY_DEFAULT, NULL, herb_drop_stream, read);
+    } else {
+        gdk_drop_read_value_async(read->drop, GDK_TYPE_FILE_LIST, G_PRIORITY_DEFAULT, NULL, herb_drop_value, read);
+    }
+}
+
 GType herb_type_file_list(void) { return GDK_TYPE_FILE_LIST; }
 GType herb_type_string(void) { return G_TYPE_STRING; }
 
