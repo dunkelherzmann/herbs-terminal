@@ -38,7 +38,7 @@ for arch in $ARCHES; do
         flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
         flatpak install -y --noninteractive flathub org.gnome.Sdk//49 org.gnome.Platform//49 org.freedesktop.Sdk.Extension.swift6//25.08 >/dev/null
         flatpak-builder --disable-rofiles-fuse --state-dir=/var/lib/flatpak/builder-state --repo=/var/lib/flatpak/herbs-repo \
-            --force-clean /root/build /src/linux/org.herbsterminal.app.yml
+            --force-clean /var/lib/flatpak/build /src/linux/org.herbsterminal.app.yml
         flatpak build-bundle --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo /var/lib/flatpak/herbs-repo \
             "/src/dist/Herbs-Terminal-'"$VERSION"'-linux-'"$arch"'.flatpak" org.herbsterminal.app
     '
