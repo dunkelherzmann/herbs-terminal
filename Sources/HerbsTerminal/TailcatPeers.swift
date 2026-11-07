@@ -110,7 +110,9 @@ final class TailcatPeerStore: ObservableObject {
         guard Tailcat.executable != nil else { throw FileIssue("This Herb's Terminal build is missing its bundled tailcat helper.") }
         guard let broker = AskpassBroker.shared else { throw FileIssue("The Herb's Terminal secret helper is unavailable.") }
         let token = broker.issue(try address(of: peer))
-        let proxy = "HERBSTERMINAL_HELPER=tailcat-proxy HERBSTERMINAL_SECRET_TOKEN=\(token) HERBSTERMINAL_SECRET_SOCKET=\(shellQuote(broker.socketPath)) "
+        // ssh runs a ProxyCommand as `exec <command>`, and `exec VAR=value program` looks for a program named
+        // "VAR=value"; env sets the variables instead.
+        let proxy = "/usr/bin/env HERBSTERMINAL_HELPER=tailcat-proxy HERBSTERMINAL_SECRET_TOKEN=\(token) HERBSTERMINAL_SECRET_SOCKET=\(shellQuote(broker.socketPath)) "
             + "\(shellQuote(broker.helperPath)) %p"
         return RemoteEndpoint(host: "tailcat-" + peer.name.filter { $0.isLetter || $0.isNumber || $0 == "-" },
                               port: peer.port, username: peer.username, proxyCommand: proxy)
