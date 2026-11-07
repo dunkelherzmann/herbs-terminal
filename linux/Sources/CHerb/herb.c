@@ -1,5 +1,6 @@
 #include "herb.h"
 #include <glib-unix.h>
+#include <math.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -496,4 +497,41 @@ void herb_launch_uri(GtkWindow *parent, const char *uri) {
     GtkUriLauncher *launcher = gtk_uri_launcher_new(uri);
     gtk_uri_launcher_launch(launcher, parent, NULL, NULL, NULL);
     g_object_unref(launcher);
+}
+
+/* Take Screenshot: a window (header bar included) drawn at the screen's scale, onto the clipboard as an image.
+   FALSE when there is nothing to draw. The window is drawn through its content, the header bar and everything
+   below it, as its parent draws it: a widget paintable comes back empty after its first picture. */
+gboolean herb_copy_widget_image(GtkWidget *widget) {
+    GtkWidget *target = widget;
+    if (ADW_IS_APPLICATION_WINDOW(widget)) target = adw_application_window_get_content(ADW_APPLICATION_WINDOW(widget));
+    else if (ADW_IS_WINDOW(widget)) target = adw_window_get_content(ADW_WINDOW(widget));
+    GtkWidget *parent = target ? gtk_widget_get_parent(target) : NULL;
+    GtkNative *native = gtk_widget_get_native(widget);
+    graphene_rect_t area;
+    if (parent == NULL || native == NULL || !gtk_widget_get_mapped(target)
+        || !gtk_widget_compute_bounds(target, parent, &area) || area.size.width < 1 || area.size.height < 1) return FALSE;
+    float scale = (float)gdk_surface_get_scale(gtk_native_get_surface(native));
+    GtkSnapshot *snapshot = gtk_snapshot_new();
+    gtk_snapshot_scale(snapshot, scale, scale);
+    gtk_snapshot_translate(snapshot, &GRAPHENE_POINT_INIT(-area.origin.x, -area.origin.y));
+    gtk_widget_snapshot_child(parent, target, snapshot);
+    GskRenderNode *node = gtk_snapshot_free_to_node(snapshot);
+    if (node == NULL) return FALSE;
+    graphene_rect_t bounds = GRAPHENE_RECT_INIT(0, 0, ceilf(area.size.width * scale), ceilf(area.size.height * scale));
+    GdkTexture *texture = gsk_renderer_render_texture(gtk_native_get_renderer(native), node, &bounds);
+    if (texture == NULL) {
+        /* Some backends (Broadway) can't render to a texture; GTK's software renderer always can. */
+        GskRenderer *software = gsk_cairo_renderer_new();
+        if (gsk_renderer_realize_for_display(software, gtk_widget_get_display(widget), NULL)) {
+            texture = gsk_renderer_render_texture(software, node, &bounds);
+            gsk_renderer_unrealize(software);
+        }
+        g_object_unref(software);
+    }
+    gsk_render_node_unref(node);
+    if (texture == NULL) return FALSE;
+    gdk_clipboard_set_texture(gtk_widget_get_clipboard(widget), texture);
+    g_object_unref(texture);
+    return TRUE;
 }

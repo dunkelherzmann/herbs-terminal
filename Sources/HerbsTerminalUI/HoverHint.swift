@@ -72,6 +72,17 @@ public final class HintBubble {
         DispatchQueue.main.asyncAfter(deadline: .now() + (shownText == nil ? Self.delay : 0.05), execute: work)
     }
 
+    /// Shows `text` at once, as a confirmation, and hides it after `seconds`. VoiceOver announces it.
+    public func confirm(_ text: String, for seconds: TimeInterval = 1.5) {
+        pending?.cancel()
+        show(text)
+        let work = DispatchWorkItem { [weak self] in self?.hide(text) }
+        pending = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
+                             userInfo: [.announcement: text.replacingOccurrences(of: "\n", with: ". "), .priority: NSAccessibilityPriorityLevel.high.rawValue])
+    }
+
     /// Hides the bubble if it belongs to `text` (or any bubble for nil).
     public func hide(_ text: String?) {
         pending?.cancel()

@@ -377,3 +377,28 @@ func tailcatProxyKeepsTheAddressOffTheCommandLineAndFailsCleanly() throws {
     #expect(TailcatProxy.run(tailcat: tailcat, address: "tcnotarealaddress", port: 22) == 1)
     #expect(Date().timeIntervalSince(started) < 30)
 }
+
+@Test
+func sshEndsSoonAfterTheHostGoesAway() {
+    // Both the app's logins and a typed ssh ask the server for a reply every 5 s and give up after 2 misses.
+    let options = SSHControl.masterOptions.joined(separator: " ")
+    #expect(options.contains("-o ServerAliveInterval=5") && options.contains("-o ServerAliveCountMax=2"))
+    #expect(ShellIntegration.sshFunction.contains("-o ServerAliveInterval=5 -o ServerAliveCountMax=2 \"$@\""))
+}
+
+@Test @MainActor
+func takeScreenshotPicturesTheWholeWindow() throws {
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+                          styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
+    let shell = LocalShell()
+    window.contentView = shell.view
+    let bitmap = try #require(Workspace.windowImage(window))
+    let frame = try #require(window.contentView?.superview)
+    // The frame view, titlebar included, at the backing scale.
+    #expect(bitmap.size == frame.bounds.size)
+    #expect(bitmap.pixelsWide >= Int(window.frame.width) && bitmap.pixelsHigh >= Int(window.frame.height))
+    #expect(bitmap.representation(using: .png, properties: [:]) != nil)
+    // The terminal's own background is in the picture, not left transparent.
+    let middle = try #require(bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2))
+    #expect(middle.alphaComponent == 1)
+}

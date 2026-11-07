@@ -831,6 +831,16 @@ final class Workspace {
         }
     }
 
+    /// Take Screenshot: a picture of this whole window as it looks now, header bar included, on the clipboard,
+    /// ready to paste into a message, a document or an image editor.
+    func takeScreenshot() {
+        if herb_copy_widget_image(window) != 0 {
+            toolbar.confirm("Screenshot copied\nPaste it anywhere with Ctrl+V.")
+        } else {
+            gtk_widget_error_bell(window)
+        }
+    }
+
     // MARK: Rendering
 
     /// Rebuilds the window's content for the current tabs, selection and mode. Widgets are reused; only their
@@ -938,6 +948,7 @@ final class Workspace {
 
     static let accelerators: [(String, [String])] = [
         ("win.new-tab", ["<Control><Shift>t"]), ("win.close-tab", ["<Control><Shift>w"]), ("win.export-session", ["<Control><Shift>s"]),
+        ("win.take-screenshot", ["<Control><Alt>s"]),
         ("win.split-vertical", ["<Control><Shift>e"]), ("win.split-horizontal", ["<Control><Shift>o"]),
         ("win.close-pane", ["<Control><Alt>w"]), ("win.next-pane", ["<Control><Alt>Right"]), ("win.previous-pane", ["<Control><Alt>Left"]),
         ("win.multiexec", ["<Control><Shift>m"]), ("win.connect", ["<Control><Shift>k"]),
@@ -963,6 +974,7 @@ final class Workspace {
             workspace.close(workspace.selected)
         }
         add("export-session") { $0.exportSession() }
+        add("take-screenshot") { $0.takeScreenshot() }
         add("split-vertical") { $0.split(.horizontal) }
         add("split-horizontal") { $0.split(.vertical) }
         add("close-pane") { $0.closePane() }
@@ -1081,6 +1093,7 @@ final class Workspace {
         }
         menu.submenu("Shell") { sub in
             sub.item("Export Session…", "win.export-session")
+            sub.item("Take Screenshot", "win.take-screenshot")
             sub.submenu("New Tab with Profile") { profiles in
                 for profile in TerminalProfile.shared.profiles { profiles.item(profile.name, "win.new-tab-profile", target: profile.id.uuidString) }
             }

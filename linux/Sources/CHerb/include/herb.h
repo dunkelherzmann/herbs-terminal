@@ -95,4 +95,7 @@ void herb_file_save(GtkWindow *parent, const char *title, const char *initial_fo
 void herb_launch_file(GtkWindow *parent, const char *path, gboolean reveal);
 void herb_launch_uri(GtkWindow *parent, const char *uri);
 
+/* Copies a picture of `widget` (a window, header bar included) to the clipboard. */
+gboolean herb_copy_widget_image(GtkWidget *widget);
+
 #endif

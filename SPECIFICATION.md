@@ -42,6 +42,7 @@ It covers the everyday features of the stock macOS Terminal and Ptyxis. It adds:
   - Double-click the title to return the window to its default size and the text to its default zoom. Right-click it to make the current size and text size the defaults.
 - **Right:**
   - **Export Session** (⌘S): saves everything in the active terminal, scrollback included, to a text file named after the tab and the time, for example `Terminal 2 2026-11-06 09-05.txt`.
+  - **Take Screenshot** (⇧⌘S): copies a picture of the whole window, as it looks now, to the clipboard, ready to paste anywhere.
   - **Show File Explorer / Show Terminal**: switch the tab between its shell and its explorer.
   - **MultiExec**.
   - **Tailcat Peers**.
@@ -100,7 +101,7 @@ It covers the everyday features of the stock macOS Terminal and Ptyxis. It adds:
 These follow macOS Terminal:
 
 - **Shell:**
-  - New Tab ⌘T, Export Session… ⌘S, New Tab with Profile, Use Profile.
+  - New Tab ⌘T, Export Session… ⌘S, Take Screenshot ⇧⌘S, New Tab with Profile, Use Profile.
   - Split Vertically ⌘D, Split Horizontally ⇧⌘D, Close Pane ⌥⌘W, Select Next / Previous Pane ⌥⌘→ / ⌥⌘←.
   - MultiExec ⇧⌘M, Run Command on Hosts….
   - New Remote Connection ⇧⌘K, Disconnect.
@@ -165,7 +166,8 @@ These follow macOS Terminal:
 
 - The app types only the path of a private launcher, which deletes itself after use. The launcher clears that line from the screen and starts the system `ssh` as the master of an OpenSSH shared connection.
 - **Shared-connection settings:**
-  - `ControlMaster=auto`, `ControlPersist=no`.
+  - `ControlMaster=auto`, `ControlPersist=10`.
+  - `ServerAliveInterval=5`, `ServerAliveCountMax=2`: when the host is switched off, restarts or drops off the network, the session ends within about 15 seconds and the tab returns to this Mac.
   - The socket lives in `/tmp/herbs-<uid>`, which must be a real folder owned by you with mode 0700. Unix socket paths must stay under 104 bytes, which is why the folder name is short.
 - No command line, password or token appears on screen or in shell history.
 - **Saved passwords:** a saved password reaches ssh through `SSH_ASKPASS`, which is the app itself in helper mode. It trades a one-time token over a private socket.
@@ -433,6 +435,7 @@ Linux terminals' conventions replace ⌘:
 | New Tab / New Window | ⌘T / ⌘N | Ctrl+Shift+T / Ctrl+Shift+N |
 | Close Tab (the window with the last tab) | ⌘W | Ctrl+Shift+W |
 | Export Session | ⌘S | Ctrl+Shift+S |
+| Take Screenshot | ⇧⌘S | Ctrl+Alt+S |
 | Copy / Paste / Paste Escaped Text | ⌘C / ⌘V / ⌃⌘V | Ctrl+Shift+C / Ctrl+Shift+V / Ctrl+Alt+V |
 | Find | ⌘F | Ctrl+Shift+F |
 | Split Vertically / Horizontally | ⌘D / ⇧⌘D | Ctrl+Shift+E / Ctrl+Shift+O |

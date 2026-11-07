@@ -91,8 +91,11 @@ flatpak run org.herbsterminal.app
 Build it yourself on Linux:
 
 ```bash
+sh script/version.sh > linux/version.txt
 flatpak-builder --user --install --force-clean build linux/org.herbsterminal.app.yml
 ```
+
+The first line records the version from git; the build itself sees the sources without git history.
 
 Or on a Mac, in a Linux VM (needs `brew install container`): `script/build_flatpak.sh` writes `dist/Herbs-Terminal-<version>-linux-<arch>.flatpak`.
 
