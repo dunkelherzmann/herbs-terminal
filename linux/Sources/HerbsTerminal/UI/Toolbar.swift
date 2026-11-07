@@ -61,10 +61,8 @@ final class SessionToolbar {
 
         let left = box(.horizontal, spacing: 4, [menuButton, newTab, connect])
         adw_header_bar_pack_start(c(header), left)
-        let right = box(.horizontal, spacing: 4, [export, screenshot, explorer, multiExec, peers])
-        let searchBox = box(.horizontal, spacing: 4, [search])
-        margins(searchBox, start: 4)
-        adw_header_bar_pack_end(c(header), searchBox)
+        // One group, so Search sits the same 4 px from Tailcat Peers as the other buttons from each other.
+        let right = box(.horizontal, spacing: 4, [export, screenshot, explorer, multiExec, peers, search])
         adw_header_bar_pack_end(c(header), right)
 
         titleLabel = label("", classes: ["session-title"], ellipsize: PANGO_ELLIPSIZE_MIDDLE)
