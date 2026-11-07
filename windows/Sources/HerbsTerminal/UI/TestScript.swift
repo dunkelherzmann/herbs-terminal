@@ -12,7 +12,9 @@ import WinSDK
 /// - `--drop "path|path"` drops those files on the active terminal, as File Explorer would.
 /// - A lone `\x` switches the active tab to its file explorer (or back); `--explore PATH` opens a folder in it,
 ///   `--select "a|b"` selects items by name, and `--explorer-do NAME` runs an explorer command
-///   (copy, cut, paste, newFolder, newFile, delete, deletePermanently, showHidden, reload, selectAll, up, back).
+///   (copy, cut, paste, newFolder, newFile, delete, deletePermanently, showHidden, reload, selectAll, up, back, edit).
+/// - With a text editor tab active, `--type` types into it, and `--editor-do NAME` runs save, wrap, find=TEXT,
+///   next, previous, done or end.
 /// - `--ssh user@host:port` opens an SSH tab directly; `--ssh-password` before it gives the password.
 /// - `--capture FILE` saves the main window (and any open Settings, Manage Logins or dialog beside it) as BMPs
 ///   and quits.
@@ -24,7 +26,7 @@ enum TestScript {
     static var active: Bool { !steps.isEmpty }
 
     private enum Step {
-        case type(String), newTab, settings, connect, logins, menu, menuCommand(UINT), drop([String]), explorer, explore(String), select([String]), explorerDo(String), form([String], Int), ssh(SSHLogin), capture(String)
+        case editorDo(String), type(String), newTab, settings, connect, logins, menu, menuCommand(UINT), drop([String]), explorer, explore(String), select([String]), explorerDo(String), form([String], Int), ssh(SSHLogin), capture(String)
     }
 
     private static func parse(_ arguments: [String]) -> [Step] {
@@ -57,6 +59,7 @@ enum TestScript {
             case "--explore": steps.append(.explore(value))
             case "--select": steps.append(.select(value.split(separator: "|").map(String.init)))
             case "--explorer-do": steps.append(.explorerDo(value))
+            case "--editor-do": steps.append(.editorDo(value))
             case "--ssh-password": password = value
             case "--ssh":
                 let target = value.split(separator: "@", maxSplits: 1).map(String.init)
@@ -77,7 +80,9 @@ enum TestScript {
     static func step(_ workspace: Workspace) -> Bool {
         guard !steps.isEmpty else { return false }
         switch steps.removeFirst() {
-        case .type(let text): workspace.activePane?.send(text)
+        case .type(let text):
+            if let editor = workspace.activeEditor { editor.type(text) } else { workspace.activePane?.send(text) }
+        case .editorDo(let name): workspace.activeEditor?.perform(named: name)
         case .newTab: workspace.newTab()
         case .settings: workspace.showSettings()
         case .connect: workspace.showConnect()
