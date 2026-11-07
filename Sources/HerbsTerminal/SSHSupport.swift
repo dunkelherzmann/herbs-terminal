@@ -377,8 +377,21 @@ enum TailcatProxy {
         guard fd >= 0 else { report("tailcat didn't start its local proxy."); return 1 }
         defer { close(fd) }
         guard handshake(fd, name: name, port: port) else { return 1 }
-        relay(fd)
+        guard relay(fd) else {
+            // tailcat reached the peer, but the peer's tailcat found nothing listening on the port and hung up.
+            report("The Tailcat peer was reached, but nothing answered SSH on port \(port) there. On that computer, turn on SSH: "
+                   + "on a Mac, Remote Login in System Settings › General › Sharing; on Linux, the SSH service (sshd).")
+            return 1
+        }
         return 0
+    }
+
+    /// Whether something on this computer accepts connections on `port`; a Tailcat share passes peers to it.
+    static func acceptsLocalConnections(on port: UInt16) -> Bool {
+        let fd = connectLoopback(port)
+        guard fd >= 0 else { return false }
+        close(fd)
+        return true
     }
 
     private static func handshake(_ fd: Int32, name: [UInt8], port: UInt16) -> Bool {
@@ -405,26 +418,39 @@ enum TailcatProxy {
     }
 
     /// Copies ssh's standard input to the peer and the peer's replies to standard output until either side closes.
-    private static func relay(_ fd: Int32) {
+    /// False when the peer hung up without sending a byte: nothing answered on its end.
+    static func relay(_ fd: Int32, input: Int32 = STDIN_FILENO, output: Int32 = STDOUT_FILENO) -> Bool {
         let done = DispatchSemaphore(value: 0)
+        let silent = SilentPeer()
         Thread.detachNewThread {
-            pump(from: STDIN_FILENO, to: fd)
+            _ = pump(from: input, to: fd)
             shutdown(fd, SHUT_WR)
             done.signal()
         }
         Thread.detachNewThread {
-            pump(from: fd, to: STDOUT_FILENO)
+            if pump(from: fd, to: output) == 0 { silent.mark() }
             done.signal()
         }
         done.wait()
+        return !silent.isMarked
     }
 
-    private static func pump(from source: Int32, to target: Int32) {
+    private final class SilentPeer: @unchecked Sendable {
+        private let lock = NSLock()
+        private var marked = false
+        func mark() { lock.withLock { marked = true } }
+        var isMarked: Bool { lock.withLock { marked } }
+    }
+
+    /// Copies until `source` ends or `target` fails; returns the number of bytes copied.
+    private static func pump(from source: Int32, to target: Int32) -> Int {
         var buffer = [UInt8](repeating: 0, count: 65536)
+        var total = 0
         while true {
             let count = read(source, &buffer, buffer.count)
-            guard count > 0 else { return }
-            guard send(target, Array(buffer[0..<count])) else { return }
+            guard count > 0 else { return total }
+            guard send(target, Array(buffer[0..<count])) else { return total }
+            total += count
         }
     }
 

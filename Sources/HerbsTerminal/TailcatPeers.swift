@@ -163,8 +163,14 @@ final class TailcatShare: ObservableObject {
     func start(persistent: Bool) async {
         guard let tailcat = Tailcat.executable else { error = "This Herb's Terminal build is missing its bundled tailcat helper."; return }
         stop()
+        error = nil
         starting = true
         defer { starting = false }
+        // tailcat hands each peer to this computer's port 22; without an SSH server there, the peer's ssh is cut off.
+        guard await Task.detached(operation: { TailcatProxy.acceptsLocalConnections(on: 22) }).value else {
+            error = "Turn on Remote Login first: nothing on this Mac answers SSH, so a peer couldn't log in. It's in System Settings › General › Sharing."
+            return
+        }
         self.persistent = persistent
         let addressFile = SSHControl.directory.appendingPathComponent("share-\(UUID().uuidString).addr")
         let process = Process()
