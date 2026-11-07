@@ -64,7 +64,8 @@ enum ShellIntegration {
 
     static let sshFunction = #"""
     # Herb's Terminal: follow a typed ssh in the file explorer. The real ssh runs unchanged apart from
-    # sharing its connection (ControlMaster), which the explorer and transfers then reuse.
+    # sharing its connection (ControlMaster), which the explorer and transfers then reuse, and ending
+    # within about 15 seconds when the host goes away (ServerAlive).
     ssh() {
       case " $* " in
         *" -G "*|*" -O "*|*" -V "*|*" -Q "*) command ssh "$@"; return ;;
@@ -72,7 +73,8 @@ enum ShellIntegration {
       if [ -n "$HERBS_ANNOUNCE_DIR" ] && [ -d "$HERBS_ANNOUNCE_DIR" ] && [ -O "$HERBS_ANNOUNCE_DIR" ]; then
         command ssh -G "$@" 2>/dev/null | awk '$1=="user"{u=$2} $1=="hostname"{h=$2} $1=="port"{p=$2} END{if (h != "") printf "%s\n%s\n%s\n", u, h, p}' \
           > "$HERBS_ANNOUNCE_DIR/announce-$$.tmp" && mv -f "$HERBS_ANNOUNCE_DIR/announce-$$.tmp" "$HERBS_ANNOUNCE_DIR/announce-$$"
-        command ssh -o ControlMaster=auto -o "ControlPath=$HERBS_ANNOUNCE_DIR/cm-%C" -o ControlPersist=10 "$@"
+        command ssh -o ControlMaster=auto -o "ControlPath=$HERBS_ANNOUNCE_DIR/cm-%C" -o ControlPersist=10 \
+            -o ServerAliveInterval=5 -o ServerAliveCountMax=2 "$@"
       else
         command ssh "$@"
       fi
