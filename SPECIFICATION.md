@@ -1,6 +1,6 @@
 # Herb's Terminal
 
-Herb's Terminal is a terminal for administrators. It is native on Macs with Apple silicon and on Linux, as a Flatpak, and manages local files and remote Linux, macOS and Windows machines over SSH. Sections 1–10 describe the Mac app; section 11 lists what is different on Linux.
+Herb's Terminal is a terminal for administrators. It is native on Macs with Apple silicon, on Linux, as a Flatpak, and on Windows, and manages local files and remote Linux, macOS and Windows machines over SSH. Sections 1–10 describe the Mac app; section 11 lists what is different on Linux, and section 12 what is different on Windows.
 
 Each tab pairs a shell with a file explorer. When the shell connects to another machine, the explorer follows it to the same host and account. Connect once, and the shell, files, transfers, text editing and permissions are all in that one tab.
 
@@ -471,6 +471,49 @@ The explorer follows Thunar: Ctrl+C / X / V / A / Z, Ctrl+Shift+Z to redo, Delet
 
 - Secure Keyboard Entry: the Wayland desktop already keeps other apps from reading what you type.
 - Option as Meta: Alt always acts as Meta, as in Linux terminals.
+
+## 12. Windows
+
+The Windows version is the same app as a native Win32 program, with SwiftTerm's terminal engine, Windows' pseudo console (ConPTY) and GDI drawing. It runs on Windows 10 (1809 or later) and Windows 11. Sections 2–10 apply where this section doesn't say otherwise; "Not yet on Windows" lists what it doesn't have.
+
+### Build and packaging
+
+- **Source:** `windows/`, a Swift package built with the Swift toolchain for Windows and Visual Studio's C++ build tools: `windows\dev\build.ps1` (`-Run`, `-SelfTest`, `-Package`). The login-vault code is the Mac app's own, copied in at build time from the list in `windows/shared.txt`. Small modules named `Darwin`, `CryptoKit`, `CommonCrypto` and `SQLite3` give it the same names on Windows (the Universal C runtime, AES-GCM and PBKDF2 on Windows CNG, and the system's `winsqlite3`), so a vault from a Mac opens unchanged.
+- **Package:** `-Package` builds `dist\HerbsTerminal-windows`, `HerbsTerminal.exe` with exactly the DLLs it uses beside it (the Swift runtime, Foundation and the Microsoft C++ runtime), and `dist\Herbs-Terminal-<version>-windows-x86_64.zip`. Nothing needs installing: unzip it anywhere and open the .exe. The build stops if the app would need anything that is neither part of Windows nor in the folder.
+- **Checks:** `HerbsTerminal.exe --self-test` checks the compatibility modules against standard vectors, the vault, ssh command lines, the password helper's pipe, and how dropped paths are quoted. A scripted mode (`--type`, `--drop`, `--ssh`, `--capture` and others, listed in `windows/README.md`) drives the window without touching the desktop and saves pictures of it.
+
+### Shells and SSH
+
+- **Tabs** run PowerShell 7 when it's installed, otherwise Windows PowerShell. Settings ▸ Shell can choose Command Prompt, WSL, Git Bash or any command line instead.
+- **Connect via SSH** opens the login in a new tab running Windows' own OpenSSH client (`System32\OpenSSH\ssh.exe`), with the keepalive of section 4: a host that goes away ends the session within about 15 seconds. A session that ends with an error keeps its tab open with the reason; Return connects again. `exit` closes the tab.
+- **Saved passwords:** ssh runs the app's own executable as `SSH_ASKPASS`, which trades the one-time token of section 4 for the password over a named pipe that only this Windows account and SYSTEM may open, and that refuses remote clients. Both the `user@host's password:` and `(user@host) Password:` prompts are answered; every other question (a new host key, a one-time code, a retry) is asked in the terminal.
+- **The connected tab** shows its `user@host` as its title, and the SSH button is highlighted; it opens the connection details with New Connection, Close and Disconnect.
+
+### Window and toolbar
+
+- The toolbar replaces the title bar and is laid out as on Linux: the Main Menu, New Tab and Connect via SSH on the left; the title in the middle; Export Session, Take Screenshot, Show File Explorer, MultiExec, Tailcat Peers and Search on the right, then minimize, maximize and close. Maximize shows Windows 11's snap layouts. Drag an empty part of the toolbar to move the window, and double-click it to maximize.
+- The tab strip sits under the toolbar: click to switch, double-click to rename, drag to reorder, middle-click to close, right-click for Rename, Move Left, Move Right and Close.
+- The Main Menu matches Linux's, Shell submenu included. Menus and hover hints follow the app's light or dark appearance, and colors use the Windows accent color.
+- Toolbar buttons never take the keyboard focus from the terminal. Hover hints appear after about half a second with the Mac's wording.
+
+### Shortcuts
+
+The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In the terminal, Ctrl+C copies when text is selected (otherwise it interrupts the program), Ctrl+V pastes, and right-click copies a selection or pastes, as in Windows Terminal.
+
+### Terminal
+
+- **Dropping files:** files and folders dropped from File Explorer are typed as paths followed by a space, quoted for the tab's shell: single quotes (with `''` inside) for PowerShell, double quotes for Command Prompt, POSIX quoting of the `/mnt/c/…` form for WSL, and POSIX quoting for Git Bash and SSH tabs. Paths without spaces or special characters aren't quoted.
+- **Take Screenshot** copies a picture of the whole window to the clipboard; the button shows a check mark for a moment to confirm it.
+- **Export Session** saves the terminal's text, scrollback included, as a text file with Windows line endings.
+
+### Appearance
+
+- The stock face is Cascadia Mono 11 pt (Consolas where it isn't installed); Settings lists the installed monospaced fonts.
+- The color scheme (System, Light, Dark) follows Windows' app mode, title bar included.
+
+### Not yet on Windows
+
+The file explorer and its transfers, text editor, Get Info and Administrator mode; split panes; MultiExec and Run Command on Hosts; Find in Terminal; named profiles; session restore; following an `ssh` typed in a local tab; Tailcat peers; Paste Escaped Text. Their toolbar buttons and menu commands are shown dimmed.
 
 ## References
 

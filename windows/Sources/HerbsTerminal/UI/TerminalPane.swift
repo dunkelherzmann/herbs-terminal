@@ -45,12 +45,24 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         terminal = Terminal(delegate: TerminalDelegateProxy.shared, options: options)
         TerminalDelegateProxy.shared.panes[ObjectIdentifier(terminal)] = self
         hwnd = createWindow(self, className: Self.className, style: DWORD(WS_CHILD | WS_CLIPSIBLINGS), parent: parent)
+        // Files and folders dropped from File Explorer are typed as paths, as on the Mac and Linux.
+        if let hwnd { DragAcceptFiles(hwnd, true) }
         apply(settings)
+    }
+
+    /// The command line this tab's process was started with, which decides how dropped paths are quoted.
+    private(set) var commandLine = ""
+
+    /// The shell dropped paths are quoted for.
+    var dropQuoting: DropQuoting {
+        if remote != nil { return .posix }
+        return DropQuoting(commandLine: commandLine)
     }
 
     /// Starts the shell. Call once the pane has its size, so the shell starts with the right grid.
     func start(commandLine: String = ShellChoice.commandLine, directory: String? = nil, environment: [String: String] = [:]) {
         guard let hwnd, session == nil else { return }
+        self.commandLine = commandLine
         let start = directory ?? ProcessInfo.processInfo.environment["USERPROFILE"]
         do {
             session = try PseudoConsole(commandLine: commandLine, directory: start, extraEnvironment: environment,
@@ -279,6 +291,24 @@ final class TerminalPane: WindowObject, TerminalDelegate {
             focused = false
             DestroyCaret()
             invalidate()
+            return 0
+        case WM_DROPFILES:
+            // Like Terminal on the Mac: each dropped item as a shell-quoted path, followed by a space.
+            let drop = HDROP(OpaquePointer(bitPattern: UInt(wParam)))
+            let count = DragQueryFileW(drop, 0xFFFF_FFFF, nil, 0)
+            var paths: [String] = []
+            for index in 0..<count {
+                let length = DragQueryFileW(drop, index, nil, 0)
+                var buffer = [WCHAR](repeating: 0, count: Int(length) + 1)
+                DragQueryFileW(drop, index, &buffer, UINT(buffer.count))
+                paths.append(String(decoding: buffer.prefix(Int(length)), as: UTF16.self))
+            }
+            DragFinish(drop)
+            if !paths.isEmpty {
+                send(dropQuoting.typed(paths))
+                SetForegroundWindow(GetAncestor(hwnd, UINT(GA_ROOT)))
+                SetFocus(hwnd)
+            }
             return 0
         case WM_MOUSEACTIVATE:
             SetFocus(hwnd)

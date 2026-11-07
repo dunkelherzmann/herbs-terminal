@@ -9,6 +9,7 @@ import WinSDK
 /// - `--type TEXT` sends TEXT straight to the active terminal (`\r` is Enter, `\e` Escape). Special values:
 ///   `\t` opens a new tab, `\s` Settings, `\k` Connect via SSH, `\l` Manage Logins, and `\f` followed by
 ///   `value|value|…#button` fills the open dialog's fields and presses that button (by position).
+/// - `--drop "path|path"` drops those files on the active terminal, as File Explorer would.
 /// - `--ssh user@host:port` opens an SSH tab directly; `--ssh-password` before it gives the password.
 /// - `--capture FILE` saves the main window (and any open Settings, Manage Logins or dialog beside it) as BMPs
 ///   and quits.
@@ -20,7 +21,7 @@ enum TestScript {
     static var active: Bool { !steps.isEmpty }
 
     private enum Step {
-        case type(String), newTab, settings, connect, logins, menu, menuCommand(UINT), form([String], Int), ssh(SSHLogin), capture(String)
+        case type(String), newTab, settings, connect, logins, menu, menuCommand(UINT), drop([String]), form([String], Int), ssh(SSHLogin), capture(String)
     }
 
     private static func parse(_ arguments: [String]) -> [Step] {
@@ -48,6 +49,7 @@ enum TestScript {
                         steps.append(.type(value.replacingOccurrences(of: "\\r", with: "\r").replacingOccurrences(of: "\\e", with: "\u{1b}")))
                     }
                 }
+            case "--drop": steps.append(.drop(value.split(separator: "|").map(String.init)))
             case "--ssh-password": password = value
             case "--ssh":
                 let target = value.split(separator: "@", maxSplits: 1).map(String.init)
@@ -75,6 +77,7 @@ enum TestScript {
         case .logins: workspace.showLogins()
         case .menu: workspace.openMainMenu()
         case .menuCommand(let id): workspace.perform(id)
+        case .drop(let paths): drop(paths, on: workspace.activePane?.hwnd)
         case .form(let values, let button): FormDialog.current?.scripted(values: values, button: button)
         case .ssh(let login): workspace.connectSSH(login)
         case .capture(let path):
@@ -91,6 +94,23 @@ enum TestScript {
             PostQuitMessage(0)
         }
         return !steps.isEmpty
+    }
+
+    /// Sends the pane the same WM_DROPFILES message a drop from File Explorer does: a DROPFILES block in global
+    /// memory, which the pane's DragFinish frees.
+    private static func drop(_ paths: [String], on pane: HWND?) {
+        guard let pane else { return }
+        let list: [UInt16] = paths.flatMap { Array($0.utf16) + [0] } + [0]
+        let headerSize = MemoryLayout<DROPFILES>.size
+        guard let memory = GlobalAlloc(UINT(GMEM_MOVEABLE | GMEM_ZEROINIT), SIZE_T(headerSize + list.count * 2)),
+              let locked = GlobalLock(memory) else { return }
+        var header = DROPFILES()
+        header.pFiles = DWORD(headerSize)
+        header.fWide = true
+        withUnsafeBytes(of: &header) { locked.copyMemory(from: $0.baseAddress!, byteCount: headerSize) }
+        list.withUnsafeBytes { (locked + headerSize).copyMemory(from: $0.baseAddress!, byteCount: $0.count) }
+        GlobalUnlock(memory)
+        SendMessageW(pane, UINT(WM_DROPFILES), WPARAM(UInt(bitPattern: Int(bitPattern: memory))), 0)
     }
 
     private static func captureScreen(of window: HWND, to path: String) {

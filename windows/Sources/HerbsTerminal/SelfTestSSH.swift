@@ -3,6 +3,18 @@ import Foundation
 extension SelfTest {
     /// The password hand-off and the pieces of an ssh command line.
     static func sshChecks() {
+        // Dropped paths, quoted for each kind of shell a tab can run.
+        let spaced = "C:\\Users\\Herb\\My Files\\it's.txt"
+        check("Dropped path for PowerShell", DropQuoting.powerShell.typed([spaced, "C:\\a.txt"]) == "'C:\\Users\\Herb\\My Files\\it''s.txt' C:\\a.txt ")
+        check("Dropped path for Command Prompt", DropQuoting.commandPrompt.quote("C:\\My Files") == "\"C:\\My Files\"")
+        check("Dropped path for WSL", DropQuoting.wsl.quote("C:\\My Files\\x") == "'/mnt/c/My Files/x'")
+        check("Dropped path for ssh and Git Bash", DropQuoting.posix.quote("it's") == "'it'\\''s'")
+        check("Shell picked from the command line",
+              DropQuoting(commandLine: "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoLogo") == .powerShell
+                  && DropQuoting(commandLine: "\"C:\\WINDOWS\\system32\\cmd.exe\"") == .commandPrompt
+                  && DropQuoting(commandLine: "\"C:\\WINDOWS\\system32\\wsl.exe\"") == .wsl
+                  && DropQuoting(commandLine: "\"C:\\Program Files\\Git\\bin\\bash.exe\" --login -i") == .posix)
+
         // Arguments survive the trip through CreateProcess's single command line.
         check("Plain arguments stay unquoted", quoteArgument("herb@server") == "herb@server")
         check("Spaces are quoted", quoteArgument("C:\\Program Files\\x") == "\"C:\\Program Files\\x\"")
