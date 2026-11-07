@@ -435,6 +435,7 @@ Linux terminals' conventions replace ⌘:
 | New Tab / New Window | ⌘T / ⌘N | Ctrl+Shift+T / Ctrl+Shift+N |
 | Close Tab (the window with the last tab) | ⌘W | Ctrl+Shift+W |
 | Export Session | ⌘S | Ctrl+Shift+S |
+| Take Screenshot | ⇧⌘S | Ctrl+Alt+S |
 | Copy / Paste / Paste Escaped Text | ⌘C / ⌘V / ⌃⌘V | Ctrl+Shift+C / Ctrl+Shift+V / Ctrl+Alt+V |
 | Find | ⌘F | Ctrl+Shift+F |
 | Split Vertically / Horizontally | ⌘D / ⇧⌘D | Ctrl+Shift+E / Ctrl+Shift+O |
