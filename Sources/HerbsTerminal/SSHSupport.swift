@@ -38,7 +38,12 @@ enum SSHControl {
     /// Options for the interactive login. The shared connection runs in the background (ControlPersist), so
     /// typing `exit` ends the session at once even while the explorer still has a channel open; the tab
     /// closes the connection when its ssh is gone. If the app quits, it closes itself 10 s after its last use.
-    static let masterOptions = ["-o", "ControlMaster=auto", "-o", "ControlPersist=10"]
+    ///
+    /// A host that is switched off or restarts without closing the connection sends nothing, and TCP alone
+    /// would keep the session open for many minutes. ssh asks the server for an answer every 5 seconds and
+    /// gives up after 2 missed answers, so the session ends within about 15 seconds.
+    static let masterOptions = ["-o", "ControlMaster=auto", "-o", "ControlPersist=10",
+                                "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=2"]
 
     /// The `user@host` names ssh's password prompt can show for `endpoint`: as given, and with the user
     /// and host name that ~/.ssh/config resolves it to.
