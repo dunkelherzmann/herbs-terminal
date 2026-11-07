@@ -19,7 +19,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] **4. Text editor** (#20) (§5): open text files as a tab, Find, Wrap Lines, status line, encodings and line endings
       kept, Save locally and to hosts, unsaved-changes prompts.
 - [x] **5. Get Info on hosts** (#21) (§5): permissions, owner and group, Apply to enclosed items.
-- [x] **6. Administrator mode on hosts** (#PR) (§5): SFTP under `sudo` over the tab's connection, the red bar.
+- [x] **6. Administrator mode on hosts** (#22) (§5): SFTP under `sudo` over the tab's connection, the red bar.
 - [ ] **7. Undo and Redo** in the explorer (§5), and bookmarks per host.
 - [ ] **8. Split panes** (§2): Split Vertically / Horizontally, Close Pane, Next / Previous Pane, the focused
       pane outline.
