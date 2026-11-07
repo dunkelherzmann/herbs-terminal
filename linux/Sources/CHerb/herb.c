@@ -422,12 +422,27 @@ static void herb_drop_value(GObject *source, GAsyncResult *result, gpointer user
     herb_drop_done(read, value ? herb_drop_paths(value) : NULL);
 }
 
+static gboolean herb_files_accept(GtkDropTargetAsync *target, GdkDrop *drop, gpointer user_data) {
+    GdkContentFormats *formats = gdk_drop_get_formats(drop);
+    return gdk_content_formats_contain_mime_type(formats, "text/uri-list")
+        || gdk_content_formats_contain_gtype(formats, GDK_TYPE_FILE_LIST);
+}
+
+/// Every hover is answered with a copy, which is what a drop here means. Without these answers a drag from
+/// Dolphin (KDE on Wayland) never reached the "drop" handler.
+static GdkDragAction herb_files_hover(GtkDropTargetAsync *target, GdkDrop *drop, double x, double y, gpointer user_data) {
+    return GDK_ACTION_COPY;
+}
+
 GtkEventController *herb_files_drop_target(void) {
     GdkContentFormatsBuilder *builder = gdk_content_formats_builder_new();
     gdk_content_formats_builder_add_mime_type(builder, "text/uri-list");
     gdk_content_formats_builder_add_gtype(builder, GDK_TYPE_FILE_LIST);
-    return GTK_EVENT_CONTROLLER(gtk_drop_target_async_new(gdk_content_formats_builder_free_to_formats(builder),
-                                                          GDK_ACTION_COPY));
+    GtkDropTargetAsync *target = gtk_drop_target_async_new(gdk_content_formats_builder_free_to_formats(builder), GDK_ACTION_COPY);
+    g_signal_connect(target, "accept", G_CALLBACK(herb_files_accept), NULL);
+    g_signal_connect(target, "drag-enter", G_CALLBACK(herb_files_hover), NULL);
+    g_signal_connect(target, "drag-motion", G_CALLBACK(herb_files_hover), NULL);
+    return GTK_EVENT_CONTROLLER(target);
 }
 
 void herb_drop_read_paths(const GValue *value, HerbReceived done, void *data) {
