@@ -77,17 +77,33 @@ enum SSHControl {
     }
 
     @discardableResult
+    /// Runs `/usr/bin/ssh arguments` with no input or output and returns its exit status (-1 if it couldn't start).
+    /// It waits on this one child with waitpid rather than Foundation's Process: in the Linux app GLib also handles
+    /// SIGCHLD, Process sometimes never learned that ssh had exited, and the connection monitor waited forever.
     static func run(_ arguments: [String], environment: [String: String]? = nil) -> Int32 {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
-        process.arguments = arguments
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        if let environment { process.environment = environment }
-        do { try process.run() } catch { return -1 }
-        process.waitUntilExit()
-        return process.terminationStatus
+        let path = "/usr/bin/ssh"
+        let argv: [UnsafeMutablePointer<CChar>?] = ([path] + arguments).map { strdup($0) } + [nil]
+        let env = (environment ?? ProcessInfo.processInfo.environment).map { "\($0.key)=\($0.value)" }
+        let envp: [UnsafeMutablePointer<CChar>?] = env.map { strdup($0) } + [nil]
+        defer { argv.forEach { free($0) }; envp.forEach { free($0) } }
+        #if os(Linux)
+        var actions = posix_spawn_file_actions_t()
+        #else
+        var actions: posix_spawn_file_actions_t?
+        #endif
+        posix_spawn_file_actions_init(&actions)
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
+        posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0)
+        posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0)
+        var pid: pid_t = 0
+        guard posix_spawn(&pid, path, &actions, nil, argv, envp) == 0 else { return -1 }
+        var status: Int32 = 0
+        while waitpid(pid, &status, 0) == -1 {
+            guard errno == EINTR else { return -1 }
+        }
+        // WIFEXITED / WEXITSTATUS, which Swift doesn't import as macros.
+        return status & 0x7f == 0 ? (status >> 8) & 0xff : -1
     }
 }
 
