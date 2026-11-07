@@ -68,7 +68,11 @@ final class Workspace: WindowObject {
         let pane = TerminalPane(parent: hwnd, settings: TerminalProfile.shared.settings(for: nil))
         let used = Set(tabs.map(\.number))
         pane.number = (1...).first { !used.contains($0) }!
-        pane.onTitleChange = { [weak self] _ in self?.refreshChrome() }
+        pane.onTitleChange = { [weak self] pane in
+            // Administrator mode on a host ends with the tab's SSH session.
+            if pane.remote != nil, !pane.isConnected { pane.explorer?.leaveAdministrator() }
+            self?.refreshChrome()
+        }
         pane.onExit = { [weak self] pane in self?.close(pane) }
         tabs.append(pane)
         layout()

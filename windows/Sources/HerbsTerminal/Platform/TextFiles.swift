@@ -39,7 +39,7 @@ struct TextFileSource: Sendable {
     /// A host's file, through the explorer's SFTP channel.
     static func remote(_ path: String, session: RemoteSession) -> TextFileSource {
         TextFileSource(
-            name: RemotePath.name(path), location: "\(session.endpoint.label):\(path)",
+            name: RemotePath.name(path), location: "\(session.endpoint.label):\(path)" + (session.asRoot ? " (root)" : ""),
             read: { try session.run { try RemoteTransfer(client: $0).readAll(path, limit: TextCodec.sizeLimit) } },
             version: {
                 let attributes = try session.run { try $0.stat(path, follow: true) }
