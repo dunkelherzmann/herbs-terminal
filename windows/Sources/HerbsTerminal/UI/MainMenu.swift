@@ -127,6 +127,11 @@ enum MainMenu {
         return MenuCommand(rawValue: track(menu, UINT(TPM_RETURNCMD | TPM_RIGHTBUTTON), point, owner))
     }
 
+    /// Shows `menu` at `point` and returns the chosen command id (0 for none).
+    static func trackPopup(_ menu: HMENU?, at point: POINT, owner: HWND, rightAligned: Bool = false) -> UINT {
+        track(menu, UINT(TPM_RETURNCMD | TPM_RIGHTBUTTON | (rightAligned ? TPM_RIGHTALIGN : TPM_LEFTALIGN)), point, owner)
+    }
+
     private typealias TrackPopupMenuExFunction = @convention(c) (HMENU?, UINT, Int32, Int32, HWND?, UnsafeMutableRawPointer?) -> Int32
 
     /// TrackPopupMenuEx with TPM_RETURNCMD returns the chosen command's id in its BOOL. Swift imports that BOOL as a

@@ -506,6 +506,19 @@ The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In 
 - **Take Screenshot** copies a picture of the whole window to the clipboard; the button shows a check mark for a moment to confirm it.
 - **Export Session** saves the terminal's text, scrollback included, as a text file with Windows line endings.
 
+### Files
+
+- **The explorer** shows this PC's files in the tab: the toolbar's folder button or Ctrl+Shift+X switches between the tab's shell and its explorer, which keeps its folder while hidden. In an SSH tab the button is dimmed; hosts' files aren't in the Windows version yet.
+- **Places:** Home and the Windows user folders that exist (Desktop, Documents, Downloads, Music, Pictures, Videos), then every drive with its label.
+- **Location bar:** back, forward, up and home, an editable location (Ctrl+L) that accepts `~`, relative paths, `.` and `..`, and File Actions (Cut, Copy, Paste, Move to Recycle Bin, Select All, New Folder, New File, Show Hidden Files, Reload). The mouse's back and forward buttons work too.
+- **The list:** name, date modified, type and size, with Windows' own icons and type names; folders first, then names in File Explorer's order (`file2` before `file10`). Click a heading to sort by it. Hidden items (Windows' hidden attribute, or a name starting with `.`) show only with Show Hidden Files, faded; the status line counts them.
+- **Opening:** double-click or Return opens a folder, or a file in its usual app (Windows asks which app when there's none). Right-click a folder for **Open in New Terminal Tab**, which starts a shell there.
+- **Changing files** goes through the Windows shell, with its progress window for long jobs: copy, move and rename; Delete moves to the Recycle Bin, and Shift+Delete deletes permanently after asking (Cancel is the default). Pasting where a name is taken gets Windows' "name - Copy" name instead of overwriting, and a folder can't be pasted into itself.
+- **Clipboard:** Copy and Cut put files on the clipboard as File Explorer does, so they paste in File Explorer, and files copied there paste here.
+- **Creating and renaming:** New Folder and New File make a free "untitled folder" or "untitled file" and start renaming it in place; F2 renames. Names Windows can't use are refused with an explanation.
+- **Shortcuts:** as on Linux (Thunar's): Ctrl+C / X / V / A, Delete, Shift+Delete, BackSpace and Alt+← back, Alt+→ forward, Alt+↑ up, Alt+Home home, Ctrl+L location, F5 or Ctrl+R reload, Ctrl+H hidden files, F2 rename, Ctrl+Shift+N new folder, Alt+Return Properties.
+- **Properties** opens Windows' own Properties window; **Show in File Explorer** opens File Explorer with the item selected; **Copy Path** copies the full path.
+
 ### Appearance
 
 - The stock face is Cascadia Mono 11 pt (Consolas where it isn't installed); Settings lists the installed monospaced fonts.
@@ -513,7 +526,7 @@ The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In 
 
 ### Not yet on Windows
 
-The file explorer and its transfers, text editor, Get Info and Administrator mode; split panes; MultiExec and Run Command on Hosts; Find in Terminal; named profiles; session restore; following an `ssh` typed in a local tab; Tailcat peers; Paste Escaped Text. Their toolbar buttons and menu commands are shown dimmed.
+Hosts' files in the explorer, transfers, the text editor, Get Info and Administrator mode; Undo and Redo and bookmarks in the explorer; split panes; MultiExec and Run Command on Hosts; Find in Terminal; named profiles; session restore; following an `ssh` typed in a local tab; Tailcat peers; Paste Escaped Text. Their toolbar buttons and menu commands are shown dimmed.
 
 ## References
 

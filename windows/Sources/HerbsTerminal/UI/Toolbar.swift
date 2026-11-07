@@ -26,10 +26,18 @@ final class WindowChrome {
         var windowActive = true
         /// For a moment after Take Screenshot: its button shows a check mark and says so.
         var screenshotCopied = false
+        /// The tab shows its file explorer instead of its terminal.
+        var explorerShowing = false
+        /// The tab's files can be browsed (this PC's for now; a host's come with SFTP).
+        var explorerAvailable = true
+
+        func isUnavailable(_ item: Item) -> Bool {
+            WindowChrome.unavailable.contains(item) || (item == .explorer && !explorerAvailable)
+        }
     }
 
     /// The parts of the toolbar not yet in the Windows version: drawn as on the Mac and Linux, but dimmed.
-    static let unavailable: Set<Item> = [.explorer, .multiExec, .peers, .search]
+    static let unavailable: Set<Item> = [.multiExec, .peers, .search]
 
     private(set) var rects: [Item: RECT] = [:]
     var hover: Item?
@@ -184,11 +192,11 @@ final class WindowChrome {
         let glyphs: [Item: String] = [
             .menu: "\u{E700}", .newTab: "\u{E710}", .connect: "\u{E703}", .export: "\u{E72D}",
             .screenshot: state.screenshotCopied ? "\u{E73E}" : "\u{E722}", // CheckMark, Camera
-            .explorer: "\u{E8B7}", .multiExec: "\u{E81E}", .peers: "\u{E716}", .search: "\u{E721}",
+            .explorer: state.explorerShowing ? "\u{E756}" : "\u{E8B7}", .multiExec: "\u{E81E}", .peers: "\u{E716}", .search: "\u{E721}",
         ]
         for (item, glyph) in glyphs {
             guard let rect = rects[item] else { continue }
-            let unavailable = Self.unavailable.contains(item)
+            let unavailable = state.isUnavailable(item)
             let isActive = item == .connect && state.connected != nil
             var background = isActive ? blend(colors.background, colors.accent, 0.18) : colors.glyphRest
             if unavailable { background = blend(colors.background, colors.text, 0.03) }
@@ -285,7 +293,10 @@ final class WindowChrome {
         case .screenshot:
             if state.screenshotCopied { return "Screenshot copied\nPaste it anywhere with Ctrl+V." }
             return "Take Screenshot (Ctrl+Alt+S)\nCopy a picture of this whole window to the clipboard, ready to paste."
-        case .explorer: return "Show File Explorer (Ctrl+Shift+X)" + notYet
+        case .explorer:
+            if state.explorerShowing { return "Show Terminal (Ctrl+Shift+X)\nReplace the file explorer with this tab's shell." }
+            if !state.explorerAvailable { return "Show File Explorer (Ctrl+Shift+X)\nFiles on SSH hosts aren't in the Windows version yet." }
+            return "Show File Explorer (Ctrl+Shift+X)\nBrowse files on this PC in this tab."
         case .multiExec: return "MultiExec (Ctrl+Shift+M)" + notYet
         case .peers: return "Tailcat Peers" + notYet
         case .search: return "Search Terminal (Ctrl+Shift+F)" + notYet

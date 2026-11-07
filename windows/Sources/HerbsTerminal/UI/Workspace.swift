@@ -62,13 +62,50 @@ final class Workspace: WindowObject {
     func select(_ index: Int) {
         guard tabs.indices.contains(index) else { return }
         active = index
-        for (i, pane) in tabs.enumerated() where i != index { pane.show(false) }
-        tabs[index].show(true)
+        for (i, pane) in tabs.enumerated() where i != index {
+            pane.show(false)
+            pane.explorer?.show(false)
+        }
+        let pane = tabs[index]
+        if pane.showingExplorer, let explorer = pane.explorer {
+            pane.show(false)
+            explorer.show(true)
+        } else {
+            pane.explorer?.show(false)
+            pane.show(true)
+        }
         refreshChrome()
+    }
+
+    // MARK: File explorer
+
+    /// Show File Explorer / Show Terminal (Ctrl+Shift+X): the tab switches between its shell and its explorer,
+    /// which keeps its folder while hidden.
+    func toggleExplorer() {
+        guard let hwnd, let pane = activePane else { return }
+        if !pane.showingExplorer {
+            guard pane.remote == nil else { MessageBeep(UINT(MB_OK)); return } // Hosts' files come with SFTP.
+            if pane.explorer == nil {
+                let home = FileManager.default.homeDirectoryForCurrentUser.path.windowsPath
+                let explorer = ExplorerPane(parent: hwnd, start: home)
+                explorer.onOpenInTerminal = { [weak self] folder in self?.newTab(in: folder) }
+                explorer.onLocationChange = { [weak self] in self?.refreshChrome() }
+                pane.explorer = explorer
+                layout()
+            }
+        }
+        pane.showingExplorer.toggle()
+        select(active)
+    }
+
+    /// A new tab whose shell starts in `folder` (the explorer's Open in New Terminal Tab).
+    func newTab(in folder: String) {
+        addPane()?.start(directory: folder)
     }
 
     func close(_ pane: TerminalPane) {
         guard let index = tabs.firstIndex(where: { $0 === pane }) else { return }
+        pane.explorer?.close()
         pane.close()
         tabs.remove(at: index)
         if tabs.isEmpty {
@@ -347,6 +384,7 @@ final class Workspace: WindowObject {
 
     /// Keyboard shortcuts, checked before the message reaches the focused terminal. Returns true when handled.
     func shortcut(_ message: MSG) -> Bool {
+        if let explorer = activePane?.explorer, activePane?.showingExplorer == true, explorer.handleKey(message) { return true }
         let isKey = message.message == UINT(WM_KEYDOWN), isSystemKey = message.message == UINT(WM_SYSKEYDOWN)
         guard isKey || isSystemKey else { return false }
         let key = Int32(message.wParam)
@@ -360,6 +398,7 @@ final class Workspace: WindowObject {
             if letter("W") { return run(.closeTab) }
             if letter("N") { return run(.newWindow) }
             if letter("K") { return run(.connect) }
+            if letter("X") { toggleExplorer(); return true }
             if letter("S") { return run(.exportSession) }
             if letter("I") { return run(.renameTab) }
             if letter("L") { return run(.clearToStart) }
@@ -397,7 +436,10 @@ final class Workspace: WindowObject {
         setDarkTitleBar(hwnd, appIsDark)
         DarkMenus.apply(dark: appIsDark)
         let settings = TerminalProfile.shared.settings(for: nil)
-        for pane in tabs { pane.apply(settings) }
+        for pane in tabs {
+            pane.apply(settings)
+            pane.explorer?.applyTheme()
+        }
         InvalidateRect(hwnd, nil, false)
     }
 
@@ -413,6 +455,13 @@ final class Workspace: WindowObject {
         if let pane = activePane {
             state.title = pane.title
             state.connected = pane.isConnected ? pane.remote?.label : nil
+            state.explorerShowing = pane.showingExplorer
+            state.explorerAvailable = pane.remote == nil
+            if pane.showingExplorer, let explorer = pane.explorer {
+                // As on the Mac: the folder's name, and where it is beside it.
+                state.title = explorer.title
+                state.subtitle = explorer.folder
+            }
         }
         if let hwnd {
             state.maximized = IsZoomed(hwnd)
@@ -429,7 +478,10 @@ final class Workspace: WindowObject {
         chrome.layout(width: rect.right, dpi: dpi, state: state)
         chrome.updateTooltips(owner: hwnd, state: state)
         rect.top = chrome.height(dpi)
-        for pane in tabs { pane.move(to: rect) }
+        for pane in tabs {
+            pane.move(to: rect)
+            pane.explorer?.move(to: rect)
+        }
         InvalidateRect(hwnd, nil, false)
     }
 
@@ -515,12 +567,13 @@ final class Workspace: WindowObject {
 
     private func click(_ item: WindowChrome.Item, at point: POINT) {
         guard let hwnd else { return }
-        if WindowChrome.unavailable.contains(item) { return }
+        if state.isUnavailable(item) { return }
         switch item {
         case .menu: openMainMenu()
         case .newTab: newTab()
         case .connect: connectButton()
         case .export: exportSession()
+        case .explorer: toggleExplorer()
         case .screenshot: takeScreenshot()
         case .tab(let index): select(index)
         case .tabClose(let index): closeTab(at: index)

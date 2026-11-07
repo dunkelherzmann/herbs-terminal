@@ -47,6 +47,7 @@ A development build is `windows\.build\out\Products\Debug-windows-x86_64\HerbsTe
 - Full color (16, 256 and 24-bit), bold, italic, underline, strikethrough, dim, inverse; wide (CJK) characters
 - Scrollback with the mouse wheel and Shift+Page Up / Down; full-screen programs scroll with the wheel
 - Mouse selection (double-click selects a word), copy and paste as in Windows Terminal: Ctrl+C copies when text is selected, Ctrl+V pastes, right-click copies or pastes; bracketed paste
+- **File explorer** for this PC's files (the toolbar's folder button or Ctrl+Shift+X): places, location bar, sortable list with Windows' icons, open, Copy / Cut / Paste shared with File Explorer, Recycle Bin, rename, New Folder / New File, hidden files, Properties, and Open in New Terminal Tab. Hosts' files come next
 - Dropping files or folders from File Explorer on a terminal types their paths, as on the Mac and Linux, quoted for the tab's shell: single quotes for PowerShell, double quotes for Command Prompt, `/mnt/c/…` for WSL, and POSIX quoting for Git Bash and SSH tabs
 - Block, underline and bar cursors from the profile, blinking or steady
 - Light and dark mode follow Windows, title bar included; per-monitor DPI
@@ -76,6 +77,7 @@ A development build is `windows\.build\out\Products\Debug-windows-x86_64\HerbsTe
 | Ctrl+= / Ctrl+- / Ctrl+0 | Zoom in, out, reset |
 | Ctrl+, | Settings |
 | Ctrl+Shift+K | Connect via SSH |
+| Ctrl+Shift+X | Show File Explorer / Terminal |
 | Ctrl+Shift+C, Ctrl+Shift+V | Copy, paste |
 | Shift+Page Up / Down, Ctrl+Shift+Home / End | Scroll back |
 
@@ -89,7 +91,7 @@ Scripted runs drive the app from the command line instead of simulated keystroke
 HerbsTerminal.exe --type "Get-ChildItem\r" --type "\t" --type "ver\r" --capture shot.bmp
 ```
 
-Steps run 1.5 s apart. `--type` sends text straight into the active terminal (`\r` is Enter, `\e` Escape); a lone `\t` opens a new tab, `\s` Settings, `\k` Connect via SSH, `\l` Manage Logins, `\m` the Main Menu, `\c<id>` a menu command, and `\f` followed by `value|value|…#button` fills the open dialog and presses that button (`+check` as the last value ticks its checkbox). `--ssh user@host:port` (after `--ssh-password`) opens an SSH tab directly. `--drop "path|path"` drops files on the active terminal the way File Explorer does. `--capture` saves the window, and any open Settings, Manage Logins, dialog or menu beside it, as BMPs and quits. The window opens without taking focus.
+Steps run 1.5 s apart. `--type` sends text straight into the active terminal (`\r` is Enter, `\e` Escape); a lone `\t` opens a new tab, `\s` Settings, `\k` Connect via SSH, `\l` Manage Logins, `\m` the Main Menu, `\c<id>` a menu command, and `\f` followed by `value|value|…#button` fills the open dialog and presses that button (`+check` as the last value ticks its checkbox). `--ssh user@host:port` (after `--ssh-password`) opens an SSH tab directly. `--drop "path|path"` drops files on the active terminal the way File Explorer does. A lone `\x` switches the tab to its explorer; `--explore PATH`, `--select "a|b"` and `--explorer-do NAME` (copy, cut, paste, newFolder, newFile, delete, deletePermanently, showHidden, reload, selectAll, up, back) drive it. `--capture` saves the window, and any open Settings, Manage Logins, dialog or menu beside it, as BMPs and quits. The window opens without taking focus.
 
 ## Roadmap
 

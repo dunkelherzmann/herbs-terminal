@@ -10,6 +10,9 @@ import WinSDK
 ///   `\t` opens a new tab, `\s` Settings, `\k` Connect via SSH, `\l` Manage Logins, and `\f` followed by
 ///   `value|value|…#button` fills the open dialog's fields and presses that button (by position).
 /// - `--drop "path|path"` drops those files on the active terminal, as File Explorer would.
+/// - A lone `\x` switches the active tab to its file explorer (or back); `--explore PATH` opens a folder in it,
+///   `--select "a|b"` selects items by name, and `--explorer-do NAME` runs an explorer command
+///   (copy, cut, paste, newFolder, newFile, delete, deletePermanently, showHidden, reload, selectAll, up, back).
 /// - `--ssh user@host:port` opens an SSH tab directly; `--ssh-password` before it gives the password.
 /// - `--capture FILE` saves the main window (and any open Settings, Manage Logins or dialog beside it) as BMPs
 ///   and quits.
@@ -21,7 +24,7 @@ enum TestScript {
     static var active: Bool { !steps.isEmpty }
 
     private enum Step {
-        case type(String), newTab, settings, connect, logins, menu, menuCommand(UINT), drop([String]), form([String], Int), ssh(SSHLogin), capture(String)
+        case type(String), newTab, settings, connect, logins, menu, menuCommand(UINT), drop([String]), explorer, explore(String), select([String]), explorerDo(String), form([String], Int), ssh(SSHLogin), capture(String)
     }
 
     private static func parse(_ arguments: [String]) -> [Step] {
@@ -37,6 +40,7 @@ enum TestScript {
                 case "\\k": steps.append(.connect)
                 case "\\l": steps.append(.logins)
                 case "\\m": steps.append(.menu)
+                case "\\x": steps.append(.explorer)
                 default:
                     if value.hasPrefix("\\c"), let id = UINT(value.dropFirst(2)) {
                         steps.append(.menuCommand(id))
@@ -50,6 +54,9 @@ enum TestScript {
                     }
                 }
             case "--drop": steps.append(.drop(value.split(separator: "|").map(String.init)))
+            case "--explore": steps.append(.explore(value))
+            case "--select": steps.append(.select(value.split(separator: "|").map(String.init)))
+            case "--explorer-do": steps.append(.explorerDo(value))
             case "--ssh-password": password = value
             case "--ssh":
                 let target = value.split(separator: "@", maxSplits: 1).map(String.init)
@@ -78,6 +85,10 @@ enum TestScript {
         case .menu: workspace.openMainMenu()
         case .menuCommand(let id): workspace.perform(id)
         case .drop(let paths): drop(paths, on: workspace.activePane?.hwnd)
+        case .explorer: workspace.toggleExplorer()
+        case .explore(let path): workspace.activePane?.explorer?.navigate(to: path)
+        case .select(let names): workspace.activePane?.explorer?.select(names: names)
+        case .explorerDo(let name): workspace.activePane?.explorer?.perform(named: name)
         case .form(let values, let button): FormDialog.current?.scripted(values: values, button: button)
         case .ssh(let login): workspace.connectSSH(login)
         case .capture(let path):
