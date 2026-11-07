@@ -38,10 +38,11 @@ A development build is `windows\.build\out\Products\Debug-windows-x86_64\HerbsTe
 
 ## What works
 
-- **The window, laid out as on Linux:** the toolbar takes the title bar's place, with the Main Menu, New Tab and Connect via SSH on the left, the tab's title in the middle, Export Session, the explorer switch, MultiExec, Tailcat Peers and Search on the right, and minimize, maximize and close at the right end (with Windows 11's snap layouts on maximize). Toolbar buttons never take the keyboard from the terminal, and each shows a hover hint after about half a second. The explorer, MultiExec, Tailcat and Search buttons are there but greyed out until those features arrive
-- **Main Menu**, item for item as on Linux: New Tab, New Window, Connect via SSH, Open Tabs, Zoom, Appearance (System / Light / Dark, color presets, iTerm2 import, Restore Defaults), the Shell submenu (Export Session, tabs, Disconnect, Clear to Start, Clear Scrollback, Reset, Hard Reset; splits, profiles, MultiExec and Run Command on Hosts greyed out for now), Toggle Full Screen, Settings, Manage Logins, About and Quit. Menus and hints follow dark mode
+- **The window, laid out as on Linux:** the toolbar takes the title bar's place, with the Main Menu, New Tab and Connect via SSH on the left, the tab's title in the middle, Export Session, Take Screenshot, the explorer switch, MultiExec, Tailcat Peers and Search on the right, and minimize, maximize and close at the right end (with Windows 11's snap layouts on maximize). Toolbar buttons never take the keyboard from the terminal, and each shows a hover hint after about half a second. The explorer, MultiExec, Tailcat and Search buttons are there but greyed out until those features arrive
+- **Main Menu**, item for item as on Linux: New Tab, New Window, Connect via SSH, Open Tabs, Zoom, Appearance (System / Light / Dark, color presets, iTerm2 import, Restore Defaults), the Shell submenu (Export Session, Take Screenshot, tabs, Disconnect, Clear to Start, Clear Scrollback, Reset, Hard Reset; splits, profiles, MultiExec and Run Command on Hosts greyed out for now), Toggle Full Screen, Settings, Manage Logins, About and Quit. Menus and hints follow dark mode
 - **Tab strip**: tabs are numbered "Terminal 1", "Terminal 2"… (the lowest free number), double-click or Ctrl+Shift+I to rename, drag to reorder, middle-click to close, right-click for Rename, Move Left/Right and Close. The title shows what the shell reports; double-click it for the default window size and zoom, right-click to make the current size the default
 - **Export Session** (Ctrl+Shift+S): everything in the terminal, scrollback included, to a text file named after the tab and the time
+- **Take Screenshot** (Ctrl+Alt+S): a picture of the whole window, toolbar and tabs included, to the clipboard, ready to paste; the button shows a check mark for a moment to confirm it
 - Each tab runs PowerShell 7 (`pwsh`) when it's installed, otherwise Windows PowerShell
 - Full color (16, 256 and 24-bit), bold, italic, underline, strikethrough, dim, inverse; wide (CJK) characters
 - Scrollback with the mouse wheel and Shift+Page Up / Down; full-screen programs scroll with the wheel
@@ -49,7 +50,7 @@ A development build is `windows\.build\out\Products\Debug-windows-x86_64\HerbsTe
 - Block, underline and bar cursors from the profile, blinking or steady
 - Light and dark mode follow Windows, title bar included; per-monitor DPI
 - Settings (Ctrl+, or the window menu): font and size, cursor shape and blinking, color theme with `.itermcolors` import, light/dark/system appearance, the shell for new tabs (PowerShell 7, Windows PowerShell, Command Prompt, WSL, Git Bash or any command line), scrollback length, new window size, and confirm-before-closing. Changes apply to open terminals at once and are saved in `%LOCALAPPDATA%\HerbsTerminal\settings.json`, the same model as the Linux version
-- **SSH:** Connect via SSH (Ctrl+Shift+K, the SSH button beside New Tab, or the window menu) opens the login in a new tab running Windows' own OpenSSH client (`System32\OpenSSH\ssh.exe`). Pick a saved login or type one, and optionally save it. A password reaches ssh only once, through a one-time token traded over a private named pipe (SSH_ASKPASS), never on a command line or in the terminal; host-key questions, one-time codes and retries are asked in the terminal as usual, and keys from `ssh-agent` or `~/.ssh` work without a password. When a session ends with an error the tab stays open with the reason; Enter reconnects
+- **SSH:** Connect via SSH (Ctrl+Shift+K, the SSH button beside New Tab, or the window menu) opens the login in a new tab running Windows' own OpenSSH client (`System32\OpenSSH\ssh.exe`). Pick a saved login or type one, and optionally save it. A password reaches ssh only once, through a one-time token traded over a private named pipe (SSH_ASKPASS), never on a command line or in the terminal; host-key questions, one-time codes and retries are asked in the terminal as usual, and keys from `ssh-agent` or `~/.ssh` work without a password. When the host is switched off, restarts or drops off the network, the session ends within about 15 seconds. When a session ends with an error the tab stays open with the reason; Enter reconnects
 - **Manage Logins:** the saved logins in a list with New, Edit, Delete, Import and Export (CSV, the same format as the Mac and Linux), and the Administrator Password: create, change or remove it, and unlock once per session
 - Login vault (AES-256-GCM, PBKDF2-SHA256) on Windows CNG, verified against the NIST and RFC test vectors; the database is `%LOCALAPPDATA%\HerbsTerminal\logins.sqlite3`
 
@@ -61,6 +62,7 @@ A development build is `windows\.build\out\Products\Debug-windows-x86_64\HerbsTe
 | Ctrl+Shift+W | Close tab |
 | Ctrl+Shift+N | New window |
 | Ctrl+Shift+S | Export Session |
+| Ctrl+Alt+S | Take Screenshot |
 | Ctrl+Shift+I | Rename tab |
 | Ctrl+Shift+Page Up / Down | Move tab left / right |
 | Ctrl+Shift+L, Ctrl+Alt+K | Clear to Start, Clear Scrollback |

@@ -182,6 +182,57 @@ final class Workspace: WindowObject {
         }
     }
 
+    /// Take Screenshot: a picture of this whole window as it looks now, toolbar and tabs included, on the clipboard,
+    /// ready to paste. The button shows a check mark for a moment to confirm it.
+    func takeScreenshot() {
+        guard let hwnd, Self.copyWindowImage(hwnd) else { MessageBeep(UINT(MB_ICONWARNING)); return }
+        screenshotCopied = true
+        refreshChrome()
+        SetTimer(hwnd, Self.screenshotTimer, 1500, nil)
+    }
+
+    private var screenshotCopied = false
+    private static let screenshotTimer: UINT_PTR = 0x5C57
+
+    /// The window drawn by PrintWindow (as the test hook's --capture does), on the clipboard as a bottom-up
+    /// 32-bit CF_DIB, which every program that pastes images reads.
+    private static func copyWindowImage(_ hwnd: HWND) -> Bool {
+        var rect = RECT()
+        GetWindowRect(hwnd, &rect)
+        let width = rect.right - rect.left, height = rect.bottom - rect.top
+        guard width > 0, height > 0 else { return false }
+        let screen = GetDC(nil)
+        defer { ReleaseDC(nil, screen) }
+        let dc = CreateCompatibleDC(screen)
+        defer { DeleteDC(dc) }
+        guard let bitmap = CreateCompatibleBitmap(screen, width, height) else { return false }
+        defer { DeleteObject(bitmap) }
+        let old = SelectObject(dc, bitmap)
+        PrintWindow(hwnd, dc, 2) // PW_RENDERFULLCONTENT
+        SelectObject(dc, old)
+
+        var info = BITMAPINFO()
+        info.bmiHeader.biSize = DWORD(MemoryLayout<BITMAPINFOHEADER>.size)
+        info.bmiHeader.biWidth = width
+        info.bmiHeader.biHeight = height
+        info.bmiHeader.biPlanes = 1
+        info.bmiHeader.biBitCount = 32
+        info.bmiHeader.biCompression = DWORD(BI_RGB)
+        let headerSize = MemoryLayout<BITMAPINFOHEADER>.size, pixelSize = Int(width) * Int(height) * 4
+        info.bmiHeader.biSizeImage = DWORD(pixelSize)
+        guard let memory = GlobalAlloc(UINT(GMEM_MOVEABLE), SIZE_T(headerSize + pixelSize)) else { return false }
+        guard let base = GlobalLock(memory) else { GlobalFree(memory); return false }
+        base.storeBytes(of: info.bmiHeader, as: BITMAPINFOHEADER.self)
+        let lines = GetDIBits(dc, bitmap, 0, UINT(height), base + headerSize, &info, UINT(DIB_RGB_COLORS))
+        GlobalUnlock(memory)
+        guard lines == height, OpenClipboard(hwnd) else { GlobalFree(memory); return false }
+        EmptyClipboard()
+        let placed = SetClipboardData(UINT(CF_DIB), memory) != nil
+        CloseClipboard()
+        if !placed { GlobalFree(memory) } // Once placed, the clipboard owns the memory.
+        return placed
+    }
+
     private func toggleFullScreen() {
         guard let hwnd else { return }
         let style = DWORD(bitPattern: Int32(truncatingIfNeeded: GetWindowLongPtrW(hwnd, GWL_STYLE)))
@@ -254,6 +305,7 @@ final class Workspace: WindowObject {
         case .importPreset: importPreset()
         case .restoreTheming: restoreTheming()
         case .exportSession: exportSession()
+        case .takeScreenshot: takeScreenshot()
         case .disconnect: pane?.disconnect()
         case .previousTab: select((active - 1 + tabs.count) % tabs.count)
         case .nextTab: select((active + 1) % tabs.count)
@@ -319,6 +371,7 @@ final class Workspace: WindowObject {
         if control && alt && !shift {
             if letter("K") { return run(.clearScrollback) }
             if letter("R") { return run(.reset) }
+            if letter("S") { return run(.takeScreenshot) }
         }
         if control && alt && shift && letter("R") { return run(.hardReset) }
         if control && !shift && !alt {
@@ -365,6 +418,7 @@ final class Workspace: WindowObject {
             state.maximized = IsZoomed(hwnd)
             state.windowActive = GetActiveWindow() == hwnd || GetForegroundWindow() == hwnd
         }
+        state.screenshotCopied = screenshotCopied
         return state
     }
 
@@ -467,6 +521,7 @@ final class Workspace: WindowObject {
         case .newTab: newTab()
         case .connect: connectButton()
         case .export: exportSession()
+        case .screenshot: takeScreenshot()
         case .tab(let index): select(index)
         case .tabClose(let index): closeTab(at: index)
         case .minimize: ShowWindow(hwnd, SW_MINIMIZE)
@@ -650,6 +705,11 @@ final class Workspace: WindowObject {
             }
             closeAll()
             DestroyWindow(hwnd)
+            return 0
+        case WM_TIMER where wParam == Self.screenshotTimer:
+            KillTimer(hwnd, Self.screenshotTimer)
+            screenshotCopied = false
+            refreshChrome()
             return 0
         case WM_TIMER where wParam == TestScript.timer:
             if !TestScript.step(self) { KillTimer(hwnd, TestScript.timer) }

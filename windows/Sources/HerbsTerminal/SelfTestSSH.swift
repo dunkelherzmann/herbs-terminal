@@ -8,6 +8,9 @@ extension SelfTest {
         check("Spaces are quoted", quoteArgument("C:\\Program Files\\x") == "\"C:\\Program Files\\x\"")
         check("Quotes and trailing backslashes are escaped", quoteArgument("a\"b\\") == "\"a\\\"b\\\\\"")
         check("Empty arguments are kept", quoteArgument("") == "\"\"")
+        check("ssh ends soon after the host goes away",
+              SSH.keepAliveOptions == ["-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=2"]
+                  && (SSH.commandLine(RemoteEndpoint(host: "server", port: 22, username: "herb"))?.contains("ServerAliveInterval=5") ?? true))
 
         // Both ways ssh asks for a password are recognized; other prompts and other hosts aren't.
         check("Password prompt is recognized", AskpassBroker.isPasswordPrompt("herb@server's password: ", for: "herb@server"))
