@@ -13,4 +13,4 @@ A box is ticked once the change has shipped. A request that covers several platf
 - [x] **Audit the Linux version against the Mac version** and test it. The findings are in `bugs.md`. *Requested 2026-11-07.* Done 2026-11-07 (#7).
 - [x] **Protect the `main` branch** from force pushes and deletion. *Requested 2026-11-07.* Done 2026-11-07 (a "Protect main" ruleset).
 - [x] **Typing `exit` in the last terminal quits the app.** With other windows open, it closes just its own window. *Requested 2026-11-07 · Mac, Linux.* Shipped in 1.0.35 (#10). Windows already quit when its last window closed.
-- [ ] **Keep these trackers:** `enhancements.md` and `bugs.md`, updated as requests come in and as they're done. *Requested 2026-11-07.*
+- [x] **Keep these trackers:** `enhancements.md` and `bugs.md`, updated as requests come in and as they're done. *Requested 2026-11-07.* Set up in #11.
