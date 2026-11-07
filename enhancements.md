@@ -14,3 +14,7 @@ A box is ticked once the change has shipped. A request that covers several platf
 - [x] **Protect the `main` branch** from force pushes and deletion. *Requested 2026-11-07.* Done 2026-11-07 (a "Protect main" ruleset).
 - [x] **Typing `exit` in the last terminal quits the app.** With other windows open, it closes just its own window. *Requested 2026-11-07 · Mac, Linux.* Shipped in 1.0.35 (#10). Windows already quit when its last window closed.
 - [x] **Keep these trackers:** `enhancements.md` and `bugs.md`, updated as requests come in and as they're done. *Requested 2026-11-07.* Set up in #11.
+- [ ] **Lock button in the Tailcat Peers window.** At the bottom, opposite Done: it shows Lock or Unlock, and its hover bubble explains that it locks or unlocks the safe storage of Tailcat addresses. Clicking it opens a window that asks for the Administrator Password, offers to lock or unlock, and offers to change the Administrator Password. *Requested 2026-11-07 · Mac, Linux, Windows.*
+  - [ ] Mac
+  - [ ] Linux
+  - [ ] Windows

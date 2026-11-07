@@ -27,3 +27,6 @@ Items marked *found in testing* were found while testing other work, not reporte
 - [ ] **Mac tests: one test can hang the test run.** `hostCommandOutputIsCappedWhileItRuns` pipes `yes` into `head`; when broken pipes are being ignored, macOS's `yes` never stops. *Found in testing, 2026-11-07.*
 - [ ] **Linux: after typing `exit` in an SSH session, the app still shows the tab as connected.** *Reported 2026-11-07 · Linux.* Fix in #12 (the connection monitor waited forever on a finished ssh); confirmed on Aurora (1.0.40), ticked once released.
 - [ ] **Linux: other short commands may wait out their time limit.** `Host.run`, the sudo checks and similar commands wait with Foundation's `Process`, which in the Linux app can miss that a command has finished; they would fail after their timeout (up to 20 s) instead of hanging. *Found in testing, 2026-11-07.*
+- [ ] **Tailcat: the app crashes and closes the moment Start Sharing is clicked.** *Reported 2026-11-07.*
+- [ ] **Tailcat: accepting a pairing asks to unlock saved logins with the Administrator Password, but the Tailcat Peers window offers no way to do that.** Unlocking in Connect via SSH and coming back works, but isn't practical. *Reported 2026-11-07.*
+- [ ] **Linux: connecting through Tailcat fails** with "Connection closed by UNKNOWN port 65535" (Mac to Linux pairing). *Reported 2026-11-07 · Linux.*
