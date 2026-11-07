@@ -6,7 +6,7 @@ A box is ticked once the change has shipped. A request that covers several platf
 - [ ] **Take Screenshot button.** A button next to Export Session copies a picture of the whole window to the clipboard, ready to paste. *Requested 2026-11-07.*
   - [x] Mac: camera button and Shift-Cmd-S. Shipped in 1.0.11.
   - [x] Linux: camera button and Ctrl+Alt+S. Shipped in 1.0.25.
-  - [ ] Windows: camera button and Ctrl+Alt+S, in #5. Not yet built or tested.
+  - [ ] Windows: camera button and Ctrl+Alt+S, in #5. Built and tested on Windows 2026-11-07 (the clipboard got a picture of the whole window); not yet merged.
 - [x] **Build the Linux version on a real Linux machine.** It's built and tested natively on Aurora (KDE on Wayland), as well as in the Mac's Linux VM. *Requested 2026-11-07.* Shipped in 1.0.25.
 - [x] **Get the repository ready to be public.** Personal data was removed from the whole history, the repo was recreated with that clean history, and it was made public. *Requested 2026-11-07.* Done 2026-11-07.
 - [x] **Say that the app is provided as is, without support,** in the README and release notes. *Requested 2026-11-07.* Done in the README's Support section and the release notes from 1.0.25.
@@ -25,4 +25,4 @@ A box is ticked once the change has shipped. A request that covers several platf
 - [ ] **Dropping a file or folder on the terminal types its path.** *Requested 2026-11-07 · Mac, Linux, Windows.*
   - [x] Mac: already did, quoted for the shell.
   - [ ] Linux: it was meant to and didn't; tracked in `bugs.md`, fix in #14.
-  - [ ] Windows: the Windows version doesn't take drops yet.
+  - [ ] Windows: in #15 (stacked on #5). Files dropped from File Explorer are typed as paths quoted for the tab's shell (PowerShell, cmd, WSL, Git Bash or SSH); built and tested on Windows, not yet merged.

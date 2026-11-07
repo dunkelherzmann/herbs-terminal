@@ -7,7 +7,7 @@ Items marked *found in testing* were found while testing other work, not reporte
 - [ ] **SSH stays connected after the remote host restarts or is switched off.** The session should end soon after the host goes away. *Reported 2026-11-07.*
   - [x] Mac: ends within about 15 seconds (keepalive every 5 s, gives up after 2 misses). Fixed in 1.0.11.
   - [x] Linux: same shared code. Fixed in 1.0.25.
-  - [ ] Windows: same options for `ssh.exe`, in #5. Not yet built or tested.
+  - [ ] Windows: same options for `ssh.exe`, in #5. Built and tested on Windows 2026-11-07 (a server that stopped answering ended the session with "Timeout, server not responding"); not yet merged.
 - [x] **Linux: the app closed right after it opened.** Newer Flatpak already hands the shell its terminal, and taking it a second time failed, so the shell ended at once. *Found in testing, 2026-11-07.* Fixed in 1.0.25.
 - [x] **Linux: the app called itself version 1.0.0.** The Flatpak build can't see git history, so the version was never worked out. *Found in testing, 2026-11-07.* Fixed in 1.0.25.
 - [x] **Linux: building the Flatpak failed in a fresh VM.** *Found in testing, 2026-11-07.* Fixed in 1.0.25.
@@ -21,7 +21,7 @@ Items marked *found in testing* were found while testing other work, not reporte
 - [x] **The title kept the remote `user@host` after the remote host ended the SSH connection.** It should show this computer's `user@host` again. *Reported 2026-11-07 · Mac, Linux.* Fixed in 1.0.35 (#8). On Windows a dropped SSH tab stays that host's tab, so its title is already right.
 - [ ] **The gap between Search and Tailcat Peers was wider than between the other toolbar buttons.** *Reported 2026-11-07.*
   - [x] Linux: fixed in 1.0.35 (#9).
-  - [ ] Windows: in #5. Not yet built.
+  - [ ] Windows: in #5. Built and tested on Windows 2026-11-07 (the toolbar buttons are evenly spaced); not yet merged.
   - [x] Mac: already even; no change needed.
 - [ ] **Linux: Connect via SSH doesn't work.** Saved logins can't be managed or saved, and connecting to a host fails. Works on the Mac. *Reported 2026-11-07 · Linux.* Fixes in #12: the dialog's buttons, a crash when opening Manage Logins, ssh hanging at a new host's fingerprint question, and a crash when unlocking saved logins. Confirmed working on Aurora (1.0.40); ticked once released.
 - [ ] **Mac tests: one test can hang the test run.** `hostCommandOutputIsCappedWhileItRuns` pipes `yes` into `head`; when broken pipes are being ignored, macOS's `yes` never stops. *Found in testing, 2026-11-07.*
