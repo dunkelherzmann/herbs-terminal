@@ -4,5 +4,6 @@ Sources/HerbsTerminal/CredentialStore.swift
 Sources/HerbsTerminal/CryptoVault.swift
 Sources/HerbsTerminal/SSHLogin.swift
 Sources/HerbsTerminal/SFTPClient.swift
+Sources/HerbsTerminal/TransferQueue.swift
 linux/Sources/HerbsTerminal/Core/Profiles.swift
 linux/Sources/HerbsTerminal/Platform/Observation.swift
