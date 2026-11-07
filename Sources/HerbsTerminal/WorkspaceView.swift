@@ -379,7 +379,8 @@ final class Workspace: ObservableObject {
         }
         shell.legend.onResize = { [weak self] in self?.rememberChrome() }
         // Typing `exit` closes the pane, the tab when it was the tab's last pane, and the window when it was
-        // the last terminal. An ssh session ends on its own and leaves the local shell running.
+        // the window's last terminal, or quits the app when it was the last window. An ssh session ends on its
+        // own and leaves the local shell running.
         shell.legend.onExit = { [weak self, weak tab, weak shell] in
             guard let self, let tab, let shell else { return }
             self.shellExited(shell, in: tab)
@@ -422,9 +423,17 @@ final class Workspace: ObservableObject {
         } else if tabs.count > 1 {
             remove(tab)
             if multiExec, allShells.isEmpty { multiExec = false }
+        } else if isLastWindow {
+            // `exit` in the app's last terminal quits Herb's Terminal, as closing its last shell should.
+            NSApp.terminate(nil)
         } else {
             window?.close()
         }
+    }
+
+    /// True when no other Herb's Terminal window is open.
+    var isLastWindow: Bool {
+        !Workspace.all.contains { $0 !== self && $0.window?.isVisible == true }
     }
 
     // MARK: Split panes

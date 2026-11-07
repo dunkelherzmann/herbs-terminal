@@ -402,3 +402,18 @@ func takeScreenshotPicturesTheWholeWindow() throws {
     let middle = try #require(bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2))
     #expect(middle.alphaComponent == 1)
 }
+
+@Test @MainActor
+func exitInTheLastTabQuitsOnlyWhenNoOtherWindowIsOpen() {
+    // `exit` in a window's last tab quits the app only when it was the last window; with another window
+    // open it closes just its own window.
+    let first = Workspace(restoring: nil), second = Workspace(restoring: nil)
+    defer { [first, second].forEach { $0.tabs.forEach { $0.shells.forEach { $0.close() } } } }
+    let windows = [first, second].map { _ in
+        NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
+    }
+    defer { windows.forEach { $0.orderOut(nil) } }
+    first.window = windows[0]; second.window = windows[1]
+    windows.forEach { $0.orderBack(nil) }
+    #expect(!first.isLastWindow && !second.isLastWindow)
+}

@@ -68,7 +68,7 @@ It covers the everyday features of the stock macOS Terminal and Ptyxis. It adds:
 - **Switching:** ⌘1–⌘8 pick a tab by position, and ⌘9 picks the last tab. ⇧⌘[ and ⇧⌘] go to the previous and next tab. Keyboard focus moves to the selected tab.
 - **Closing:**
   - ⌘W closes the current tab. When only one tab is left, ⌘W closes the window.
-  - Typing `exit` closes the pane, then the tab, and closes the window when it was the last terminal. In an SSH session, `exit` ends the session and returns to the local shell.
+  - Typing `exit` closes the pane, then the tab, then the window when it was the window's last terminal. In the app's last window it quits Herb's Terminal. In an SSH session, `exit` ends the session and returns to the local shell.
   - Closing a tab, a window or the app asks first if a shell is running another program or an SSH session (Settings ▸ Terminal).
 - **Where new tabs start:** in the current tab's folder or in your home folder, as set in Settings. A profile can also set its own start folder.
 - **Session restore:** when the app quits, each window's tabs are saved with their folder, panes, explorer folder and name, and they reopen at the next launch.

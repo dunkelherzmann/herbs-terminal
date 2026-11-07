@@ -393,6 +393,9 @@ final class Workspace {
             closePane(pane, in: tab, confirm: false)
         } else if tabs.count > 1 {
             remove(tab)
+        } else if Self.registry.count == 1 {
+            // `exit` in the app's last terminal quits Herb's Terminal, Settings and other windows included.
+            App.shared.quit()
         } else {
             closeWithoutAsking()
         }
