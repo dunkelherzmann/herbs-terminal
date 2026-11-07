@@ -177,6 +177,12 @@ func setLabel(_ widget: Widget, _ text: String) { gtk_label_set_text(c(widget), 
 /// same text as the control's description.
 func hint(_ widget: Widget, _ text: String) {
     let lines = text.split(separator: "\n", maxSplits: 1).map(String.init)
+    // An empty hint clears the bubble; indexing lines[0] here used to crash the app.
+    guard !lines.isEmpty else {
+        gtk_widget_set_tooltip_markup(widget, nil)
+        accessibleDescription(widget, "")
+        return
+    }
     let escaped = lines.map { takeString(g_markup_escape_text($0, -1)) ?? $0 }
     let markup = escaped.count > 1 ? "<b>\(escaped[0])</b>\n\(escaped[1])" : "<b>\(escaped[0])</b>"
     gtk_widget_set_tooltip_markup(widget, markup)

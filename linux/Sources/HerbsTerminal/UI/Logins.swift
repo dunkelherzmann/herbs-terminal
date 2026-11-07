@@ -383,7 +383,8 @@ final class ManageLoginsWindow {
                    Task { if let notice = await LoginVaultPrompts.exportData(self.store, only: self.checkedIDs, parent: self.window.window) { self.setNotice(notice) } }
                },
                separator(.vertical),
-               barButton(passwordButton, "Create Administrator Password", "dialog-password-symbolic", "") { [weak self] in
+               barButton(passwordButton, "Create Administrator Password", "dialog-password-symbolic",
+                         "Create Administrator Password\nEncrypt saved logins with a password only you know.") { [weak self] in
                    guard let self else { return }
                    Task {
                        if await LoginVaultPrompts.createOrModify(self.store, parent: self.window.window), self.store.protection == .adminPassword {
