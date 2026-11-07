@@ -284,7 +284,10 @@ final class TerminalPane {
             title = target
             subtitle = location ?? "/"
         } else {
-            title = reportedTitle.isEmpty ? initialTitle : reportedTitle
+            // Titles reported while connected came from the remote shell; when the session ends (exit or a
+            // dropped link) the tab is back on this computer and shows its user@host until the local shell names it.
+            reportedTitle = ""
+            title = initialTitle
             subtitle = "~"
         }
         changed.send()

@@ -159,8 +159,8 @@ These follow macOS Terminal:
 | Open a tab | Starts your login shell; the explorer shows this Mac's files. |
 | **Connect via SSH** (⇧⌘K) | Takes a host, port (22 by default), username, and a password or a saved login. You can save the login or use it once. It opens the remote shell, and once the login succeeds the explorer moves to the same host and account. |
 | Type `ssh user@host` or `ssh alias` in zsh or bash | Resolves the destination through your SSH configuration and follows it exactly like a Connect via SSH login. |
-| Exit the remote shell, or **Disconnect** | Returns the tab, and its explorer, to this Mac. |
-| A login fails or the link drops | A banner shows the real state. File actions never go anywhere other than the host you're connected to. |
+| Exit the remote shell, or **Disconnect** | Returns the tab, its title and its explorer to this Mac. |
+| A login fails or the link drops | A banner shows the real state, and the title shows this Mac's `user@host` again. File actions never go anywhere other than the host you're connected to. |
 
 **How a connection is made**
 
