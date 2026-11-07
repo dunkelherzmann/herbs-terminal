@@ -23,4 +23,5 @@ Items marked *found in testing* were found while testing other work, not reporte
   - [x] Linux: fixed in 1.0.35 (#9).
   - [ ] Windows: in #5. Not yet built.
   - [x] Mac: already even; no change needed.
-- [ ] **Linux: Connect via SSH doesn't work.** Saved logins can't be managed or saved, and connecting to a host fails. Works on the Mac. *Reported 2026-11-07 · Linux.* Fix in #12; not yet retested.
+- [ ] **Linux: Connect via SSH doesn't work.** Saved logins can't be managed or saved, and connecting to a host fails. Works on the Mac. *Reported 2026-11-07 · Linux.* Fixes in #12: the dialog's buttons, a crash when opening Manage Logins, and ssh hanging at a new host's fingerprint question. Not yet retested.
+- [ ] **Mac tests: one test can hang the test run.** `hostCommandOutputIsCappedWhileItRuns` pipes `yes` into `head`; when broken pipes are being ignored, macOS's `yes` never stops. *Found in testing, 2026-11-07.*
