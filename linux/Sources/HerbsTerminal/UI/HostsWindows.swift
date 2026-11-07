@@ -19,7 +19,7 @@ final class TailcatWindow {
     private var persistent = false
     private var sharePersistent = false
     private var tokens: [ObservationToken] = []
-    private let lockButton: Widget
+    private let lockButton = gtk_button_new()!
 
     static func show(_ workspace: Workspace) {
         let peers = TailcatWindow(workspace)
@@ -56,7 +56,6 @@ final class TailcatWindow {
         append(content, group("Accept a pairing", accept), group("Share this computer", shareBox))
         let done = button("Done", hint: "Done (Esc)\nClose this panel. Sharing keeps running until you stop it or quit Herb's Terminal.") { [weak self] in self?.window.close() }
         // Bottom left, opposite Done: locks or unlocks the safe storage of Tailcat addresses (and saved logins).
-        lockButton = gtk_button_new()!
         on(lockButton, "clicked") { [weak self] _ in
             guard let self, let store = CredentialStore.shared else { return }
             Task { await LoginVaultPrompts.manage(store, parent: self.window.window) }
