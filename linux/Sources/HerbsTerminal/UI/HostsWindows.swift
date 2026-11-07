@@ -261,7 +261,7 @@ final class MultiHostWindow {
             let icon: Widget
             switch result.outcome {
             case .running: icon = gtk_spinner_new()!; gtk_spinner_start(c(icon))
-            case .succeeded: icon = image("emblem-ok-symbolic", classes: ["success"])
+            case .succeeded: icon = image("object-select-symbolic", classes: ["success"])
             case .failed: icon = image("dialog-error-symbolic", classes: ["error"])
             case .notReached: icon = image("network-error-symbolic", classes: ["warning"])
             case .cancelled: icon = image("process-stop-symbolic", classes: ["dim-label"])

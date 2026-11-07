@@ -25,7 +25,7 @@ final class SettingsWindow {
         window = ToolWindow(title: "Settings", width: 660, height: 560, parent: Dialogs.anchor(nil))
         let stack = adw_view_stack_new()!
         add(stack, "profiles", "Profiles", "system-users-symbolic", profilesPage())
-        add(stack, "text", "Text", "format-text-plain-symbolic", textPage())
+        add(stack, "text", "Text", "font-select-symbolic", textPage())
         add(stack, "terminal", "Terminal", "ht-terminal-symbolic", terminalPage())
         add(stack, "window", "Window", "window-new-symbolic", windowPage())
         add(stack, "colors", "Colors", "applications-graphics-symbolic", colorsPage())

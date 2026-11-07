@@ -474,14 +474,22 @@ final class ExplorerView {
         gtk_widget_set_hexpand(segmentScroll, 1)
         append(locationBox, back, forward, up, home, segmentScroll, locationEntry, edit, reloadButton, hiddenToggle, bookmark)
         // The lock: Administrator mode, offered in every explorer.
-        let lock = gtk_button_new_from_icon_name(isAdministrator ? "changes-allow-symbolic" : "changes-prevent-symbolic")!
+        // A real toggle button, so screen readers announce whether Administrator mode is on.
+        let lock = gtk_toggle_button_new()!
+        gtk_button_set_icon_name(c(lock), isAdministrator ? "changes-allow-symbolic" : "changes-prevent-symbolic")
+        gtk_toggle_button_set_active(c(lock), isAdministrator ? 1 : 0)
         gtk_widget_add_css_class(lock, "flat")
         if isAdministrator { gtk_widget_add_css_class(lock, "error") }
         accessibleLabel(lock, "Administrator mode")
         accessiblePressed(lock, isAdministrator)
         hint(lock, isAdministrator ? "Leave Administrator Mode\nGo back to working with your own account's access."
                                    : "Administrator Mode\nWork as root with sudo: open and change any file. Asks for the sudo password.")
-        on(lock, "clicked") { [weak self] _ in self?.toggleAdministrator() }
+        on(lock, "clicked") { [weak self] _ in
+            guard let self else { return }
+            // The click only asks: the lock shows Administrator mode once it has started (a cancelled password leaves it off).
+            gtk_toggle_button_set_active(c(lock), self.isAdministrator ? 1 : 0)
+            self.toggleAdministrator()
+        }
         self.lock = lock
         append(locationBox, lock, actionsButton)
 

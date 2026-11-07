@@ -13,7 +13,9 @@ finish-args:
   - --share=network
   - --socket=wayland
   - --socket=fallback-x11
-  - --device=dri
+  # The host's devices, so terminals are created in the host's /dev/pts: programs on the host can then name
+  # their terminal (`tty`, GPG_TTY), which a sandbox-only /dev/pts doesn't allow.
+  - --device=all
   # A terminal and file manager for administrators: shells, ssh and sudo run on the host (flatpak-spawn), and the
   # explorer reaches every folder there.
   - --talk-name=org.freedesktop.Flatpak
