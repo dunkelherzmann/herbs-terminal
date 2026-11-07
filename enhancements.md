@@ -15,14 +15,14 @@ A box is ticked once the change has shipped. A request that covers several platf
 - [x] **Typing `exit` in the last terminal quits the app.** With other windows open, it closes just its own window. *Requested 2026-11-07 · Mac, Linux.* Shipped in 1.0.35 (#10). Windows already quit when its last window closed.
 - [x] **Keep these trackers:** `enhancements.md` and `bugs.md`, updated as requests come in and as they're done. *Requested 2026-11-07.* Set up in #11.
 - [ ] **Lock button in the Tailcat Peers window.** At the bottom, opposite Done: it shows Lock or Unlock, and its hover bubble explains that it locks or unlocks the safe storage of Tailcat addresses. Clicking it opens a window that asks for the Administrator Password, offers to lock or unlock, and offers to change the Administrator Password. *Requested 2026-11-07 · Mac, Linux, Windows.*
-  - [ ] Mac: in #13, not yet released.
-  - [ ] Linux: in #13, not yet released.
+  - [x] Mac: shipped in 1.0.73 (#13).
+  - [x] Linux: shipped in 1.0.73 (#13).
   - [ ] Windows: no Tailcat in the Windows version yet.
 - [ ] **Explain a Tailcat share that no one can log in to.** Start Sharing checks that this computer answers SSH on port 22 and, if not, says to turn on Remote Login (Mac) or the SSH service (Linux). When the peer is reached but nothing answers SSH there, the connecting side says so and how to fix it, instead of "Connection closed by UNKNOWN port 65535". *Requested 2026-11-07 · Mac, Linux, Windows.*
-  - [ ] Mac: in #13, not yet released.
-  - [ ] Linux: in #13, not yet released.
+  - [x] Mac: shipped in 1.0.73 (#13).
+  - [x] Linux: shipped in 1.0.73 (#13).
   - [ ] Windows: no Tailcat in the Windows version yet.
 - [ ] **Dropping a file or folder on the terminal types its path.** *Requested 2026-11-07 · Mac, Linux, Windows.*
   - [x] Mac: already did, quoted for the shell.
-  - [ ] Linux: it was meant to and didn't; tracked in `bugs.md`, fix in #14.
+  - [x] Linux: it was meant to and didn't; fixed in 1.0.73 (#14).
   - [ ] Windows: in #15 (stacked on #5). Files dropped from File Explorer are typed as paths quoted for the tab's shell (PowerShell, cmd, WSL, Git Bash or SSH); built and tested on Windows, not yet merged.
