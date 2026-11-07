@@ -690,13 +690,7 @@ final class ExplorerView {
             self.showContextMenu(x: x, y: y)
         }
         // Dropping files from a file manager copies them here (uploads them on a host).
-        let drop = gtk_drop_target_new(herb_type_file_list(), GDK_ACTION_COPY)!
-        on(drop, "drop") { [weak self] args in
-            guard let self, let value = args.value(1), let text = takeString(herb_drop_paths(value)) else { args.returns(false); return }
-            self.pasteFiles(text.split(separator: "\n").map(String.init), cut: false)
-            args.returns(true)
-        }
-        gtk_widget_add_controller(listScroll, c(drop))
+        gtk_widget_add_controller(listScroll, filesDropTarget { [weak self] paths in self?.pasteFiles(paths, cut: false) })
     }
 
     private func showContextMenu(x: Double, y: Double) {

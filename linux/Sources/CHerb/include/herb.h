@@ -70,6 +70,12 @@ void herb_return_pointer(GValue *value, gpointer object);
 
 /// The dropped file list of a GtkDropTarget value (GdkFileList), as newline-separated paths.
 char *herb_drop_paths(const GValue *value);
+/// A drop target for files and folders. It takes file managers' plain URI list first, which carries the real paths
+/// (the GdkFileList route can go through the document portal inside the Flatpak and come back empty).
+GtkEventController *herb_files_drop_target(void);
+/// Reads a "drop" signal's GdkDrop (`value`) as newline-separated local paths (NULL when there are none), finishes
+/// the drop, and calls `done` once.
+void herb_drop_read_paths(const GValue *value, HerbReceived done, void *data);
 
 /// GType constants that are macros in C.
 GType herb_type_file_list(void);
