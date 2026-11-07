@@ -1,6 +1,6 @@
 # Herb's Terminal
 
-**Herb's Terminal** is a terminal for administrators, native on macOS (Apple silicon, macOS 15+) and on Linux (a Flatpak). It manages local files and remote Linux, macOS, and Windows machines over SSH.
+**Herb's Terminal** is a terminal for administrators. It runs on and manages local files and remote Linux, macOS, and Windows machines over SSH.
 
 Each tab pairs a shell with an SSH-aware file explorer. When the shell connects to another machine, the explorer follows it to the same host and account — shell, files, transfers, text editing, and permissions all in one tab.
 
@@ -18,10 +18,10 @@ Each tab pairs a shell with an SSH-aware file explorer. When the shell connects 
 
 ## Requirements
 
-- **macOS:** macOS 15 or later on Apple silicon (arm64).
-- **Linux:** any distribution with Flatpak, on x86_64 or aarch64. The GNOME 49 runtime comes from Flathub.
+- macOS 15 or later
+- Apple silicon (arm64)
 
-Nothing else needs to be installed. The app bundles its own SSH helpers and `tailcat`. On a Mac it uses the system's `/usr/bin/ssh`, `/bin/sh`, `/usr/libexec/sftp-server`, and `sudo` — never Homebrew or PATH copies. On Linux, shells, `ssh` and `sudo` run on your computer (outside the Flatpak sandbox), so your login shell, `~/.ssh/config` and SSH agent work as usual.
+Nothing else needs to be installed. The app bundles its own SSH helpers and `tailcat`; it uses the system's `/usr/bin/ssh`, `/bin/sh`, `/usr/libexec/sftp-server`, and `sudo` — never Homebrew or PATH copies.
 
 ## Installing
 
@@ -70,40 +70,9 @@ Without Terminal: try to open the app once, then go to **System Settings ▸ Pri
 
 Only remove the quarantine flag from a copy you downloaded from this repository's Releases page.
 
-## Linux (Flatpak)
-
-The Linux version looks and works like the Mac one. As on Linux and Windows desktops, minimize, maximize and close sit on the right of the toolbar, and the Main Menu takes the left corner. Shortcuts follow Linux terminals: Ctrl+Shift+T new tab, Ctrl+Shift+C / V copy and paste, Alt+1–9 pick a tab, Ctrl+Page Up / Down switch tabs, Ctrl+, Settings (the Main Menu lists them all).
-
-Install a prebuilt bundle from [Releases](https://github.com/dunkelherzmann/herbs-terminal/releases):
-
-```bash
-flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-```
-
-```bash
-flatpak install --user Herbs-Terminal-<version>-linux-x86_64.flatpak
-```
-
-```bash
-flatpak run org.herbsterminal.app
-```
-
-Build it yourself on Linux:
-
-```bash
-sh script/version.sh > linux/version.txt
-flatpak-builder --user --install --force-clean build linux/org.herbsterminal.app.yml
-```
-
-The first line records the version from git; the build itself sees the sources without git history.
-
-Or on a Mac, in a Linux VM (needs `brew install container`): `script/build_flatpak.sh` writes `dist/Herbs-Terminal-<version>-linux-<arch>.flatpak`.
-
-The Flatpak asks for broad access, as terminals do: it runs your shell and `ssh` on the host (`flatpak-spawn`), and the explorer reaches all your folders.
-
 ## Built with
 
-Built with **Swift 6** and Swift Package Manager: on macOS with **SwiftUI + AppKit** and [SwiftTerm 1.20](https://github.com/migueldeicaza/SwiftTerm), on Linux with **GTK 4**, **libadwaita**, [VTE](https://gitlab.gnome.org/GNOME/vte) and GtkSourceView. Both share the SSH, SFTP and login-vault code.
+Built with **Swift 6**, **SwiftUI + AppKit**, [SwiftTerm 1.20](https://github.com/migueldeicaza/SwiftTerm), and Swift Package Manager.
 
 ## Project layout
 
@@ -113,8 +82,6 @@ Sources/
   HerbsTerminalUI/     shared UI components (toolbar, panes)
 Tests/
   HerbsTerminalTests/  unit and integration tests
-linux/                 the Linux version: Swift package, Flatpak manifest, desktop file, icons
-  Sources/HerbsTerminal/Shared/   links to the macOS sources both versions share
 Assets/                app icon source files
 Vendor/tailcat/        bundled tailcat binary + license
 script/                build, signing, icon generation, and test scripts
@@ -127,8 +94,6 @@ dist/                  build output (gitignored)
 |---|---|---|
 | [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) | 1.20.0 | MIT |
 | [tailcat](https://github.com/tailscale/tailcat) | 0.7.0 (bundled) | BSD-3-Clause |
-| [VTE](https://gitlab.gnome.org/GNOME/vte) (Linux) | 0.82.4 (bundled in the Flatpak) | LGPL-3.0 |
-| GTK 4, libadwaita, GtkSourceView (Linux) | GNOME 49 runtime | LGPL-2.1+ |
 
 ## Security notes
 
