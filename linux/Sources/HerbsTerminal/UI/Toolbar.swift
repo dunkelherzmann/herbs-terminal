@@ -13,6 +13,8 @@ final class SessionToolbar {
     private let explorer: Widget
     private let multiExec: Widget
     private let search: Widget
+    private let screenshot: Widget
+    private var confirmation: Widget?
     private let titleLabel: Widget
     private let subtitleLabel: Widget
     private let titleBox: Widget
@@ -45,6 +47,8 @@ final class SessionToolbar {
         connect = glyph("ht-network-symbolic", "Connect via SSH") { $0.connectButton() }
         let export = glyph("ht-share-symbolic", "Export Session") { $0.exportSession() }
         hint(export, "Export Session (Ctrl+Shift+S)\nSave everything in this terminal, scrollback included, to a text file.")
+        screenshot = glyph("ht-camera-symbolic", "Take Screenshot") { $0.takeScreenshot() }
+        hint(screenshot, "Take Screenshot (Ctrl+Alt+S)\nCopy a picture of this whole window to the clipboard, ready to paste.")
         explorer = glyph("ht-folder-symbolic", "Switch Terminal / Explorer") { workspace in
             workspace.setLayout(workspace.selected.state.layout == .explorer ? .terminal : .explorer)
         }
@@ -55,7 +59,7 @@ final class SessionToolbar {
 
         let left = box(.horizontal, spacing: 4, [menuButton, newTab, connect])
         adw_header_bar_pack_start(c(header), left)
-        let right = box(.horizontal, spacing: 4, [export, explorer, multiExec, peers])
+        let right = box(.horizontal, spacing: 4, [export, screenshot, explorer, multiExec, peers])
         let searchBox = box(.horizontal, spacing: 4, [search])
         margins(searchBox, start: 4)
         adw_header_bar_pack_end(c(header), searchBox)
@@ -92,6 +96,26 @@ final class SessionToolbar {
             }
         }
         gtk_widget_add_controller(titleBox, c(clicks))
+    }
+
+    /// A short bubble under the Take Screenshot button, as on the Mac, which hides itself; screen readers announce it.
+    func confirm(_ text: String) {
+        if let confirmation { gtk_popover_popdown(c(confirmation)); gtk_widget_unparent(confirmation) }
+        let lines = text.split(separator: "\n", maxSplits: 1).map(String.init)
+        let content = box(.vertical, spacing: 2, [label(lines[0], classes: ["heading"])] + lines.dropFirst().map { label($0, classes: ["dim-label"]) })
+        let popover = gtk_popover_new()!
+        gtk_popover_set_child(c(popover), content)
+        gtk_popover_set_autohide(c(popover), 0)
+        gtk_widget_set_parent(popover, screenshot)
+        gtk_popover_popup(c(popover))
+        confirmation = popover
+        gtk_accessible_announce(c(screenshot), lines.joined(separator: ". "), GTK_ACCESSIBLE_ANNOUNCEMENT_PRIORITY_MEDIUM)
+        _ = after(milliseconds: 1500) { [weak self] in
+            guard let self, self.confirmation == popover else { return }
+            gtk_popover_popdown(c(popover))
+            gtk_widget_unparent(popover)
+            self.confirmation = nil
+        }
     }
 
     func setMenu(_ model: OpaquePointer) {

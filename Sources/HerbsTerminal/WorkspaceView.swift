@@ -1,6 +1,7 @@
 import Combine
 import SwiftUI
 import HerbsTerminalUI
+import SwiftTerm
 
 @MainActor
 final class TerminalTab: Identifiable, ObservableObject {
@@ -200,6 +201,50 @@ final class Workspace: ObservableObject {
             do { try Data(text.utf8).write(to: url, options: .atomic) } catch { NSAlert(error: error).runModal() }
         }
         if let window { panel.beginSheetModal(for: window, completionHandler: write) } else { write(panel.runModal()) }
+    }
+
+    /// Take Screenshot (⇧⌘S): a picture of this whole window as it looks now, toolbar and tabs included,
+    /// on the clipboard as PNG and TIFF, ready to paste into a message, a document or an image editor.
+    func takeScreenshot() {
+        guard let window, let image = Self.windowImage(window), let png = image.representation(using: .png, properties: [:]) else {
+            NSSound.beep()
+            return
+        }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.declareTypes([.png, .tiff], owner: nil)
+        pasteboard.setData(png, forType: .png)
+        if let tiff = image.tiffRepresentation { pasteboard.setData(tiff, forType: .tiff) }
+        HintBubble.shared.confirm("Screenshot copied\nPaste it anywhere with ⌘V.")
+    }
+
+    /// The window drawn at the screen's resolution: its frame view, so the window buttons are in it too.
+    /// Herb's Terminal draws its own window, so no Screen Recording permission is needed.
+    static func windowImage(_ window: NSWindow) -> NSBitmapImageRep? {
+        guard let root = window.contentView?.superview ?? window.contentView,
+              let bitmap = root.bitmapImageRepForCachingDisplay(in: root.bounds) else { return nil }
+        root.cacheDisplay(in: root.bounds, to: bitmap)
+        // A terminal paints its background with its layer, which a cached drawing leaves out (and with it
+        // the light text on a dark theme), so each visible terminal is drawn again over its background.
+        guard let context = NSGraphicsContext(bitmapImageRep: bitmap) else { return bitmap }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        for terminal in terminals(in: root) where !terminal.isHiddenOrHasHiddenAncestor {
+            let visible = terminal.visibleRect
+            guard !visible.isEmpty, let tile = terminal.bitmapImageRepForCachingDisplay(in: visible) else { continue }
+            terminal.cacheDisplay(in: visible, to: tile)
+            var rect = terminal.convert(visible, to: root)
+            if root.isFlipped { rect.origin.y = root.bounds.height - rect.maxY }
+            terminal.nativeBackgroundColor.setFill()
+            rect.fill()
+            tile.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
+        }
+        return bitmap
+    }
+
+    private static func terminals(in view: NSView) -> [TerminalView] {
+        view.subviews.flatMap { ($0 as? TerminalView).map { [$0] } ?? terminals(in: $0) }
     }
 
     /// Everything the terminal holds: the scrollback and the screen (the main screen even while a
@@ -774,6 +819,7 @@ private struct ActiveWorkspace: View {
                            tailcat: { workspace.panel = .tailcat },
                            search: { if let editor = tab.editor { editor.find() } else { tab.state.find() } },
                            exportSession: { workspace.exportSession() },
+                           takeScreenshot: { workspace.takeScreenshot() },
                            multiHostActive: workspace.multiExec) {
                 Button("New Tab") { workspace.add() }.help("Open another local terminal in this window.")
                 Button("New Window") { openWindow(id: "session") }.help("Open a new Herb's Terminal window.")
