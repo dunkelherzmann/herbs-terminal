@@ -16,7 +16,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
       places, rename, delete, New Folder / New File, copy and move on the host.
 - [x] **3. Transfers** (#19) (§5): upload and download files and folder trees, the progress strip with Cancel and
       Retry, staged uploads, new names instead of overwriting; copy between this PC and a host with the clipboard.
-- [x] **4. Text editor** (#PR) (§5): open text files as a tab, Find, Wrap Lines, status line, encodings and line endings
+- [x] **4. Text editor** (#20) (§5): open text files as a tab, Find, Wrap Lines, status line, encodings and line endings
       kept, Save locally and to hosts, unsaved-changes prompts.
 - [ ] **5. Get Info on hosts** (§5): permissions, owner and group, Apply to enclosed items.
 - [ ] **6. Administrator mode on hosts** (§5): SFTP under `sudo` over the tab's connection, the red bar.
