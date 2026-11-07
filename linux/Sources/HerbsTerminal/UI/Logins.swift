@@ -73,6 +73,51 @@ enum LoginVaultPrompts {
 
     /// Asks for the Administrator Password to unlock saved logins for this session.
     @discardableResult
+    /// The Lock / Unlock button in Tailcat Peers: one window for the Administrator Password that protects saved logins
+    /// and Tailcat addresses. Locked, it asks for the password to unlock; unlocked, it locks (no password needed to
+    /// make things safer). Either way it offers to change the Administrator Password. Without one, there is nothing
+    /// to lock, so it offers to create one.
+    static func manage(_ store: CredentialStore, parent: Widget?) async {
+        guard store.protection == .adminPassword else {
+            if store.protection == .unset { await explainSetup(store, parent: parent) } else { await createOrModify(store, parent: parent) }
+            return
+        }
+        var message: String?
+        while true {
+            let locked = store.isLocked
+            var extra: Widget?
+            var input: Widget?
+            if locked {
+                let field = entry(password: true)
+                accessibleLabel(field, "Administrator Password")
+                herb_set_bool(raw(field), "activates-default", 1)
+                extra = box(.vertical, spacing: 4, [label("Administrator Password", classes: ["caption", "dim-label"]), field])
+                after(milliseconds: 80) { gtk_widget_grab_focus(field) }
+                input = field
+            }
+            var typed = ""
+            let answer = await Dialogs.ask(parent, locked ? "Unlock Saved Logins" : "Lock Saved Logins",
+                                           message ?? (locked ? "Enter the Administrator Password to use saved logins and Tailcat addresses this session."
+                                                              : "Locking hides saved logins and Tailcat addresses until the Administrator Password is entered again."),
+                                           choices: [.init("change", "Change Administrator Password…"), .init("cancel", "Cancel"),
+                                                     .init(locked ? "unlock" : "lock", locked ? "Unlock" : "Lock", .suggested)],
+                                           defaultID: locked ? "unlock" : "lock", cancel: "cancel", extra: extra,
+                                           collect: { if let input { typed = text(of: input) } })
+            switch answer {
+            case "unlock":
+                do { try store.unlock(typed); return } catch { message = error.localizedDescription }
+            case "lock":
+                store.lock()
+                return
+            case "change":
+                await createOrModify(store, parent: parent)
+                return
+            default:
+                return
+            }
+        }
+    }
+
     static func unlock(_ store: CredentialStore, parent: Widget?, cancelTitle: String = "Cancel", detail: String? = nil) async -> Bool {
         var message: String?
         while store.isLocked {
