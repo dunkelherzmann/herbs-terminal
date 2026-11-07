@@ -1,7 +1,8 @@
 #!/bin/sh
 # Builds the Linux version as a Flatpak bundle on macOS, in a Linux VM run by Apple's `container` tool
 # (brew install container): dist/Herbs-Terminal-<version>-linux-<arch>.flatpak, for aarch64 or x86_64 (default: both).
-# On Linux, build it directly instead: flatpak-builder --user --install --force-clean build linux/org.herbsterminal.app.yml
+# On Linux, build it directly instead:
+#   sh script/version.sh > linux/version.txt && flatpak-builder --user --install --force-clean build linux/org.herbsterminal.app.yml
 #
 # The VM keeps the GNOME runtime, the Swift SDK extension and flatpak-builder's cache in the volume
 # herbs-flatpak-<arch>, so only the first build downloads them.
@@ -14,6 +15,8 @@ ARCHES="${*:-aarch64 x86_64}"
 command -v container >/dev/null || { echo "container not found; brew install container" >&2; exit 1; }
 container system status >/dev/null 2>&1 || container system start --enable-kernel-install
 mkdir -p "$ROOT/dist"
+# The build sees the sources without .git, so it takes the version from this stamp.
+printf '%s\n' "$VERSION" > "$ROOT/linux/version.txt"
 
 for arch in $ARCHES; do
     case "$arch" in
