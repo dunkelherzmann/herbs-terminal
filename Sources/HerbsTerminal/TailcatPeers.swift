@@ -330,6 +330,7 @@ struct TailcatPeersView: View {
             }
 
             HStack {
+                VaultLockButton()
                 Spacer()
                 Button("Done", action: dismiss).keyboardShortcut(.cancelAction)
                     .hint("Done (Esc)\nClose this panel. Sharing keeps running until you stop it or quit Herb's Terminal.")
@@ -370,5 +371,24 @@ struct TailcatPeersView: View {
         case .relayed(let detail): "Relayed · \(detail)"
         case .unreachable(let reason): "Unreachable · \(reason)"
         }
+    }
+}
+
+/// Bottom left in Tailcat Peers, opposite Done: locks or unlocks the safe storage of Tailcat addresses (and saved
+/// logins), and offers to change the Administrator Password. It reads what a click does: Unlock… or Lock….
+struct VaultLockButton: View {
+    @ObservedObject private var store = CredentialStore.shared ?? CredentialStore.unavailable()
+
+    var body: some View {
+        let locked = store.isLocked
+        Button { LoginVaultPrompts.manage(store) } label: {
+            Label(locked ? "Unlock…" : "Lock…", systemImage: locked ? "lock" : "lock.open")
+        }
+        .disabled(CredentialStore.unavailableReason != nil)
+        .hint(store.protection == .adminPassword
+              ? (locked ? "Unlock\nUnlock the safe storage of Tailcat addresses and saved logins with the Administrator Password, or change the password."
+                        : "Lock\nLock the safe storage of Tailcat addresses and saved logins until the Administrator Password is entered again, or change the password.")
+              : "Lock\nTailcat addresses and saved logins are stored as plain text. Create an Administrator Password to lock them.")
+        .accessibilityLabel(locked ? "Unlock Saved Logins" : "Lock Saved Logins")
     }
 }
