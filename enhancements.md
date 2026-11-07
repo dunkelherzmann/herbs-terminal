@@ -23,6 +23,6 @@ A box is ticked once the change has shipped. A request that covers several platf
   - [ ] Linux: in #13, not yet released.
   - [ ] Windows: no Tailcat in the Windows version yet.
 - [ ] **Dropping a file or folder on the terminal types its path.** *Requested 2026-11-07 · Mac, Linux, Windows.*
-  - [ ] Mac
-  - [ ] Linux
-  - [ ] Windows
+  - [x] Mac: already did, quoted for the shell.
+  - [ ] Linux: it was meant to and didn't; tracked in `bugs.md`, fix in #14.
+  - [ ] Windows: the Windows version doesn't take drops yet.
