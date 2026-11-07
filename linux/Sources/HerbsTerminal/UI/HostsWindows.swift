@@ -21,7 +21,9 @@ final class TailcatWindow {
     private var tokens: [ObservationToken] = []
 
     static func show(_ workspace: Workspace) {
-        TailcatWindow(workspace).window.present()
+        let peers = TailcatWindow(workspace)
+        peers.window.owner = peers
+        peers.window.present()
     }
 
     private init(_ workspace: Workspace) {
@@ -168,7 +170,9 @@ final class MultiHostWindow {
     private var token: ObservationToken?
 
     static func show(_ workspace: Workspace) {
-        MultiHostWindow(workspace).window.present()
+        let hosts = MultiHostWindow(workspace)
+        hosts.window.owner = hosts
+        hosts.window.present()
     }
 
     private init(_ workspace: Workspace) {

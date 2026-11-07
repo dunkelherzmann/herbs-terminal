@@ -77,17 +77,33 @@ enum SSHControl {
     }
 
     @discardableResult
+    /// Runs `/usr/bin/ssh arguments` with no input or output and returns its exit status (-1 if it couldn't start).
+    /// It waits on this one child with waitpid rather than Foundation's Process: in the Linux app GLib also handles
+    /// SIGCHLD, Process sometimes never learned that ssh had exited, and the connection monitor waited forever.
     static func run(_ arguments: [String], environment: [String: String]? = nil) -> Int32 {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
-        process.arguments = arguments
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        if let environment { process.environment = environment }
-        do { try process.run() } catch { return -1 }
-        process.waitUntilExit()
-        return process.terminationStatus
+        let path = "/usr/bin/ssh"
+        let argv: [UnsafeMutablePointer<CChar>?] = ([path] + arguments).map { strdup($0) } + [nil]
+        let env = (environment ?? ProcessInfo.processInfo.environment).map { "\($0.key)=\($0.value)" }
+        let envp: [UnsafeMutablePointer<CChar>?] = env.map { strdup($0) } + [nil]
+        defer { argv.forEach { free($0) }; envp.forEach { free($0) } }
+        #if os(Linux)
+        var actions = posix_spawn_file_actions_t()
+        #else
+        var actions: posix_spawn_file_actions_t?
+        #endif
+        posix_spawn_file_actions_init(&actions)
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
+        posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0)
+        posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0)
+        var pid: pid_t = 0
+        guard posix_spawn(&pid, path, &actions, nil, argv, envp) == 0 else { return -1 }
+        var status: Int32 = 0
+        while waitpid(pid, &status, 0) == -1 {
+            guard errno == EINTR else { return -1 }
+        }
+        // WIFEXITED / WEXITSTATUS, which Swift doesn't import as macros.
+        return status & 0x7f == 0 ? (status >> 8) & 0xff : -1
     }
 }
 
@@ -261,7 +277,15 @@ enum HelperMode {
         switch mode {
         case "askpass":
             let prompt = arguments.count > 1 ? arguments[1] : "Password: "
-            guard let answer = askpass(prompt: prompt, token: token, socket: socket) else { return 1 }
+            // The Linux host script asks everything but saved passwords itself: from inside the Flatpak this process
+            // isn't in the terminal's foreground group, and asking there would stop it (and ssh) for good.
+            let terminal: (String, Bool) -> String?
+            if environment["HERBSTERMINAL_ASK_ON_TERMINAL"] == "no" {
+                terminal = { _, _ in nil }
+            } else {
+                terminal = { prompt, secret in askOnTerminal(prompt, secret: secret) }
+            }
+            guard let answer = askpass(prompt: prompt, token: token, socket: socket, terminal: terminal) else { return 1 }
             FileHandle.standardOutput.write(Data((answer + "\n").utf8))
             return 0
         case "tailcat-proxy":

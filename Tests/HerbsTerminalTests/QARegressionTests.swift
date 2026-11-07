@@ -431,3 +431,19 @@ func titleReturnsToThisMacWhenTheRemoteSessionEnds() {
     #expect(shell.legend.title == local)
     #expect(shell.legend.subtitle == "~")
 }
+
+@Test
+func askpassLeavesOtherQuestionsToTheLinuxScriptWhenToldNotToUseTheTerminal() {
+    // The Linux host script asks a new host's fingerprint question itself; the helper, run from inside the
+    // Flatpak, must answer "no answer" at once instead of reaching for the terminal (where it would be stopped).
+    let status = HelperMode.run(environment: ["HERBSTERMINAL_HELPER": "askpass", "HERBSTERMINAL_ASK_ON_TERMINAL": "no"],
+                                arguments: ["herbs-terminal", "Are you sure you want to continue connecting (yes/no/[fingerprint])? "])
+    #expect(status == 1)
+}
+
+@Test
+func sshControlRunReportsTheRealExitStatus() {
+    // run waits on its own ssh with waitpid, so it returns even where something else handles SIGCHLD (the Linux app).
+    #expect(SSHControl.run(["-V"]) == 0)
+    #expect(SSHControl.run(["-O", "check", "-o", "ControlPath=/nonexistent/herbs-test-%C", "user@example.invalid"]) == 255)
+}
