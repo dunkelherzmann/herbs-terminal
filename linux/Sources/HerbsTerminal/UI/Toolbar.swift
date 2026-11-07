@@ -32,8 +32,10 @@ final class SessionToolbar {
         accessibleLabel(menuButton, "Main Menu")
 
         var weakSelf: SessionToolbar?
-        func glyph(_ icon: String, _ name: String, _ action: @escaping @MainActor (Workspace) -> Void) -> Widget {
-            let widget = gtk_button_new_from_icon_name(icon)!
+        func glyph(_ icon: String, _ name: String, toggle: Bool = false, _ action: @escaping @MainActor (Workspace) -> Void) -> Widget {
+            // A toggle (MultiExec) is a real toggle button, so screen readers announce whether it's on.
+            let widget: Widget
+            if toggle { widget = gtk_toggle_button_new()!; gtk_button_set_icon_name(c(widget), icon) } else { widget = gtk_button_new_from_icon_name(icon)! }
             gtk_widget_add_css_class(widget, "glyph")
             gtk_widget_add_css_class(widget, "flat")
             // Like the Mac's toolbar buttons, they never take the keyboard focus from the terminal.
@@ -52,17 +54,15 @@ final class SessionToolbar {
         explorer = glyph("ht-folder-symbolic", "Switch Terminal / Explorer") { workspace in
             workspace.setLayout(workspace.selected.state.layout == .explorer ? .terminal : .explorer)
         }
-        multiExec = glyph("ht-layers-symbolic", "MultiExec") { $0.setMultiExec(!$0.multiExec) }
+        multiExec = glyph("ht-layers-symbolic", "MultiExec", toggle: true) { $0.setMultiExec(!$0.multiExec) }
         let peers = glyph("ht-peers-symbolic", "Tailcat Peers") { TailcatWindow.show($0) }
         hint(peers, "Tailcat Peers\nPair with machines that can't reach each other by IP, and connect through Tailcat.")
         search = glyph("ht-search-symbolic", "Search") { $0.find() }
 
         let left = box(.horizontal, spacing: 4, [menuButton, newTab, connect])
         adw_header_bar_pack_start(c(header), left)
-        let right = box(.horizontal, spacing: 4, [export, screenshot, explorer, multiExec, peers])
-        let searchBox = box(.horizontal, spacing: 4, [search])
-        margins(searchBox, start: 4)
-        adw_header_bar_pack_end(c(header), searchBox)
+        // One group, so Search sits the same 4 px from Tailcat Peers as the other buttons from each other.
+        let right = box(.horizontal, spacing: 4, [export, screenshot, explorer, multiExec, peers, search])
         adw_header_bar_pack_end(c(header), right)
 
         titleLabel = label("", classes: ["session-title"], ellipsize: PANGO_ELLIPSIZE_MIDDLE)
@@ -152,6 +152,7 @@ final class SessionToolbar {
                                        : "Show File Explorer (Ctrl+Shift+X)\nBrowse files on the host this tab is connected to.")
         enable(explorer, tab.editor == nil)
         if workspace.multiExec { gtk_widget_add_css_class(multiExec, "active") } else { gtk_widget_remove_css_class(multiExec, "active") }
+        if (gtk_toggle_button_get_active(c(multiExec)) != 0) != workspace.multiExec { gtk_toggle_button_set_active(c(multiExec), workspace.multiExec ? 1 : 0) }
         accessiblePressed(multiExec, workspace.multiExec)
         hint(multiExec, workspace.multiExec ? "Exit MultiExec (Ctrl+Shift+M)\nBack to one tab at a time; typing goes to the current tab only."
                                             : "MultiExec (Ctrl+Shift+M)\nShow every tab side by side and type into all of them at once.")

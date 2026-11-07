@@ -500,8 +500,8 @@ void herb_launch_uri(GtkWindow *parent, const char *uri) {
 }
 
 /* Take Screenshot: a window (header bar included) drawn at the screen's scale, onto the clipboard as an image.
-   FALSE when there is nothing to draw. The window is drawn through its content, the header bar and everything
-   below it, as its parent draws it: a widget paintable comes back empty after its first picture. */
+   FALSE when there is nothing to draw. The window's background is drawn, then its content (the header bar and
+   everything below it) as its parent draws it: a widget paintable comes back empty after its first picture. */
 gboolean herb_copy_widget_image(GtkWidget *widget) {
     GtkWidget *target = widget;
     if (ADW_IS_APPLICATION_WINDOW(widget)) target = adw_application_window_get_content(ADW_APPLICATION_WINDOW(widget));
@@ -514,6 +514,11 @@ gboolean herb_copy_widget_image(GtkWidget *widget) {
     float scale = (float)gdk_surface_get_scale(gtk_native_get_surface(native));
     GtkSnapshot *snapshot = gtk_snapshot_new();
     gtk_snapshot_scale(snapshot, scale, scale);
+    /* The window's own background first: bars that are partly see-through (the explorer's location bar, the
+       MultiExec bar) are drawn over it, as on screen. */
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+    gtk_snapshot_render_background(snapshot, gtk_widget_get_style_context(widget), 0, 0, area.size.width, area.size.height);
+    G_GNUC_END_IGNORE_DEPRECATIONS
     gtk_snapshot_translate(snapshot, &GRAPHENE_POINT_INIT(-area.origin.x, -area.origin.y));
     gtk_widget_snapshot_child(parent, target, snapshot);
     GskRenderNode *node = gtk_snapshot_free_to_node(snapshot);

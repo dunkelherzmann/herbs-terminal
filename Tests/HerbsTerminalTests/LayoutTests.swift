@@ -3,6 +3,14 @@ import HerbsTerminalUI
 import Testing
 @testable import HerbsTerminal
 
+/// Waits up to `seconds` for a shell to start: a tab's shell starts once its view is on screen, which takes longer
+/// on a busy machine or with heavier shell startup files than a fixed pause allows.
+@MainActor
+private func waitForShell(_ shell: LocalShell, seconds: Double = 3) async throws {
+    let deadline = Date().addingTimeInterval(seconds)
+    while shell.view.process.shellPid <= 0, Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
+}
+
 @Test @MainActor
 func switchingLayoutsKeepsShell() async throws {
     _ = NSApplication.shared
@@ -13,7 +21,7 @@ func switchingLayoutsKeepsShell() async throws {
     window.contentView = NSHostingView(rootView: SessionView(state: state, shell: shell))
     window.orderBack(nil)
     defer { window.orderOut(nil); shell.close() }
-    try await Task.sleep(for: .milliseconds(250))
+    try await waitForShell(shell)
     let pid = shell.view.process.shellPid
     try #require(pid > 0)
     for layout in [SessionLayout.explorer, .terminal] {
@@ -50,12 +58,12 @@ func tabsKeepIndependentShellsAndSearchReopensTerminal() async throws {
     window.contentView = NSHostingView(rootView: WorkspaceView(workspace: workspace))
     window.orderBack(nil)
     defer { window.orderOut(nil); workspace.tabs.forEach { $0.shell.close() } }
-    try await Task.sleep(for: .milliseconds(250))
+    try await waitForShell(workspace.selected.shell)
     let first = workspace.selected
     let pid = first.shell.view.process.shellPid
     try #require(pid > 0)
     workspace.add()
-    try await Task.sleep(for: .milliseconds(250))
+    try await waitForShell(workspace.selected.shell)
     let second = workspace.selected
     #expect(second.shell.view.process.shellPid > 0)
     #expect(second.shell.view.process.shellPid != pid)
