@@ -19,6 +19,7 @@ final class TailcatWindow {
     private var persistent = false
     private var sharePersistent = false
     private var tokens: [ObservationToken] = []
+    private let lockButton = gtk_button_new()!
 
     static func show(_ workspace: Workspace) {
         let peers = TailcatWindow(workspace)
@@ -54,11 +55,17 @@ final class TailcatWindow {
         let accept = box(.vertical, spacing: 8, [box(.horizontal, spacing: 8, [name, username, address]), box(.horizontal, spacing: 8, [kind, spacer(), add])])
         append(content, group("Accept a pairing", accept), group("Share this computer", shareBox))
         let done = button("Done", hint: "Done (Esc)\nClose this panel. Sharing keeps running until you stop it or quit Herb's Terminal.") { [weak self] in self?.window.close() }
-        gtk_widget_set_halign(done, GTK_ALIGN_END)
-        append(content, done)
+        // Bottom left, opposite Done: locks or unlocks the safe storage of Tailcat addresses (and saved logins).
+        on(lockButton, "clicked") { [weak self] _ in
+            guard let self, let store = CredentialStore.shared else { return }
+            Task { await LoginVaultPrompts.manage(store, parent: self.window.window) }
+        }
+        append(content, box(.horizontal, spacing: 8, [lockButton, spacer(), done]))
         append(window.content, content)
         tokens.append(store.objectWillChange.observe { [weak self] in self?.refresh() })
         tokens.append(share.objectWillChange.observe { [weak self] in self?.refresh() })
+        if let vault = CredentialStore.shared { tokens.append(vault.objectWillChange.observe { [weak self] in self?.updateLock() }) }
+        updateLock()
         refresh()
     }
 
@@ -141,6 +148,20 @@ final class TailcatWindow {
             append(shareBox, row)
         }
         if let problem = share.error { append(shareBox, label(problem, classes: ["caption", "error-text"], wrap: true)) }
+    }
+
+    /// Unlock… or Lock…, as a click would do, with a matching padlock.
+    private func updateLock() {
+        let store = CredentialStore.shared
+        let locked = store?.isLocked ?? false
+        gtk_button_set_child(c(lockButton), box(.horizontal, spacing: 6, [image(locked ? "changes-prevent-symbolic" : "changes-allow-symbolic"),
+                                                                       label(locked ? "Unlock…" : "Lock…")]))
+        accessibleLabel(lockButton, locked ? "Unlock Saved Logins" : "Lock Saved Logins")
+        enable(lockButton, store != nil && CredentialStore.unavailableReason == nil)
+        hint(lockButton, store?.protection == .adminPassword
+             ? (locked ? "Unlock\nUnlock the safe storage of Tailcat addresses and saved logins with the Administrator Password, or change the password."
+                       : "Lock\nLock the safe storage of Tailcat addresses and saved logins until the Administrator Password is entered again, or change the password.")
+             : "Lock\nTailcat addresses and saved logins are stored as plain text. Create an Administrator Password to lock them.")
     }
 
     private func routeText(_ route: TailcatRoute) -> String {

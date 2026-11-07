@@ -142,6 +142,21 @@ func tailcatPeersStoreAddressesEncryptedAndKeepThemOutOfSSHArguments() throws {
         let endpoint = try reloaded.endpoint(for: peer)
         #expect(endpoint.host == "tailcat-nas")
         #expect(!endpoint.sshArguments().joined(separator: " ").contains(address))
+        // ssh runs a ProxyCommand as `exec <command>`: run it that way, with the helper swapped for printenv.
+        let helper = try #require(AskpassBroker.shared).helperPath
+        let command = try #require(endpoint.proxyCommand)
+            .replacingOccurrences(of: shellQuote(helper), with: "/usr/bin/printenv")
+            .replacingOccurrences(of: " %p", with: " HERBSTERMINAL_HELPER")
+        let sh = Process()
+        sh.executableURL = URL(fileURLWithPath: "/bin/sh")
+        sh.arguments = ["-c", "exec " + command]
+        let pipe = Pipe()
+        sh.standardOutput = pipe
+        sh.standardError = FileHandle.nullDevice
+        try sh.run()
+        let printed = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        sh.waitUntilExit()
+        #expect(printed.trimmingCharacters(in: .whitespacesAndNewlines) == "tailcat-proxy")
     }
     #expect(throws: FileIssue.self) { try store.add(name: "x", username: "u", address: "has space", persistent: false) }
     try reloaded.remove(peer)

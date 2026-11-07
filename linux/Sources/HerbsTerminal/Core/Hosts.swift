@@ -231,7 +231,9 @@ final class TailcatPeerStore: ObservableObject {
         guard Tailcat.executable != nil else { throw FileIssue("This Herb's Terminal build is missing its bundled tailcat helper.") }
         guard let broker = AskpassBroker.shared else { throw FileIssue("The Herb's Terminal secret helper is unavailable.") }
         let token = broker.issue(try address(of: peer))
-        let proxy = "HERBSTERMINAL_HELPER=tailcat-proxy HERBSTERMINAL_SECRET_TOKEN=\(token) HERBSTERMINAL_SECRET_SOCKET=\(shellQuote(broker.socketPath)) "
+        // ssh runs a ProxyCommand as `exec <command>`, and `exec VAR=value program` looks for a program named
+        // "VAR=value"; env sets the variables instead.
+        let proxy = "/usr/bin/env HERBSTERMINAL_HELPER=tailcat-proxy HERBSTERMINAL_SECRET_TOKEN=\(token) HERBSTERMINAL_SECRET_SOCKET=\(shellQuote(broker.socketPath)) "
             + Host.helperCommand.map(shellQuote).joined(separator: " ") + " %p"
         return RemoteEndpoint(host: "tailcat-" + peer.name.filter { $0.isLetter || $0.isNumber || $0 == "-" },
                               port: peer.port, username: peer.username, proxyCommand: proxy)
@@ -282,8 +284,14 @@ final class TailcatShare: ObservableObject {
     func start(persistent: Bool) async {
         guard let tailcat = Tailcat.executable else { error = "This Herb's Terminal build is missing its bundled tailcat helper."; return }
         stop()
+        error = nil
         starting = true
         defer { starting = false }
+        // tailcat hands each peer to this computer's port 22; without an SSH server there, the peer's ssh is cut off.
+        guard await Task.detached(operation: { TailcatProxy.acceptsLocalConnections(on: 22) }).value else {
+            error = "Turn on this computer's SSH service first: nothing here answers SSH, so a peer couldn't log in. On most systems: sudo systemctl enable --now sshd"
+            return
+        }
         self.persistent = persistent
         let addressFile = SSHControl.directory.appendingPathComponent("share-\(UUID().uuidString).addr")
         let process = Process()
