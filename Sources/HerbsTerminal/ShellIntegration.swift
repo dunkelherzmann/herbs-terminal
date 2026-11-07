@@ -90,11 +90,15 @@ enum ShellIntegration {
             "herbs-ssh.sh": sshFunction + "\n",
             "bashrc": """
             # Herb's Terminal shell integration: what a login bash would load, then the ssh function.
+            # This bash isn't a login shell, so while the login files load, `shopt -q login_shell` answers as a
+            # login shell would; otherwise Fedora's /etc/bashrc runs every /etc/profile.d script a second time.
+            shopt() { if [ "$#" = 2 ] && [ "$1" = -q ] && [ "$2" = login_shell ]; then return 0; fi; builtin shopt "$@"; }
             [ -r /etc/profile ] && . /etc/profile
             for herbs_file in "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.profile"; do
               if [ -r "$herbs_file" ]; then . "$herbs_file"; break; fi
             done
             unset herbs_file
+            unset -f shopt
             . "\(folder.path)/herbs-ssh.sh"
 
             """,

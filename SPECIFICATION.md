@@ -176,6 +176,8 @@ These follow macOS Terminal:
 - Host-key questions, one-time codes and retries are asked in the terminal as usual.
 - The tab checks the shared connection. It attaches the explorer at the remote home folder once the login succeeds, and detaches when ssh exits or the link drops.
 
+**Startup files:** zsh loads your own startup files through `ZDOTDIR`. bash starts interactive with its own `--rcfile`, which loads what a login bash would (`/etc/profile`, then `~/.bash_profile`, `~/.bash_login` or `~/.profile`), each file once.
+
 **Typed ssh**
 
 - Each tab's zsh or bash first loads your own startup files, then adds a small `ssh` function (zsh through `ZDOTDIR`, bash through `--rcfile`).
@@ -412,7 +414,8 @@ The Linux version is the same app on GTK 4, libadwaita and VTE, packaged as the 
 ### The host
 
 - Shells, the interactive `ssh`, `sudo` and the system SFTP server run on the computer itself, outside the sandbox, through `flatpak-spawn --host`. A tab is a real login with your shell, `~/.ssh/config`, SSH agent and tools.
-- The shell takes the terminal as its controlling terminal on the host (`setsid --ctty`), so job control works and the app can see the program in the foreground.
+- Terminals are created in the host's `/dev/pts` (the Flatpak has host device access), so programs on the host can name their terminal (`tty`, `GPG_TTY`).
+- The shell has the terminal as its controlling terminal on the host, so job control works and the app can see the program in the foreground. Flatpak usually hands it over; otherwise `setsid --ctty` takes it.
 - One long-lived `sh` on the host answers the app's questions about a tab's shell: its folder, the foreground program and whether an `ssh` runs under it.
 - `/tmp/herbs-<uid>` is shared with the host: the shared-connection sockets, the one-shot launchers and the password helper live there.
 - **Saved passwords:** ssh on the host can't run the sandboxed executable, so its `SSH_ASKPASS` is a small script that asks the app through `flatpak run` for the saved password, and asks every other question on the terminal. The one-time token, socket and per-account checks are those of section 4.

@@ -45,13 +45,16 @@ enum Host {
         do { try process.run() } catch { return (nil, "") }
         if let input { try? stdin.fileHandleForWriting.write(contentsOf: input) }
         try? stdin.fileHandleForWriting.close()
-        var output = Data()
-        let reader = Thread { output = stdout.fileHandleForReading.readDataToEndOfFile() }
-        reader.start()
+        // The reader hands its result over through a semaphore, so the output is read only after it's complete.
+        let output = OutputBox(), read = DispatchSemaphore(value: 0)
+        Thread { output.data = stdout.fileHandleForReading.readDataToEndOfFile(); read.signal() }.start()
         guard done.wait(timeout: .now() + timeout) == .success else { process.terminate(); return (nil, "") }
-        while reader.isExecuting { usleep(1000) }
-        return (process.terminationStatus, String(decoding: output, as: UTF8.self))
+        // A program left running in the background can hold the output open after the command ends; don't wait forever.
+        guard read.wait(timeout: .now() + 2) == .success else { return (process.terminationStatus, "") }
+        return (process.terminationStatus, String(decoding: output.data, as: UTF8.self))
     }
+
+    private final class OutputBox: @unchecked Sendable { var data = Data() }
 
     /// The account's login shell, as the host's account database has it.
     static let loginShell: String = {
