@@ -261,7 +261,15 @@ enum HelperMode {
         switch mode {
         case "askpass":
             let prompt = arguments.count > 1 ? arguments[1] : "Password: "
-            guard let answer = askpass(prompt: prompt, token: token, socket: socket) else { return 1 }
+            // The Linux host script asks everything but saved passwords itself: from inside the Flatpak this process
+            // isn't in the terminal's foreground group, and asking there would stop it (and ssh) for good.
+            let terminal: (String, Bool) -> String?
+            if environment["HERBSTERMINAL_ASK_ON_TERMINAL"] == "no" {
+                terminal = { _, _ in nil }
+            } else {
+                terminal = { prompt, secret in askOnTerminal(prompt, secret: secret) }
+            }
+            guard let answer = askpass(prompt: prompt, token: token, socket: socket, terminal: terminal) else { return 1 }
             FileHandle.standardOutput.write(Data((answer + "\n").utf8))
             return 0
         case "tailcat-proxy":
