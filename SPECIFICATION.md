@@ -1,6 +1,6 @@
 # Herb's Terminal
 
-Herb's Terminal is a native macOS terminal for administrators. It runs on Macs with Apple silicon and manages local files and remote Linux, macOS and Windows machines over SSH.
+Herb's Terminal is a terminal for administrators. It is native on Macs with Apple silicon and on Linux, as a Flatpak, and manages local files and remote Linux, macOS and Windows machines over SSH. Sections 1–10 describe the Mac app; section 11 lists what is different on Linux.
 
 Each tab pairs a shell with a file explorer. When the shell connects to another machine, the explorer follows it to the same host and account. Connect once, and the shell, files, transfers, text editing and permissions are all in that one tab.
 
@@ -398,6 +398,83 @@ Tailcat connects machines that can't reach each other by IP. Herb's Terminal run
 - **Exports:** files with passwords are created readable by your account only.
 - **Disconnects:** a dropped connection is reported as an error; it never stops the app.
 
+## 11. Linux
+
+The Linux version is the same app on GTK 4, libadwaita and VTE, packaged as the Flatpak `org.herbsterminal.app`. Everything in sections 2–10 applies, with these differences.
+
+### Build and packaging
+
+- **Source:** `linux/`, a Swift package. The SSH, SFTP, login-vault and shell-integration code is the Mac app's own: `linux/Sources/HerbsTerminal/Shared` links to it. Small modules named `Darwin`, `CryptoKit` and `CommonCrypto` give that code the same names on Linux (Glibc, and AES-GCM and PBKDF2 on OpenSSL), so a vault from a Mac opens unchanged.
+- **Flatpak:** `linux/org.herbsterminal.app.yml` builds on the GNOME 49 runtime with Flathub's Swift 6 SDK extension. It builds VTE 0.82 and bundles Tailscale's official `tailcat` Linux release. The Swift runtime is linked in statically.
+- **Building:** `flatpak-builder` on Linux, or `script/build_flatpak.sh` on a Mac, which builds `dist/Herbs-Terminal-<version>-linux-<arch>.flatpak` for aarch64 and x86_64 in a Linux VM run by Apple's `container`.
+- **Checks:** a debug build run with `--self-test` checks the compatibility modules against standard vectors, the vault, the password helper, the host bridge, the Trash and file operations, iTerm2 presets, and, with a test account in `HERBS_TEST_SSH`, a real password login, shared connection and SFTP round trip.
+
+### The host
+
+- Shells, the interactive `ssh`, `sudo` and the system SFTP server run on the computer itself, outside the sandbox, through `flatpak-spawn --host`. A tab is a real login with your shell, `~/.ssh/config`, SSH agent and tools.
+- The shell takes the terminal as its controlling terminal on the host (`setsid --ctty`), so job control works and the app can see the program in the foreground.
+- One long-lived `sh` on the host answers the app's questions about a tab's shell: its folder, the foreground program and whether an `ssh` runs under it.
+- `/tmp/herbs-<uid>` is shared with the host: the shared-connection sockets, the one-shot launchers and the password helper live there.
+- **Saved passwords:** ssh on the host can't run the sandboxed executable, so its `SSH_ASKPASS` is a small script that asks the app through `flatpak run` for the saved password, and asks every other question on the terminal. The one-time token, socket and per-account checks are those of section 4.
+- **Tailcat:** the ProxyCommand runs the app's helper through `flatpak run` in the same way.
+- **The explorer** shows the host's files: home folders, removable drives, `/opt`, `/srv` and `/tmp` at their own paths, the system folders through the Flatpak's read-only view of them. Administrator mode runs the host's own `sftp-server` under `sudo`, so as root it sees and changes everything.
+
+### Window and toolbar
+
+- Minimize, maximize and close sit at the right end of the toolbar, as on Linux and Windows desktops. The Main Menu takes the left corner, followed by New Tab and Connect via SSH; the rest of the toolbar is as on the Mac.
+- The Main Menu also holds a **Shell** submenu with the Mac's Shell and Edit menu commands (export, profiles, splits, MultiExec, Run Command on Hosts, connections, tabs, Clear and Reset), and Quit.
+- Toolbar buttons never take the keyboard focus from the terminal. The window's shortcuts are handled before the terminal sees the key.
+- Hover hints are GTK tooltips with the same text; screen readers get the same descriptions.
+
+### Shortcuts
+
+Linux terminals' conventions replace ⌘:
+
+| Command | Mac | Linux |
+|---|---|---|
+| New Tab / New Window | ⌘T / ⌘N | Ctrl+Shift+T / Ctrl+Shift+N |
+| Close Tab (the window with the last tab) | ⌘W | Ctrl+Shift+W |
+| Export Session | ⌘S | Ctrl+Shift+S |
+| Take Screenshot | ⇧⌘S | Ctrl+Alt+S |
+| Copy / Paste / Paste Escaped Text | ⌘C / ⌘V / ⌃⌘V | Ctrl+Shift+C / Ctrl+Shift+V / Ctrl+Alt+V |
+| Find | ⌘F | Ctrl+Shift+F |
+| Split Vertically / Horizontally | ⌘D / ⇧⌘D | Ctrl+Shift+E / Ctrl+Shift+O |
+| Close Pane, Next / Previous Pane | ⌥⌘W, ⌥⌘→ / ⌥⌘← | Ctrl+Alt+W, Ctrl+Alt+→ / Ctrl+Alt+← |
+| MultiExec | ⇧⌘M | Ctrl+Shift+M |
+| Connect via SSH | ⇧⌘K | Ctrl+Shift+K |
+| Show Tab 1–8, Last Tab | ⌘1–⌘8, ⌘9 | Alt+1–Alt+8, Alt+9 |
+| Previous / Next Tab | ⇧⌘[ / ⇧⌘] | Ctrl+Page Up / Ctrl+Page Down |
+| Move Tab Left / Right | (menu) | Ctrl+Shift+Page Up / Ctrl+Shift+Page Down |
+| Rename Tab | ⇧⌘I | Ctrl+Shift+I |
+| Show File Explorer / Terminal | (toolbar) | Ctrl+Shift+X |
+| Clear to Start / Clear Scrollback | ⌘K / ⌥⌘K | Ctrl+Shift+L / Ctrl+Alt+K |
+| Reset / Hard Reset | ⌥⌘R / ⌃⌥⌘R | Ctrl+Alt+R / Ctrl+Alt+Shift+R |
+| Bigger / Smaller / Default | ⌘+ / ⌘− / ⌘0 | Ctrl++ / Ctrl+− / Ctrl+0 |
+| Settings | ⌘, | Ctrl+, |
+| Full Screen | ⌃⌘F | F11 |
+| Quit | ⌘Q | Ctrl+Shift+Q |
+
+The explorer follows Thunar: Ctrl+C / X / V / A / Z, Ctrl+Shift+Z to redo, Delete moves to the Trash (deletes on a host, after asking), BackSpace and Alt+← go back, Alt+→ forward, Alt+↑ up, Alt+Home home, Ctrl+L location, Ctrl+R or F5 reload, Ctrl+H hidden files, Ctrl+D bookmark, Ctrl+F find, F2 rename and Alt+Return Get Info. The text editor saves with Ctrl+S and finds with Ctrl+F.
+
+### Appearance
+
+- The stock face is Adwaita Mono 11 pt; the Basic look keeps macOS Terminal's colors and ANSI palette.
+- Settings lists the installed monospaced fonts. Background opacity works as on the Mac; GTK has no blur behind windows, so there is no Blur setting.
+- The color scheme (System, Light, Dark) follows the desktop through libadwaita.
+
+### Files
+
+- **Places:** Home and the XDG folders that exist (Desktop, Documents, Downloads, Music, Pictures, Videos, as `~/.config/user-dirs.dirs` names them), Computer, Trash, then mounted drives under `/run/media`, `/media` and `/mnt`.
+- **Trash:** the freedesktop.org Trash (`~/.local/share/Trash`, or `.Trash-<uid>` on other drives), with a `.trashinfo` record, so file managers can restore items; Undo moves them straight back.
+- **Clipboard:** copied files go on the clipboard as a file list and in GNOME's copied-files format, so file managers paste them, and cut items move. Copied host items paste into file managers as real files, downloaded when they're pasted.
+- **Show in Files** and **Open with Default App** go through the desktop's file manager and default apps.
+- **Get Info** shows and changes permissions, owner and group; macOS's Hidden and Locked flags don't exist on Linux.
+
+### Not on Linux
+
+- Secure Keyboard Entry: the Wayland desktop already keeps other apps from reading what you type.
+- Option as Meta: Alt always acts as Meta, as in Linux terminals.
+
 ## References
 
 | Reference | Used for |
@@ -408,4 +485,6 @@ Tailcat connects machines that can't reach each other by IP. Herb's Terminal run
 | [Xfce Thunar](https://docs.xfce.org/xfce/thunar/the-file-manager-window) | File manager navigation and layout |
 | [OpenSSH ssh_config](https://man.openbsd.org/ssh_config) | Shared connections, askpass and host routing |
 | [Tailcat](https://github.com/tailscale/tailcat) | Peer pairing and relays |
+| [Flatpak sandbox permissions](https://docs.flatpak.org/en/latest/sandbox-permissions.html) | Host access for the Linux version |
+| [freedesktop.org Trash specification](https://specifications.freedesktop.org/trash-spec/latest/) | The Linux Trash |
 | [iTerm2 color presets](https://iterm2.com/documentation-preferences-profiles-colors.html) | The color preset format |

@@ -1,0 +1,5 @@
+.build/
+build/
+.flatpak-builder/
+Sources/HerbsTerminal/Version.swift
+version.txt
