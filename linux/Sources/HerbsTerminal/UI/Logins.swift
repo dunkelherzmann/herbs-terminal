@@ -83,11 +83,12 @@ enum LoginVaultPrompts {
             herb_set_bool(raw(input), "activates-default", 1)
             append(list, label(field.label, classes: ["caption", "dim-label"]), input)
             after(milliseconds: 80) { gtk_widget_grab_focus(input) }
+            var typed = ""
             let answer = await Dialogs.ask(parent, "Unlock Saved Logins", message ?? detail ?? "Enter the Administrator Password to use your saved logins.",
                                            choices: [.init("cancel", cancelTitle), .init("unlock", "Unlock", .suggested)],
-                                           defaultID: "unlock", cancel: "cancel", extra: list)
+                                           defaultID: "unlock", cancel: "cancel", extra: list, collect: { typed = text(of: input) })
             guard answer == "unlock" else { return false }
-            do { try store.unlock(text(of: input)) } catch { message = error.localizedDescription }
+            do { try store.unlock(typed) } catch { message = error.localizedDescription }
         }
         return true
     }
@@ -568,9 +569,9 @@ enum LoginEditor {
             if let message { append(content, label(message, classes: ["caption", "error-text"], wrap: true)) }
             after(milliseconds: 80) { gtk_widget_grab_focus(fields[0]) }
             let answer = await Dialogs.ask(parent, original == nil ? "New Login" : "Edit Login",
-                                           choices: [.init("cancel", "Cancel"), .init("save", "Save", .suggested)], defaultID: "save", cancel: "cancel", extra: content)
+                                           choices: [.init("cancel", "Cancel"), .init("save", "Save", .suggested)], defaultID: "save", cancel: "cancel",
+                                           extra: content, collect: { values = fields.map { text(of: $0) } })
             guard answer == "save" else { return }
-            values = fields.map { text(of: $0) }
             let login = SSHLogin(host: values[0].trimmingCharacters(in: .whitespacesAndNewlines), port: Int(values[1].trimmingCharacters(in: .whitespaces)) ?? 0,
                                  username: values[2].trimmingCharacters(in: .whitespacesAndNewlines), password: values[3])
             do {
