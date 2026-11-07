@@ -162,6 +162,7 @@ final class SSHConnectDialog {
 
     static func show(parent: Widget?, connect: @escaping (SSHLogin) -> Void) {
         let dialog = SSHConnectDialog(parent: parent, connect: connect)
+        dialog.window.owner = dialog
         dialog.window.present()
         Task { await dialog.firstUse() }
     }
@@ -332,6 +333,7 @@ final class ManageLoginsWindow {
                                                detail: "Enter the Administrator Password to see your encrypted logins. Skip to see only logins stored as plain text.")
             }
             let window = ManageLoginsWindow(store: store, parent: parent)
+            window.window.owner = window
             open = window
             window.window.present()
         }

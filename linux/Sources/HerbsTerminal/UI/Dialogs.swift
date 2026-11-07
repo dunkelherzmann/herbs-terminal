@@ -139,6 +139,9 @@ final class ToolWindow {
     let header: Widget
     let content: Widget
     var onClose: (() -> Void)?
+    /// The object that runs this window (its buttons call into it with weak references). The window keeps it
+    /// alive until it's destroyed; without this, a dialog's controller was freed once shown and its buttons did nothing.
+    var owner: AnyObject?
 
     init(title: String, width: Int32, height: Int32 = -1, resizable: Bool = false, parent: Widget? = nil) {
         window = adw_window_new()!
@@ -160,7 +163,11 @@ final class ToolWindow {
             args.returns(false)
         }
         App.shared.retain(self)
-        on(window, "destroy") { [weak self] _ in if let self { App.shared.release(self) } }
+        on(window, "destroy") { [weak self] _ in
+            guard let self else { return }
+            self.owner = nil
+            App.shared.release(self)
+        }
     }
 
     func present() { gtk_window_present(c(window)) }

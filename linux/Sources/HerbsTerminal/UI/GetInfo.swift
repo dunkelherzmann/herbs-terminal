@@ -29,6 +29,7 @@ final class FileInfoWindow {
 
     static func show(_ source: FileInfoSource, parent: Widget?) {
         let info = FileInfoWindow(source: source, parent: parent)
+        info.window.owner = info
         info.window.present()
         Task { await info.load() }
     }
