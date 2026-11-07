@@ -84,10 +84,14 @@ final class Workspace: WindowObject {
     func toggleExplorer() {
         guard let hwnd, let pane = activePane else { return }
         if !pane.showingExplorer {
-            guard pane.remote == nil else { MessageBeep(UINT(MB_OK)); return } // Hosts' files come with SFTP.
             if pane.explorer == nil {
-                let home = FileManager.default.homeDirectoryForCurrentUser.path.windowsPath
-                let explorer = ExplorerPane(parent: hwnd, start: home)
+                let explorer: ExplorerPane
+                if let endpoint = pane.remote {
+                    // An SSH tab's explorer shows that host, over its own SFTP channel with the tab's login.
+                    explorer = ExplorerPane(parent: hwnd, start: ".", remote: RemoteSession(endpoint: endpoint, password: pane.remotePassword))
+                } else {
+                    explorer = ExplorerPane(parent: hwnd, start: FileManager.default.homeDirectoryForCurrentUser.path.windowsPath)
+                }
                 explorer.onOpenInTerminal = { [weak self] folder in self?.newTab(in: folder) }
                 explorer.onLocationChange = { [weak self] in self?.refreshChrome() }
                 pane.explorer = explorer
@@ -456,11 +460,11 @@ final class Workspace: WindowObject {
             state.title = pane.title
             state.connected = pane.isConnected ? pane.remote?.label : nil
             state.explorerShowing = pane.showingExplorer
-            state.explorerAvailable = pane.remote == nil
+            state.explorerAvailable = true
             if pane.showingExplorer, let explorer = pane.explorer {
                 // As on the Mac: the folder's name, and where it is beside it.
                 state.title = explorer.title
-                state.subtitle = explorer.folder
+                state.subtitle = explorer.folder == explorer.title ? "" : explorer.folder
             }
         }
         if let hwnd {

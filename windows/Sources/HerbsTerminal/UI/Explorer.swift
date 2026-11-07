@@ -14,6 +14,12 @@ final class ExplorerPane: WindowObject {
     private var location: HWND?
     private var fonts: (ui: HFONT?, glyph: HFONT?, heading: HFONT?) = (nil, nil, nil)
     private(set) var folder: String
+    /// Set when the explorer shows an SSH tab's host instead of this PC.
+    let remote: RemoteSession?
+    /// The host account's home folder, learned on the first listing.
+    private var remoteHome = "/"
+    /// Counts listings, so one that finishes after a newer one started is dropped.
+    private var listing = 0
     private var history: [String] = []
     private var future: [String] = []
     private var entries: [FileEntry] = []
@@ -49,8 +55,9 @@ final class ExplorerPane: WindowObject {
         case properties, showInFileExplorer, newFolder, newFile, showHidden, reload, selectAll, folderProperties
     }
 
-    init(parent: HWND, start: String) {
+    init(parent: HWND, start: String, remote: RemoteSession? = nil) {
         folder = start
+        self.remote = remote
         hwnd = createWindow(self, className: Self.className, style: DWORD(WS_CHILD) | DWORD(WS_CLIPCHILDREN), parent: parent)
         guard let hwnd else { return }
         var controls = INITCOMMONCONTROLSEX(dwSize: DWORD(MemoryLayout<INITCOMMONCONTROLSEX>.size), dwICC: DWORD(ICC_LISTVIEW_CLASSES))
@@ -89,7 +96,7 @@ final class ExplorerPane: WindowObject {
         }
         HeaderColors.attach(to: list)
         applyTheme()
-        places = Self.standardPlaces()
+        places = remote == nil ? Self.standardPlaces() : remotePlaces
         navigate(to: start, record: false)
     }
 
@@ -112,6 +119,7 @@ final class ExplorerPane: WindowObject {
 
     /// The folder's name for the toolbar title, and its full path for the location beside it.
     var title: String {
+        if remote != nil { return RemotePath.name(folder) }
         let name = (folder as NSString).lastPathComponent
         return name.isEmpty || name == "\\" ? folder : name
     }
@@ -268,6 +276,7 @@ final class ExplorerPane: WindowObject {
     }
 
     func navigate(to path: String, record: Bool = true) {
+        if remote != nil { remoteNavigate(to: path, record: record); return }
         let target = Self.fullPath(path)
         do {
             let found = try Self.list(target)
@@ -292,6 +301,7 @@ final class ExplorerPane: WindowObject {
 
     func reload() {
         status = ""
+        if remote != nil { remoteNavigate(to: folder, record: false, select: Set(selectedEntries.map(\.name))); return }
         let selected = selectedEntries.map(\.name)
         if let found = try? Self.list(folder) { entries = found }
         refill(keepSelection: false, select: Set(selected))
@@ -402,6 +412,11 @@ final class ExplorerPane: WindowObject {
     }
 
     func goUp() {
+        if remote != nil {
+            guard folder != "/" else { return }
+            remoteNavigate(to: RemotePath.parent(folder), record: true, select: [RemotePath.name(folder)])
+            return
+        }
         let parent = (folder as NSString).deletingLastPathComponent
         guard !parent.isEmpty, parent != folder else { return }
         let previous = (folder as NSString).lastPathComponent
@@ -409,7 +424,7 @@ final class ExplorerPane: WindowObject {
         if let row = rows.firstIndex(where: { $0.name == previous }) { selectRow(row) }
     }
 
-    func goHome() { navigate(to: FileManager.default.homeDirectoryForCurrentUser.path.windowsPath) }
+    func goHome() { navigate(to: remote == nil ? FileManager.default.homeDirectoryForCurrentUser.path.windowsPath : remoteHome) }
 
     /// Location-field input: absolute, `~`-relative, or relative to the current folder; `.` and `..` resolve.
     static func resolve(_ input: String, from current: String, home: String) -> String? {
@@ -441,6 +456,7 @@ final class ExplorerPane: WindowObject {
     // MARK: Actions
 
     private func open(_ entry: FileEntry) {
+        if remote != nil { remoteOpen(entry); return }
         if entry.isFolder {
             navigate(to: entry.path)
         } else {
@@ -454,6 +470,7 @@ final class ExplorerPane: WindowObject {
 
     private func perform(_ command: Command) {
         let selection = selectedEntries
+        if remote != nil, remotePerform(command, selection) { return }
         switch command {
         case .open: selection.forEach(open)
         case .openInTerminal: onOpenInTerminal?(selection.first(where: \.isFolder)?.path ?? folder)
@@ -551,6 +568,7 @@ final class ExplorerPane: WindowObject {
         let entry = rows[row]
         let name = newName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty, name != entry.name else { return }
+        if remote != nil { remoteRename(entry, to: name); return }
         if name.contains(where: { "\\/:*?\"<>|".contains($0) }) {
             FormDialog.tell(owner: GetAncestor(hwnd, UINT(GA_ROOT)), title: "“\(name)” isn't a valid name",
                             message: "Names can't contain any of these characters: \\ / : * ? \" < > |")
@@ -565,6 +583,214 @@ final class ExplorerPane: WindowObject {
         ShellOperation.run(.rename, [entry.path], to: target, owner: hwnd)
         reload()
         if let index = rows.firstIndex(where: { $0.name == name }) { selectRow(index) }
+    }
+
+    // MARK: Hosts
+
+    /// Home and File System, as on the Mac and Linux for a host.
+    private var remotePlaces: [(section: String, items: [Place])] {
+        [("Places", [Place(name: "Home", path: remoteHome, glyph: "\u{E80F}"), Place(name: "File System", path: "/", glyph: "\u{EDA2}")])]
+    }
+
+    /// Lists a host folder on the session's thread; the newest request wins.
+    private func remoteNavigate(to path: String, record: Bool, select: Set<String> = []) {
+        guard let remote else { return }
+        listing += 1
+        let ticket = listing
+        status = "Loading…"
+        statusIsError = false
+        if let hwnd { InvalidateRect(hwnd, nil, false) }
+        let needsHome = remoteHome == "/"
+        MainThread.background({
+            try remote.run { client -> (home: String?, folder: String, entries: [RemoteEntry]) in
+                let home = needsHome ? try client.canonical(".") : nil
+                let target = try client.canonical(path == "." && home != nil ? home! : path)
+                return (home, target, try client.list(target))
+            }
+        }) { [weak self] result in
+            guard let self, ticket == self.listing else { return }
+            switch result {
+            case .success(let found):
+                if let home = found.home {
+                    self.remoteHome = home
+                    self.places = self.remotePlaces
+                }
+                if record, found.folder != self.folder {
+                    self.history.append(self.folder)
+                    if self.history.count > 100 { self.history.removeFirst() }
+                    self.future.removeAll()
+                }
+                self.folder = found.folder
+                self.entries = found.entries.map { self.entry(for: $0, in: found.folder) }
+                self.status = ""
+            case .failure(let error):
+                self.status = error.localizedDescription
+                self.statusIsError = true
+                if record { MessageBeep(UINT(MB_ICONWARNING)) }
+            }
+            withWide(self.folder) { _ = SetWindowTextW(self.location, $0) }
+            self.refill(keepSelection: false, select: select)
+            self.onLocationChange?()
+        }
+    }
+
+    private func entry(for item: RemoteEntry, in folder: String) -> FileEntry {
+        let seconds = UInt64(item.attributes.modified ?? 0)
+        let ticks = (seconds + 11_644_473_600) * 10_000_000 // Unix time to FILETIME.
+        let isFolder = item.attributes.directory
+        return FileEntry(name: item.name, path: remoteJoin(folder, item.name), isFolder: isFolder, isHidden: item.name.hasPrefix("."),
+                         size: item.attributes.size ?? 0,
+                         modified: FILETIME(dwLowDateTime: DWORD(ticks & 0xFFFF_FFFF), dwHighDateTime: DWORD(ticks >> 32)),
+                         attributes: isFolder ? DWORD(FILE_ATTRIBUTE_DIRECTORY) : DWORD(FILE_ATTRIBUTE_NORMAL))
+    }
+
+    /// Runs a change on the host, then lists the folder again (selecting `select`) or shows what went wrong.
+    private func remoteChange(_ work: @escaping @Sendable (SFTPClient) throws -> Void, select: @escaping @Sendable () -> Set<String> = { [] }) {
+        guard let remote else { return }
+        status = "Working…"
+        statusIsError = false
+        if let hwnd { InvalidateRect(hwnd, nil, false) }
+        // A listing started after this change (you went to another folder meanwhile) shows the newer state; the
+        // folder is only listed again when nothing has moved on.
+        let started = listing
+        MainThread.background({ try remote.run(work) }) { [weak self] result in
+            guard let self else { return }
+            if case .failure(let error) = result {
+                FormDialog.tell(owner: GetAncestor(self.hwnd, UINT(GA_ROOT)), title: "The change couldn't be made", message: error.localizedDescription)
+            }
+            guard self.listing == started else { return }
+            self.remoteNavigate(to: self.folder, record: false, select: select())
+        }
+    }
+
+    /// Folders open here; links are followed to see whether they lead to a folder.
+    private func remoteOpen(_ entry: FileEntry) {
+        guard let remote else { return }
+        if entry.isFolder { remoteNavigate(to: entry.path, record: true); return }
+        let path = entry.path
+        MainThread.background({ try remote.run { try $0.stat(path, follow: true) } }) { [weak self] result in
+            guard let self else { return }
+            if case .success(let attributes) = result, attributes.directory {
+                self.remoteNavigate(to: path, record: true)
+            } else {
+                self.status = "Opening files from a host comes with downloads and the text editor."
+                self.statusIsError = false
+                if let hwnd = self.hwnd { InvalidateRect(hwnd, nil, false) }
+            }
+        }
+    }
+
+    /// The host side of the explorer's commands. Returns false for the ones handled as on this PC.
+    private func remotePerform(_ command: Command, _ selection: [FileEntry]) -> Bool {
+        let folder = self.folder
+        switch command {
+        case .cut, .copy:
+            guard !selection.isEmpty, let remote else { return true }
+            RemoteClipboard.host = remote.endpoint.label
+            RemoteClipboard.paths = selection.map(\.path)
+            RemoteClipboard.move = command == .cut
+            status = "\(selection.count) item\(selection.count == 1 ? "" : "s") \(command == .cut ? "cut" : "copied")"
+            statusIsError = false
+            if let hwnd { InvalidateRect(hwnd, nil, false) }
+        case .paste:
+            guard let remote, RemoteClipboard.host == remote.endpoint.label, !RemoteClipboard.paths.isEmpty else {
+                status = ShellClipboard.hasFiles ? "Copying files from this PC to a host comes with uploads." : "Nothing to paste."
+                statusIsError = false
+                if let hwnd { InvalidateRect(hwnd, nil, false) }
+                return true
+            }
+            let paths = RemoteClipboard.paths, move = RemoteClipboard.move
+            let target = RemotePath.normalize(folder)
+            for path in paths where target == RemotePath.normalize(path) || target.hasPrefix(RemotePath.normalize(path) + "/") {
+                FormDialog.tell(owner: GetAncestor(hwnd, UINT(GA_ROOT)), title: "Can't paste a folder into itself",
+                                message: "“\(RemotePath.name(path))” can't go inside itself. Choose a destination outside it.")
+                return true
+            }
+            if move { RemoteClipboard.paths = [] }
+            let names = Locked<Set<String>>([])
+            remoteChange({ client in
+                for path in paths {
+                    let name = RemotePath.name(path)
+                    // Cut items already in this folder stay where they are.
+                    if move, RemotePath.parent(path) == target { continue }
+                    let destination = try RemoteFiles.destination(for: name, in: target, client: client)
+                    if move { try client.rename(path, destination) } else { try RemoteFiles.copy(path, to: destination, client: client) }
+                    names.update { $0.insert(RemotePath.name(destination)) }
+                }
+            }, select: { names.value })
+        case .delete, .deletePermanently:
+            // Hosts have no Recycle Bin: deleting is permanent, so it always asks, with Cancel as the default.
+            guard !selection.isEmpty else { return true }
+            let what = selection.count == 1 ? "“\(selection[0].name)”" : "\(selection.count) items"
+            guard FormDialog.ask(owner: GetAncestor(hwnd, UINT(GA_ROOT)), title: "Delete \(what)?",
+                                 message: "Folders are deleted with everything in them. This can't be undone.",
+                                 buttons: [.init(title: "Cancel", isDefault: true), .init(title: "Delete")]) == 1 else { return true }
+            let paths = selection.map(\.path)
+            remoteChange({ client in for path in paths { try RemoteFiles.remove(path, client: client) } })
+        case .newFolder, .newFile:
+            let isFolder = command == .newFolder
+            let created = Locked<String?>(nil)
+            remoteChange({ client in
+                let name = try RemoteFiles.freeName(isFolder ? "untitled folder" : "untitled file", in: folder, client: client)
+                if isFolder { try client.mkdir(remoteJoin(folder, name)) } else { try RemoteFiles.newFile(remoteJoin(folder, name), client: client) }
+                created.update { $0 = name }
+            }, select: { created.value.map { [$0] } ?? [] })
+        case .openInTerminal, .openWith, .properties, .folderProperties, .showInFileExplorer:
+            break // Not for host files.
+        default:
+            return false
+        }
+        return true
+    }
+
+    private func remoteRename(_ entry: FileEntry, to name: String) {
+        guard !name.contains("/"), name != ".", name != ".." else {
+            FormDialog.tell(owner: GetAncestor(hwnd, UINT(GA_ROOT)), title: "“\(name)” isn't a valid name", message: "Names can't contain / and can't be . or ..")
+            return
+        }
+        let from = entry.path, to = remoteJoin(folder, name)
+        remoteChange({ client in
+            guard try client.existing(to) == nil else { throw FileIssue("An item named “\(name)” already exists here.") }
+            try client.rename(from, to)
+        }, select: { [name] })
+    }
+
+    private func remoteMenu(at screen: POINT, onItem: Bool, rightAligned: Bool = false) {
+        guard let owner = hwnd else { return }
+        let menu = CreatePopupMenu()
+        defer { DestroyMenu(menu) }
+        func item(_ title: String, _ command: Command, enabled: Bool = true, checked: Bool = false) {
+            var flags = UINT(MF_STRING)
+            if !enabled { flags |= UINT(MF_GRAYED) }
+            if checked { flags |= UINT(MF_CHECKED) }
+            withWide(title) { _ = AppendMenuW(menu, flags, UINT_PTR(command.rawValue), $0) }
+        }
+        func divider() { AppendMenuW(menu, UINT(MF_SEPARATOR), 0, nil) }
+        let selection = selectedEntries
+        let canPaste = remote.map { RemoteClipboard.host == $0.endpoint.label && !RemoteClipboard.paths.isEmpty } ?? false
+        if onItem, !selection.isEmpty {
+            item("Open\tEnter", .open)
+            divider()
+            item("Cut\tCtrl+X", .cut)
+            item("Copy\tCtrl+C", .copy)
+            item("Paste\tCtrl+V", .paste, enabled: canPaste)
+            item("Copy Path", .copyPath)
+            divider()
+            item("Rename…\tF2", .rename, enabled: selection.count == 1)
+            item("Delete…\tDelete", .delete)
+        } else {
+            item("New Folder\tCtrl+Shift+N", .newFolder)
+            item("New File", .newFile)
+            divider()
+            item("Paste\tCtrl+V", .paste, enabled: canPaste)
+            item("Copy Path", .copyPath)
+            item("Select All\tCtrl+A", .selectAll)
+            divider()
+            item("Show Hidden Files\tCtrl+H", .showHidden, checked: showHidden)
+            item("Reload\tF5", .reload)
+        }
+        let chosen = MainMenu.trackPopup(menu, at: screen, owner: owner, rightAligned: rightAligned)
+        if let command = Command(rawValue: chosen) { perform(command) }
     }
 
     // MARK: Scripted runs
@@ -599,6 +825,7 @@ final class ExplorerPane: WindowObject {
     // MARK: Menus and keys
 
     private func contextMenu(at screen: POINT, onItem: Bool) {
+        if remote != nil { remoteMenu(at: screen, onItem: onItem); return }
         let menu = CreatePopupMenu()
         defer { DestroyMenu(menu) }
         func item(_ title: String, _ command: Command, enabled: Bool = true, checked: Bool = false) {
@@ -649,6 +876,7 @@ final class ExplorerPane: WindowObject {
         guard let hwnd, let rect = barRects[.actions] else { return }
         var point = POINT(x: rect.right, y: rect.bottom + scaled(4, dpi: dpi))
         ClientToScreen(hwnd, &point)
+        if remote != nil { remoteMenu(at: point, onItem: !selectedEntries.isEmpty, rightAligned: true); return }
         let menu = CreatePopupMenu()
         defer { DestroyMenu(menu) }
         let selection = selectedEntries
@@ -675,7 +903,8 @@ final class ExplorerPane: WindowObject {
                 if message.wParam == WPARAM(VK_RETURN) {
                     let text = String(windowText: location)
                     let home = FileManager.default.homeDirectoryForCurrentUser.path.windowsPath
-                    if let target = Self.resolve(text, from: folder, home: home) { navigate(to: target) }
+                    let target = remote == nil ? Self.resolve(text, from: folder, home: home) : RemotePath.resolve(text, from: folder, home: remoteHome)
+                    if let target { navigate(to: target) }
                     SetFocus(list)
                     return true
                 }
@@ -774,7 +1003,8 @@ final class ExplorerPane: WindowObject {
         // Location bar buttons.
         let glyphs: [BarItem: String] = [.back: "\u{E72B}", .forward: "\u{E72A}", .up: "\u{E74A}", .home: "\u{E80F}", .actions: "\u{E712}"]
         let enabled: [BarItem: Bool] = [.back: !history.isEmpty, .forward: !future.isEmpty,
-                                        .up: (folder as NSString).deletingLastPathComponent != folder, .home: true, .actions: true]
+                                        .up: remote == nil ? (folder as NSString).deletingLastPathComponent != folder : folder != "/",
+                                        .home: true, .actions: true]
         for (item, rect) in barRects {
             if hover == item, enabled[item] == true { roundFill(dc, rect, blend(barBackground, colors.text, 0.1), radius: s(4)) }
             draw(dc, glyphs[item] ?? "", rect, font: fonts.glyph, color: enabled[item] == true ? colors.text : blend(colors.text, barBackground, 0.65),
@@ -1077,4 +1307,13 @@ enum HeaderColors {
             return DefSubclassProc(window, message, wParam, lParam)
         }, 0x48_54, 0)
     }
+}
+
+/// A value shared between a background job and the window thread.
+final class Locked<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Value
+    init(_ value: Value) { stored = value }
+    var value: Value { lock.withLock { stored } }
+    func update(_ change: (inout Value) -> Void) { lock.withLock { change(&stored) } }
 }

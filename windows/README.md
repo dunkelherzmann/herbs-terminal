@@ -47,7 +47,7 @@ A development build is `windows\.build\out\Products\Debug-windows-x86_64\HerbsTe
 - Full color (16, 256 and 24-bit), bold, italic, underline, strikethrough, dim, inverse; wide (CJK) characters
 - Scrollback with the mouse wheel and Shift+Page Up / Down; full-screen programs scroll with the wheel
 - Mouse selection (double-click selects a word), copy and paste as in Windows Terminal: Ctrl+C copies when text is selected, Ctrl+V pastes, right-click copies or pastes; bracketed paste
-- **File explorer** for this PC's files (the toolbar's folder button or Ctrl+Shift+X): places, location bar, sortable list with Windows' icons, open, Copy / Cut / Paste shared with File Explorer, Recycle Bin, rename, New Folder / New File, hidden files, Properties, and Open in New Terminal Tab. Hosts' files come next
+- **File explorer** for this PC's files (the toolbar's folder button or Ctrl+Shift+X): places, location bar, sortable list with Windows' icons, open, Copy / Cut / Paste shared with File Explorer, Recycle Bin, rename, New Folder / New File, hidden files, Properties, and Open in New Terminal Tab. In an SSH tab it shows the host's files over its own SFTP channel (signed in with the tab's saved password or SSH keys): browse, copy and move on the host, delete, rename, New Folder / New File
 - Dropping files or folders from File Explorer on a terminal types their paths, as on the Mac and Linux, quoted for the tab's shell: single quotes for PowerShell, double quotes for Command Prompt, `/mnt/c/…` for WSL, and POSIX quoting for Git Bash and SSH tabs
 - Block, underline and bar cursors from the profile, blinking or steady
 - Light and dark mode follow Windows, title bar included; per-monitor DPI

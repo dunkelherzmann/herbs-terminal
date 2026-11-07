@@ -11,7 +11,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
       an editable location, the file list, opening items, Copy / Cut / Paste shared with File Explorer, Recycle
       Bin, rename, New Folder / New File, hidden files, Properties, Open in New Terminal Tab, and the terminal ⇄
       explorer switch (toolbar button, Ctrl+Shift+X).
-- [ ] **2. File explorer, hosts** (§4, §5): browse the SSH tab's host over SFTP (Windows OpenSSH has no
+- [x] **2. File explorer, hosts** (#18) (§4, §5): browse the SSH tab's host over SFTP (Windows OpenSSH has no
       `ControlMaster`, so the explorer opens its own session with the saved password), Home and File System
       places, rename, delete, New Folder / New File, copy and move on the host.
 - [ ] **3. Transfers** (§5): upload and download files and folder trees, the progress strip with Cancel and
