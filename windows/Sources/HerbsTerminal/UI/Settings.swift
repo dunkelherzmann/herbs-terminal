@@ -51,10 +51,9 @@ final class SettingsWindow: WindowObject {
         hwnd = createWindow(self, className: Self.className, title: "Settings", style: style, exStyle: DWORD(WS_EX_CONTROLPARENT),
                             x: x, y: y, width: rect.right - rect.left, height: rect.bottom - rect.top, parent: owner)
         guard let hwnd else { return }
-        // The form uses the standard light controls, so its frame stays light too.
-        setDarkTitleBar(hwnd, false)
         build(hwnd, dpi: dpi)
         load()
+        DialogTheme.apply(to: hwnd)
         ShowWindow(hwnd, TestScript.active ? SW_SHOWNOACTIVATE : SW_SHOW)
     }
 
@@ -258,6 +257,7 @@ final class SettingsWindow: WindowObject {
             profile.update(nil) { $0.theme = name == Self.basicTheme ? "" : name }
         case .appearance:
             profile.appearance = selection(.appearance)
+            if let hwnd { DialogTheme.apply(to: hwnd) }
         case .shell:
             let value = fromList ? selection(.shell) : text(.shell)
             ShellChoice.current = ShellChoice.available.first { $0.title == value }?.commandLine ?? value
@@ -291,13 +291,14 @@ final class SettingsWindow: WindowObject {
             TerminalProfile.shared.update(nil) { $0.theme = name }
             load()
         } catch {
-            messageBox(hwnd, "Couldn't import that preset: \(error.localizedDescription)", flags: UINT(MB_OK | MB_ICONWARNING))
+            FormDialog.tell(owner: hwnd, title: "Couldn't import that preset", message: error.localizedDescription)
         }
     }
 
     // MARK: Messages
 
     func handle(_ hwnd: HWND, _ message: UINT, _ wParam: WPARAM, _ lParam: LPARAM) -> LRESULT? {
+        if let themed = DialogTheme.handle(hwnd, message, wParam) { return themed }
         switch Int32(message) {
         case WM_COMMAND:
             let code = Int32(hiWord(wParam)), rawID = Int32(wParam & 0xFFFF)
@@ -311,9 +312,6 @@ final class SettingsWindow: WindowObject {
             default: break
             }
             return 0
-        case WM_CTLCOLORSTATIC, WM_CTLCOLORBTN:
-            SetBkMode(HDC(bitPattern: UInt(wParam)), TRANSPARENT)
-            return LRESULT(Int(bitPattern: UnsafeRawPointer(GetSysColorBrush(COLOR_WINDOW))))
         case WM_CLOSE:
             DestroyWindow(hwnd)
             return 0

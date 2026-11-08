@@ -196,6 +196,7 @@ final class GetInfoWindow: WindowObject {
 
         refreshButtons()
         if let owner { EnableWindow(owner, false) }
+        DialogTheme.apply(to: hwnd)
         ShowWindow(hwnd, TestScript.active ? SW_SHOWNOACTIVATE : SW_SHOW)
         SetFocus(ownerField)
         load()
@@ -368,6 +369,7 @@ final class GetInfoWindow: WindowObject {
     // MARK: Messages
 
     func handle(_ hwnd: HWND, _ message: UINT, _ wParam: WPARAM, _ lParam: LPARAM) -> LRESULT? {
+        if Int32(message) != WM_CTLCOLORSTATIC, let themed = DialogTheme.handle(hwnd, message, wParam) { return themed }
         switch Int32(message) {
         case WM_COMMAND:
             let id = Int32(wParam & 0xFFFF), code = Int32(hiWord(LPARAM(Int(bitPattern: UInt(wParam)))))
@@ -396,14 +398,12 @@ final class GetInfoWindow: WindowObject {
             done = true
             return 0
         case WM_CTLCOLORSTATIC:
+            let brush = DialogTheme.colors(message, wParam)
             let dc = HDC(bitPattern: UInt(wParam))
-            SetBkMode(dc, TRANSPARENT)
             let control = HWND(bitPattern: UInt(lParam))
-            if control == self.message, messageIsError { SetTextColor(dc, colorRef(196, 43, 28)) }
-            else if headerLabels.contains(where: { $0 == control }) { SetTextColor(dc, GetSysColor(COLOR_GRAYTEXT)) }
-            return LRESULT(Int(bitPattern: UnsafeRawPointer(GetSysColorBrush(COLOR_WINDOW))))
-        case WM_CTLCOLORBTN:
-            return LRESULT(Int(bitPattern: UnsafeRawPointer(GetSysColorBrush(COLOR_WINDOW))))
+            if control == self.message, messageIsError { SetTextColor(dc, DialogTheme.errorText) }
+            else if headerLabels.contains(where: { $0 == control }) { SetTextColor(dc, DialogTheme.secondaryText) }
+            return brush
         default:
             return nil
         }
