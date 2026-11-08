@@ -434,6 +434,10 @@ static GdkDragAction herb_files_hover(GtkDropTargetAsync *target, GdkDrop *drop,
     return GDK_ACTION_COPY;
 }
 
+/// The drop target for files from a file manager. Keep it a GtkDropTargetAsync that answers "drag-enter" and
+/// "drag-motion" with a copy and reads text/uri-list itself: a plain GtkDropTarget for GdkFileList silently
+/// receives no drop from Dolphin. To see what a drag delivers, log "accept", "drag-enter" and "drop" with
+/// g_message and read the user journal (journalctl --user -f).
 GtkEventController *herb_files_drop_target(void) {
     GdkContentFormatsBuilder *builder = gdk_content_formats_builder_new();
     gdk_content_formats_builder_add_mime_type(builder, "text/uri-list");
