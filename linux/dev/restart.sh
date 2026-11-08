@@ -1,5 +1,13 @@
 #!/bin/sh
-# On the Mac: rebuilds the development build in the VM and restarts it under Broadway (http://<vm>:8085).
-VM=${VM:-herbs-flatpak-aarch64}
-container exec "$VM" sh /src/linux/dev/build.sh 2>&1 | grep -E "error:|Build complete" | sort -u | head -40
-container exec -d "$VM" sh -c 'sh /src/linux/dev/run.sh > /tmp/app.log 2>&1'
+# Rebuilds the development build and restarts it on the Linux machine's desktop. From another computer:
+#   ssh <linux-machine> 'cd herbs-terminal && linux/dev/restart.sh'
+set -eu
+here="$(cd "$(dirname "$0")" && pwd)"
+log="${TMPDIR:-/tmp}/herbs-terminal-dev-build.log"
+if ! sh "$here/build.sh" >"$log" 2>&1; then
+    grep -E "error:" "$log" | sort -u | head -40
+    tail -5 "$log"
+    exit 1
+fi
+grep -E "Build complete" "$log" || true
+sh "$here/run.sh"

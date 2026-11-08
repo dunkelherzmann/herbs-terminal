@@ -6,7 +6,7 @@ PREFIX="${1:-/app}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="$(sh "$ROOT/script/version.sh")"
 # flatpak-builder copies the sources without .git, so the version comes from the stamp written before the build
-# (sh script/version.sh > linux/version.txt; script/build_flatpak.sh does it).
+# (script/build_flatpak.sh writes it with sh script/version.sh > linux/version.txt).
 if [ ! -e "$ROOT/.git" ] && [ -s "$ROOT/linux/version.txt" ]; then VERSION="$(tr -d ' \n\r' < "$ROOT/linux/version.txt")"; fi
 cd "$ROOT/linux"
 printf 'let appVersion = "%s"\n' "$VERSION" > Sources/HerbsTerminal/Version.swift

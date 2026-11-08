@@ -1,8 +1,10 @@
 #!/bin/sh
-# Development build inside the Flatpak SDK (with VTE from the flatpak-builder build directory). Run in the Linux VM:
-#   sh /src/linux/dev/build.sh [swift build arguments]
+# Development (debug) build of the Linux version, on the Linux machine: linux/.build/flatpak/debug/HerbsTerminal.
+# Usage: linux/dev/build.sh [swift build arguments]
 set -eu
-BUILD=${BUILD:-/root/fbbuild}
-exec flatpak build --filesystem=/src --filesystem=/root --share=network --env=PATH=/app/bin:/usr/bin:/usr/lib/sdk/swift6/bin \
-  --env=HOME=/root/home --env=XDG_CACHE_HOME=/root/home/.cache "$BUILD" \
-  sh -c "mkdir -p /root/home && cd /src/linux && swift build --scratch-path /root/swiftbuild $*"
+. "$(dirname "$0")/env.sh"
+prepare_sdk
+version="let appVersion = \"$(sh "$ROOT/script/version.sh")\""
+file="$ROOT/linux/Sources/HerbsTerminal/Version.swift"
+[ "$(cat "$file" 2>/dev/null)" = "$version" ] || printf '%s\n' "$version" > "$file"
+in_sdk sh -c 'cd "$1/linux" && shift && swift build --scratch-path "$@"' sh "$ROOT" "$SCRATCH" "$@"
