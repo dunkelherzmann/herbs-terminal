@@ -67,15 +67,16 @@ enum DialogTheme {
         let name: String
         switch className {
         case "edit", "combobox": name = dark ? "DarkMode_CFD" : "CFD"
+        case "sysheader32": name = dark ? "DarkMode_ItemsView" : "ItemsView"
         case "syslistview32":
             name = dark ? "DarkMode_ItemsView" : "ItemsView"
             SendMessageW(control, UINT(LVM_SETBKCOLOR), 0, LPARAM(field))
             SendMessageW(control, UINT(LVM_SETTEXTBKCOLOR), 0, LPARAM(field))
             SendMessageW(control, UINT(LVM_SETTEXTCOLOR), 0, LPARAM(text))
-            if let header = HWND(bitPattern: UInt(SendMessageW(control, UINT(LVM_GETHEADER), 0, 0))) {
-                _ = allowDarkModeForWindow?(header, dark)
-                withWide(name) { _ = SetWindowTheme(header, $0, nil) }
-            }
+            // Its column headings draw their text through the explorer's hook, in the dialog's text color.
+            HeaderColors.text = text
+            // Attaching again is harmless: the same subclass procedure and id replace themselves.
+            HeaderColors.attach(to: control)
         default: name = dark ? "DarkMode_Explorer" : "Explorer"
         }
         withWide(name) { _ = SetWindowTheme(control, $0, nil) }
