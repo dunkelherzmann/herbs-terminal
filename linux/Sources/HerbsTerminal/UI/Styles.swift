@@ -14,6 +14,12 @@ enum Styles {
     .session-toolbar .glyph:active { background: alpha(currentColor, 0.18); }
     .session-toolbar .glyph.active, .session-toolbar .glyph:checked { background: alpha(@accent_bg_color, 0.18); color: @accent_color; }
     .session-toolbar .glyph image { -gtk-icon-size: 16px; }
+    /* The Main Menu is a plain glyph, as on the Mac: its inner button is 30 × 28 with no background at rest. */
+    .session-toolbar menubutton.glyph { background: none; min-height: 0; min-width: 0; }
+    .session-toolbar menubutton.glyph > button { min-width: 30px; min-height: 28px; padding: 0; border-radius: 5px;
+        background: none; box-shadow: none; }
+    .session-toolbar menubutton.glyph > button:hover { background: alpha(currentColor, 0.12); }
+    .session-toolbar menubutton.glyph > button:active, .session-toolbar menubutton.glyph > button:checked { background: alpha(currentColor, 0.18); }
     .session-title { font-size: 12px; font-weight: 600; }
     .session-subtitle { font-size: 10px; opacity: 0.6; }
     .tab-strip { padding: 3px 6px; background: alpha(@headerbar_bg_color, 0.97); border-bottom: 1px solid alpha(currentColor, 0.1); }

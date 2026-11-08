@@ -843,6 +843,7 @@ final class ExplorerView {
         menu.divider()
         menu.item("Find", "explorer.find", accel: "<Control>f")
         gtk_menu_button_set_menu_model(c(actionsButton), c(menu.finish()))
+        nameMenuItems(actionsButton)
     }
 
     private var parentWindow: Widget? { workspace?.window ?? view }
