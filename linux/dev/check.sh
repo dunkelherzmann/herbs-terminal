@@ -6,5 +6,7 @@ set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 sh "$here/build.sh"
 . "$here/env.sh"
-in_sdk --env=HERBS_TEST_SSH="${HERBS_TEST_SSH:-}" --env=HERBS_TEST_HELPER="$SCRATCH/debug/HerbsTerminal" \
-    "$SCRATCH/debug/HerbsTerminal" --self-test
+# The checks start their test processes inside the sandbox, so they treat the sandbox as the host (HERBS_LOCAL_HOST).
+set -- HERBS_LOCAL_HOST=1 HERBS_TEST_HELPER="$SCRATCH/debug/HerbsTerminal"
+[ -n "${HERBS_TEST_SSH:-}" ] && set -- "$@" HERBS_TEST_SSH="$HERBS_TEST_SSH"
+in_sdk env "$@" "$SCRATCH/debug/HerbsTerminal" --self-test

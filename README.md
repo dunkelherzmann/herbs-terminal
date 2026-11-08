@@ -88,16 +88,13 @@ flatpak install --user Herbs-Terminal-<version>-linux-x86_64.flatpak
 flatpak run org.herbsterminal.app
 ```
 
-Build it yourself on Linux:
+Build it yourself on Linux (with flatpak and the Flathub remote; the first build fetches flatpak-builder, the GNOME SDK and the Swift SDK extension from Flathub):
 
 ```bash
-sh script/version.sh > linux/version.txt
-flatpak-builder --user --install --force-clean build linux/org.herbsterminal.app.yml
+script/build_flatpak.sh --install
 ```
 
-The first line records the version from git; the build itself sees the sources without git history.
-
-Or on a Mac, in a Linux VM (needs `brew install container`): `script/build_flatpak.sh` writes `dist/Herbs-Terminal-<version>-linux-<arch>.flatpak`.
+It records the version from git (the build itself sees the sources without git history), builds `linux/org.herbsterminal.app.yml` with flatpak-builder, writes `dist/Herbs-Terminal-<version>-linux-<arch>.flatpak` for your machine's architecture, and installs it for your user; leave out `--install` to only build the bundle. Development builds: `linux/dev/build.sh`, `run.sh`, `restart.sh` and `check.sh`.
 
 The Flatpak asks for broad access, as terminals do: it runs your shell and `ssh` on the host (`flatpak-spawn`), and the explorer reaches all your folders.
 

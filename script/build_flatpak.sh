@@ -7,7 +7,7 @@
 # VTE and the downloads, so later builds only rebuild the app.
 #
 # From another computer, over SSH:
-#   ssh <linux-machine> 'cd ~/Projects/herbs-terminal && git pull --ff-only && script/build_flatpak.sh --install'
+#   ssh <linux-machine> 'cd herbs-terminal && git pull --ff-only && script/build_flatpak.sh --install'
 # Usage: script/build_flatpak.sh [--install]
 set -eu
 
