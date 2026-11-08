@@ -163,11 +163,17 @@ enum LiveSSH {
     static let helper = ProcessInfo.processInfo.environment["HERBS_TEST_HELPER"]
 
     @MainActor static func passwordLoginSharedConnectionAndSFTP() throws {
-        guard account != nil && helper != nil else { print("skipped: passwordLoginSharedConnectionAndSFTP"); return }
-        let parts = Self.account!.split(separator: ":", maxSplits: 2).map(String.init)
-        let login = parts[0].split(separator: "@").map(String.init)
+        guard let account, !account.isEmpty, let helper else { print("skipped: passwordLoginSharedConnectionAndSFTP"); return }
+        // user@host:port:password; anything else is a failed check, not a crash.
+        let parts = account.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
+        let login = parts[0].split(separator: "@", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 3, login.count == 2, !login[0].isEmpty, !login[1].isEmpty else {
+            print("HERBS_TEST_SSH must be user@host:port:password")
+            expect(false)
+            return
+        }
         let endpoint = RemoteEndpoint(host: login[1], port: Int(parts[1]) ?? 22, username: login[0])
-        let broker = try AskpassBroker(helperPath: Self.helper!)
+        let broker = try AskpassBroker(helperPath: helper)
         let master = Process()
         master.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
         master.arguments = ["-o", "ControlMaster=yes", "-o", "ControlPersist=20", "-o", "StrictHostKeyChecking=no",

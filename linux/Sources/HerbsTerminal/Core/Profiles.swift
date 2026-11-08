@@ -316,11 +316,12 @@ struct TerminalTheme {
         0x818383, 0xFC391F, 0x31E722, 0xEAEC23, 0x5833FF, 0xF935F8, 0x14F0F0, 0xE9EBEB,
     ].map { RGB(hex: $0) }
 
-    /// Basic's own colors: black on white, or light text on Terminal's dark background.
+    /// Basic's own colors, as the Mac version draws them: black text on white, or white on black, with the
+    /// cursor in the text color and the system's selection colors.
     static func basic(dark: Bool) -> [String: RGB] {
-        dark ? ["Foreground Color": RGB(hex: 0xDFDFDF), "Background Color": RGB(hex: 0x1E1E1E), "Cursor Color": RGB(hex: 0x8E8E8E),
+        dark ? ["Foreground Color": RGB(hex: 0xFFFFFF), "Background Color": RGB(hex: 0x000000), "Cursor Color": RGB(hex: 0xFFFFFF),
                 "Selection Color": RGB(hex: 0x3F638B), "Selected Text Color": RGB(hex: 0xFFFFFF)]
-             : ["Foreground Color": RGB(hex: 0x000000), "Background Color": RGB(hex: 0xFFFFFF), "Cursor Color": RGB(hex: 0x929292),
+             : ["Foreground Color": RGB(hex: 0x000000), "Background Color": RGB(hex: 0xFFFFFF), "Cursor Color": RGB(hex: 0x000000),
                 "Selection Color": RGB(hex: 0xB3D7FF), "Selected Text Color": RGB(hex: 0x000000)]
     }
 }
