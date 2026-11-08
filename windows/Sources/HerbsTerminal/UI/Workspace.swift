@@ -579,7 +579,7 @@ final class Workspace: WindowObject {
         InvalidateRect(hwnd, &rect, false)
     }
 
-    /// Sizes the window so the terminal shows the grid from Settings (default 120 × 32).
+    /// Sizes the window so the terminal shows the grid from Settings (default 100 × 30).
     private func sizeToGrid() {
         guard let hwnd, let pane = activePane else { return }
         if IsZoomed(hwnd) { ShowWindow(hwnd, SW_RESTORE) }
