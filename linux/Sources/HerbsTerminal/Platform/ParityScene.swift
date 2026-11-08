@@ -48,7 +48,8 @@ enum ParityScene {
         }
     }
 
-    /// `/bin/sh` with no rc files, a fixed prompt and the scene's home.
+    /// A POSIX shell (bash in POSIX mode where there is one, as the Mac's /bin/sh is) with no rc files, a fixed
+    /// prompt and the scene's home.
     static var shellEnvironment: [String: String] {
         ["TERM": "xterm-256color", "COLORTERM": "truecolor", "TERM_PROGRAM": "HerbsTerminal",
          "HOME": home, "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "PS1": prompt, "SHELL": "/bin/sh", "ENV": ""]

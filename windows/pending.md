@@ -52,29 +52,11 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-08 17:24)
+## Feature test results (2026-11-08 17:59)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Broken (13)
-
-A test ran and the feature didn't do what the Mac version does.
-
-- [ ] **W4** Secrets in a command line (`user:pass@`, `--password=`, `*_TOKEN=`) hidden in the title. (§2): Secrets in a command line are hidden in the title: no answer to type in 10 s (did the app quit?)
-- [ ] **T1** Each tab keeps its own shell, scrollback, explorer location and connection; switching keeps… (§2): Each tab keeps its own shell and scrollback: no answer to state in 10 s (did the app quit?)
-- [ ] **T2** Tabs numbered "Terminal N", lowest free number. (§2): New tabs take the lowest free number: expected Terminal 1 and 3 after closing 2 (saw: 1 window(s), tabs ['Terminal 1', 'Terminal 2', 'Terminal 3'], 1 pane(s), title 'parity@scene' '~', dialogs ['Close Terminal 2?'],…
-- [ ] **T7** Close Tab shortcut; on the last tab it closes the window. (§2): Close Tab: expected one tab left (saw: 1 window(s), tabs ['Terminal 1', 'Terminal 2'], 1 pane(s), title 'parity@scene' '~', dialogs ['Close Terminal 2?'], last lines ['$'])
-- [ ] **T10** New tabs open in the current tab's folder or home (Settings), or the profile's start folder. (§2): New tabs open in the current tab's folder: expected the new tab to start in / (saw: 1 window(s), tabs ['Terminal 1', 'Terminal 2'], 1 pane(s), title 'parity@scene' '~', dialogs [], last lines…
-- [ ] **B11** Reset and Hard Reset. (§2): Reset and Hard Reset keep the shell working: the app crashed or quit during the test
-- [ ] **M2** Shell menu: Split Vertically / Horizontally, Close Pane, Next / Previous Pane. (§2): Menu commands: split-vertical, split-horizontal, close-pane, next-pane, previous-pane: the app crashed or quit during the test
-- [ ] **R2** A profile holds font, size, zoom, cursor shape and blink, color preset, background opacity and… (§3): A profile's startup command runs when a tab opens: no answer to state in 10 s (did the app quit?)
-- [ ] **R4** Color presets: Basic, Solarized Dark/Light, Tango Dark/Light, Gruvbox Dark, Nord. (§3): Color presets: the app crashed or quit during the test
-- [ ] **E7** Local: copy, move, move to Trash with "name copy" names; never overwrites. (§5): Copy and paste here gives a 'copy' name: expected a 'note copy.txt' (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs [], last lines ['$ mkdir sub & echo hello> note.txt', '', '$'])
-- [ ] **E13** New Folder, New File (free "untitled" name), Rename; undoable locally, rename undoable on a host. (§5): New Folder and Rename: expected the New Folder dialog (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs [], last lines ['$'])
-- [ ] **D2** New File… opens straight in the editor (locally and on hosts). (§5): New File opens in the editor: expected the New File dialog (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs [], last lines ['$'])
-- [ ] **L5** First use: explanation with Create Administrator Password, Store as Plain Text, Not Now. (§6): First use explains the Administrator Password: expected the Administrator Password explanation (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs ['Connect via SSH'], last lines ['$'])
-
-### Missing (24)
+### Missing (26)
 
 The command isn't there, or it's greyed out.
 
@@ -90,10 +72,12 @@ The command isn't there, or it's greyed out.
 - [ ] **B8** Find in Terminal (scrollback search). (§2): Find in Terminal: `find-in-terminal` is greyed out
 - [ ] **B9** Copy and paste; Paste Escaped Text. (§2): Copy, Paste and Paste Escaped Text: `paste-escaped` is not there
 - [ ] **M1** Shell menu: New Tab, Export Session, Take Screenshot, New Tab with Profile, Use Profile. (§2): Menu commands: new-tab, export-session, take-screenshot, new-tab-profile, use-profile: `new-tab-profile` is greyed out
+- [ ] **M2** Shell menu: Split Vertically / Horizontally, Close Pane, Next / Previous Pane. (§2): Menu commands: split-vertical, split-horizontal, close-pane, next-pane, previous-pane: `split-vertical` is greyed out
 - [ ] **M3** Shell menu: MultiExec, Run Command on Hosts…. (§2): Menu commands: multiexec, run-on-hosts: `multiexec` is greyed out
 - [ ] **R1** Named profiles; each tab uses one; new tabs keep the current tab's profile. (§3): Named profiles: `new-tab-profile` is greyed out
 - [ ] **E6** File Actions menu: Upload, Download, Undo, Redo, Cut, Copy, Paste, Delete, Select All, Find. (§5): File Actions commands: `explorer.undo` is not there
 - [ ] **E8** Local: Undo and Redo, named after the action. (§5): Undo and Redo a move to Trash: no `explorer.undo` command
+- [ ] **E13** New Folder, New File (free "untitled" name), Rename; undoable locally, rename undoable on a host. (§5): New Folder and Rename: no `explorer.rename` command
 - [ ] **E14** Search files (Find). (§5): Find files: `explorer.find` is not there
 - [ ] **U1** MultiExec grid of every terminal in the window, each with number, title and include checkbox. (§7): Every terminal joins the grid, included: `split-vertical` is greyed out
 - [ ] **U2** Typing or pasting into an included terminal goes to all included ones. (§7): Typing reaches every included terminal once; an excluded one is left out: `split-vertical` is greyed out

@@ -3,15 +3,9 @@
 What the Mac version still needs before it can ship with as few bugs as possible: everything a feature test found broken or missing, and every feature no automatic test covers yet. Fix broken items first, one pull request each, and tick an item with its PR number once it is fixed and its test passes. `bugs.md` and `enhancements.md` stay the record of requests and releases.
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-08 17:33)
+## Feature test results (2026-11-08 17:50)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
-
-### Broken (1)
-
-A test ran and the feature didn't do what the Mac version does.
-
-- [ ] **U5** Only your own input is broadcast. (§7): Text the app types isn't broadcast: expected the new pane's startup command in that pane only, saw [0]
 
 ### Not checked automatically (107)
 

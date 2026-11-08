@@ -171,7 +171,10 @@ final class TerminalPane {
             Host.run(["mkdir", "-p", ParityScene.home], timeout: 5)
             if startDirectory == FileManager.default.homeDirectoryForCurrentUser.path { startDirectory = ParityScene.home }
             // flatpak-spawn doesn't hand PS1 to the host shell, so the scene's shell sets it itself.
-            arguments = ["-c", "PS1='\(ParityScene.prompt)'; export PS1; exec /bin/sh -i"]
+            // The Mac's /bin/sh is bash in POSIX mode; Ubuntu's is dash, which treats Clear's Ctrl+L redraw as part
+            // of the next command and has no job control for the title's program. Scenes use bash the same way.
+            arguments = ["-c", "PS1='\(ParityScene.prompt)'; export PS1; "
+                         + "if [ -x /bin/bash ]; then exec /bin/bash --posix --norc --noprofile -i; else exec /bin/sh -i; fi"]
         } else if let integrated = ShellIntegration.launch(shell: shell, environment: base) {
             environment = integrated.environment
             arguments = integrated.arguments
