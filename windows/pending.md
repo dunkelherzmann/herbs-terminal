@@ -39,7 +39,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [ ] **14. Following an `ssh` typed in a local tab** (§4), and the explorer following that host.
 - [ ] **15. Tailcat peers** (§8): pairing, sharing, connecting through Tailcat, the Lock / Unlock button.
 - [ ] **16. Accessibility** (§9): UI Automation names for the toolbar, tabs and terminal.
-- [ ] **17. Dark mode for Settings and dialogs**, mouse reporting for full-screen programs, IME composition.
+- [ ] **17. Dark mode for Settings and dialogs** (done in #43), mouse reporting for full-screen programs, IME composition.
 - [ ] **18. App icon, MSIX installer and code signing** (§1).
 
 ## Done
