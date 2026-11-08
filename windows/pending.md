@@ -7,6 +7,10 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 
 ## To build
 
+- [ ] **One portable `HerbsTerminal.exe`** (§12, enhancements.md). Today the package is the exe plus 18 Swift and
+      MSVC runtime DLLs. Linking the Swift runtime statically crashed with Swift 6.4 (see `windows/dev/build.ps1`),
+      so either fix or work around that crash, or ship a small static launcher exe that carries the folder inside
+      it and runs it from a per-version cache. Each build is then copied to the Windows PC's desktop.
 - [x] **1. File explorer, this PC's files** (#17) (§5, §12). Places, location bar with back / forward / up / home and
       an editable location, the file list, opening items, Copy / Cut / Paste shared with File Explorer, Recycle
       Bin, rename, New Folder / New File, hidden files, Properties, Open in New Terminal Tab, and the terminal ⇄
