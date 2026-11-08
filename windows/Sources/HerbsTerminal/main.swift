@@ -6,8 +6,9 @@ import WinSDK
 func attachParentConsole() {
     let out = GetStdHandle(STD_OUTPUT_HANDLE)
     if out == nil || out == INVALID_HANDLE_VALUE, AttachConsole(DWORD(bitPattern: -1)) {
-        _ = freopen("CONOUT$", "w", stdout)
-        _ = freopen("CONOUT$", "w", stderr)
+        var stream: UnsafeMutablePointer<FILE>?
+        _ = freopen_s(&stream, "CONOUT$", "w", stdout)
+        _ = freopen_s(&stream, "CONOUT$", "w", stderr)
     }
 }
 

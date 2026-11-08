@@ -37,7 +37,7 @@ final class WindowChrome {
     }
 
     /// The parts of the toolbar not yet in the Windows version: drawn as on the Mac and Linux, but dimmed.
-    static let unavailable: Set<Item> = [.multiExec, .peers, .search]
+    nonisolated static let unavailable: Set<Item> = [.multiExec, .peers, .search]
 
     private(set) var rects: [Item: RECT] = [:]
     var hover: Item?

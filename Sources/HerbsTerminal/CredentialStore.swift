@@ -46,7 +46,7 @@ final class CredentialStore: ObservableObject {
         if case .failure(let error) = opened { error.localizedDescription } else { nil }
     }
 
-    static let defaultIterations = 600_000
+    nonisolated static let defaultIterations = 600_000
 
     private var db: OpaquePointer?
     /// The derived key while unlocked (or a fixed key injected by tests).
@@ -324,9 +324,9 @@ final class CredentialStore: ObservableObject {
             throw StoreError("Failed to prepare save: \(String(cString: sqlite3_errmsg(db)))")
         }
         defer { sqlite3_finalize(clear) }
-        sqlite3_bind_text(clear, 1, (login.host as NSString).utf8String, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(clear, 1, login.host, -1, SQLITE_TRANSIENT)
         sqlite3_bind_int(clear, 2, Int32(login.port))
-        sqlite3_bind_text(clear, 3, (login.username as NSString).utf8String, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(clear, 3, login.username, -1, SQLITE_TRANSIENT)
         guard sqlite3_step(clear) == SQLITE_DONE else {
             throw StoreError("Failed to save login: \(String(cString: sqlite3_errmsg(db)))")
         }
@@ -341,13 +341,13 @@ final class CredentialStore: ObservableObject {
             throw StoreError("Failed to prepare save: \(String(cString: sqlite3_errmsg(db)))")
         }
         defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_text(stmt, 1, (login.host as NSString).utf8String, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 1, login.host, -1, SQLITE_TRANSIENT)
         sqlite3_bind_int(stmt, 2, Int32(login.port))
-        sqlite3_bind_text(stmt, 3, (login.username as NSString).utf8String, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 3, login.username, -1, SQLITE_TRANSIENT)
         for (index, data) in [payload.ciphertext, payload.nonce, payload.tag].enumerated() {
             _ = data.withUnsafeBytes { sqlite3_bind_blob(stmt, Int32(4 + index), $0.baseAddress ?? UnsafeRawPointer(bitPattern: 1), Int32(data.count), SQLITE_TRANSIENT) }
         }
-        sqlite3_bind_text(stmt, 7, (scheme as NSString).utf8String, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 7, scheme, -1, SQLITE_TRANSIENT)
         guard sqlite3_step(stmt) == SQLITE_DONE else {
             throw StoreError("Failed to save login: \(String(cString: sqlite3_errmsg(db)))")
         }
@@ -362,7 +362,7 @@ final class CredentialStore: ObservableObject {
             throw StoreError("Failed to prepare settings update.")
         }
         defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_text(stmt, 1, (key as NSString).utf8String, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 1, key, -1, SQLITE_TRANSIENT)
         _ = value.withUnsafeBytes { sqlite3_bind_blob(stmt, 2, $0.baseAddress, Int32(value.count), SQLITE_TRANSIENT) }
         guard sqlite3_step(stmt) == SQLITE_DONE else { throw StoreError("Failed to save settings.") }
     }
@@ -372,7 +372,7 @@ final class CredentialStore: ObservableObject {
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, "SELECT value FROM meta WHERE key = ?;", -1, &stmt, nil) == SQLITE_OK else { return nil }
         defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_text(stmt, 1, (key as NSString).utf8String, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 1, key, -1, SQLITE_TRANSIENT)
         guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
         let length = sqlite3_column_bytes(stmt, 0)
         return sqlite3_column_blob(stmt, 0).map { Data(bytes: $0, count: Int(length)) } ?? Data()
@@ -451,9 +451,9 @@ final class CredentialStore: ObservableObject {
         }
         defer { sqlite3_finalize(stmt) }
 
-        sqlite3_bind_text(stmt, 1, (id.host as NSString).utf8String, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 1, id.host, -1, SQLITE_TRANSIENT)
         sqlite3_bind_int(stmt, 2, Int32(id.port))
-        sqlite3_bind_text(stmt, 3, (id.username as NSString).utf8String, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 3, id.username, -1, SQLITE_TRANSIENT)
 
         guard sqlite3_step(stmt) == SQLITE_DONE else {
             let msg = String(cString: sqlite3_errmsg(db))

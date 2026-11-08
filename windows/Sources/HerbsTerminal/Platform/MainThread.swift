@@ -7,7 +7,7 @@ import WinSDK
 final class MainThread: WindowObject {
     static let className = "HerbsTerminalMainThread"
     private static var shared: MainThread?
-    private static let lock = NSLock()
+    private nonisolated static let lock = NSLock()
     private nonisolated(unsafe) static var queue: [@Sendable @MainActor () -> Void] = []
     private nonisolated(unsafe) static var window: HWND?
     private var hwnd: HWND?
