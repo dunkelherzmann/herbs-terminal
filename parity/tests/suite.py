@@ -176,13 +176,15 @@ def _(c):
 
 @test("W4", "Secrets in a command line are hidden in the title")
 def _(c):
-    # The secrets ride on a program that keeps running (ping refuses unknown options and would end at once).
-    c.run("sh -c 'sleep 4' x --password=hunter2 API_TOKEN=s3cr3t",
+    # The secrets ride on a program that keeps running and isn't a shell (the title leaves shells out, and
+    # whether `sh -c` replaces itself with its command depends on the shell), so the hiding is really checked.
+    # ping refuses unknown options and would end at once.
+    c.run("awk 'BEGIN { system(\"sleep 4\") }' x --password=hunter2 API_TOKEN=s3cr3t",
           'cmd /d /c "ping -n 5 127.0.0.1 >nul & rem --password=hunter2 API_TOKEN=s3cr3t"', settle=1.5)
     s = c.state()
     seen = c.window(s)["title"] + " " + c.window(s)["subtitle"]
     c.expect("hunter2" not in seen and "s3cr3t" not in seen, f"the title shows a secret: {seen!r}")
-    c.expect("sleep" in seen or "ping" in seen, f"the program isn't in the title, so hiding wasn't shown: {seen!r}")
+    c.expect(any(word in seen for word in ("awk", "ping", "cmd")), f"the program isn't in the title, so hiding wasn't shown: {seen!r}")
 
 @test("W5", "Restore Default Size and Make Current Size the Default")
 def _(c):
