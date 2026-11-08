@@ -773,8 +773,63 @@ for fid, what in (("D3", "Find and undo"), ("D4", "Wrap Lines"), ("D5", "Status 
 for fid in ("G1", "G2", "G3", "G5", "G6"):
     manual(fid, "Get Info", "the Get Info window isn't driven by the bridge yet")
 manual("G4", "Hidden and Locked", "Mac only")
-for fid in ("A1", "A2", "A3", "A4", "A5"):
-    manual(fid, "Administrator mode", "needs a sudo password (not automated)")
+def host_explorer(c):
+    """Connects to the test host and shows its files in the explorer."""
+    account, s = connect_test_host(c)
+    expect_connected(c, account, s)
+    c.command("toggle-explorer", settle=2)
+    c.until(lambda s: c.tab(s).get("explorer", {}).get("remote"), "expected the host's files", timeout=15)
+    return account
+
+
+def administrator(c, s=None):
+    return c.tab(s).get("explorer", {}).get("administrator")
+
+
+def enter_administrator(c, account, password):
+    """Presses the lock button and answers the sudo password question."""
+    c.command("explorer.administrator", settle=1.5)
+    s = c.until(lambda s: s.get("dialogs"), "expected the sudo password question", timeout=10)
+    dialog = s["dialogs"][0]
+    ok = next(r for r in dialog["responses"] if r.lower() not in ("cancel", "not now"))
+    c.answer(ok, [password], heading=dialog["heading"])
+
+
+@test("A1", "The lock button starts Administrator mode on the connected host, after the sudo password")
+def _(c):
+    account = host_explorer(c)
+    enter_administrator(c, account, account["password"])
+    c.until(lambda s: administrator(c, s), "expected Administrator mode", timeout=15)
+
+@test("A2", "In Administrator mode the explorer works as root")
+def _(c):
+    account = host_explorer(c)
+    enter_administrator(c, account, account["password"])
+    c.until(lambda s: administrator(c, s), "expected Administrator mode", timeout=15)
+    if c.bridge.call("explorer-go", path="/root") == "unsupported":
+        c.unverified("this platform's test bridge can't drive the explorer yet")
+    # /root can be listed only as root; a fresh account's folder there holds at least its dotfiles.
+    c.until(lambda s: c.tab(s)["explorer"].get("path", "").rstrip("/") == "/root" and c.tab(s)["explorer"].get("items") is not None,
+            "expected to list /root as root", timeout=10)
+    s = c.state()
+    c.expect(not s.get("dialogs") or not any("permission" in d["heading"].lower() for d in s["dialogs"]), "listing /root was refused")
+
+@test("A3", "A wrong sudo password doesn't start Administrator mode")
+def _(c):
+    account = host_explorer(c)
+    enter_administrator(c, account, "wrong-" + str(int(time.time())))
+    time.sleep(4)
+    c.expect(not administrator(c), "Administrator mode started with a wrong password")
+
+@test("A5", "Leaving Administrator mode")
+def _(c):
+    account = host_explorer(c)
+    enter_administrator(c, account, account["password"])
+    c.until(lambda s: administrator(c, s), "expected Administrator mode", timeout=15)
+    c.command("explorer.administrator", settle=1.5)
+    c.until(lambda s: not administrator(c, s), "expected Administrator mode to end", timeout=10)
+
+manual("A4", "Safe root delete rules", "deleting system folders as root isn't something to try on a real machine")
 
 # ---------------------------------------------------------------- L: Saved logins
 

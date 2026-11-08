@@ -1180,6 +1180,8 @@ final class ExplorerPane: WindowObject {
         switch name {
         case "admin": enterAdministrator(); return true
         case "leaveAdmin": leaveAdministrator(); return true
+        // The lock button: Administrator mode on or off.
+        case "toggleAdmin": if isAdministrator { leaveAdministrator() } else { enterAdministrator() }; return true
         case "up": goUp(); return true
         case "back": goBack(); return true
         default: break
