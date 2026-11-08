@@ -52,7 +52,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-08 17:59)
+## Feature test results (2026-11-08 18:19)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
