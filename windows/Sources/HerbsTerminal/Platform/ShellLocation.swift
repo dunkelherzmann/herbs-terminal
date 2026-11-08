@@ -75,8 +75,11 @@ enum ShellLocation {
 
     /// The folder from an OSC 7 file URL ("file://host/C:/Users/me" or "file://host/home/me").
     static func folder(osc7 payload: String) -> String? {
-        guard let url = URL(string: payload), url.scheme == "file" else { return payload.isEmpty ? nil : payload }
-        let path = url.path
+        // Read by hand: Foundation on Windows turns a file URL's path into a Windows path of its own.
+        guard payload.lowercased().hasPrefix("file://") else { return payload.isEmpty ? nil : payload }
+        let rest = payload.dropFirst("file://".count)
+        guard let slash = rest.firstIndex(of: "/") else { return nil }
+        let path = String(rest[slash...]).removingPercentEncoding ?? String(rest[slash...])
         // A Windows drive path comes as "/C:/Users/me".
         if path.count >= 3, path.hasPrefix("/"), Array(path)[2] == ":" {
             return String(path.dropFirst()).replacingOccurrences(of: "/", with: "\\")
