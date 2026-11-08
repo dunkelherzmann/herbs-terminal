@@ -524,9 +524,52 @@ final class MenuBuilder {
     }
 }
 
+/// GTK draws each item of a popover menu as an internal button, and AT-SPI reports those buttons without a name.
+/// Each time a menu button's menu (or a popover menu) opens, its items are named after their own labels.
+func nameMenuItems(_ menuButton: Widget) {
+    guard let popover = gtk_menu_button_get_popover(c(menuButton)) else { return }
+    nameMenuItems(popover: w(popover))
+}
+
+func nameMenuItems(popover: Widget) {
+    guard g_object_get_data(c(popover), "herb-names-items") == nil else { return }
+    g_object_set_data(c(popover), "herb-names-items", UnsafeMutableRawPointer(bitPattern: 1))
+    on(popover, "map") { _ in nameItems(in: popover) }
+}
+
+private func nameItems(in widget: Widget) {
+    var child = gtk_widget_get_first_child(widget)
+    while let current = child {
+        if string(gtk_widget_get_css_name(current)) == "modelbutton" {
+            if let text = firstLabelText(current) {
+                // A "labelled by" relation would win over the label, so it goes first.
+                gtk_accessible_reset_relation(c(current), GTK_ACCESSIBLE_RELATION_LABELLED_BY)
+                accessibleLabel(current, text)
+            }
+        } else {
+            nameItems(in: current)
+        }
+        child = gtk_widget_get_next_sibling(current)
+    }
+}
+
+/// The item's own text: the first label in it (the shortcut comes after).
+private func firstLabelText(_ widget: Widget) -> String? {
+    var child = gtk_widget_get_first_child(widget)
+    while let current = child {
+        if string(gtk_widget_get_css_name(current)) == "label", let text = string(gtk_label_get_text(c(current))), !text.isEmpty {
+            return text
+        }
+        if let text = firstLabelText(current) { return text }
+        child = gtk_widget_get_next_sibling(current)
+    }
+    return nil
+}
+
 /// Pops a menu up at a point in `widget` (a right-click), or under it.
 func popUp(_ model: OpaquePointer, on widget: Widget, x: Double? = nil, y: Double? = nil) {
     let popover = gtk_popover_menu_new_from_model(c(model))!
+    nameMenuItems(popover: popover)
     gtk_widget_set_parent(popover, widget)
     gtk_popover_set_has_arrow(c(popover), 0)
     if let x, let y {

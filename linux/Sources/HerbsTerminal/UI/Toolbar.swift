@@ -27,6 +27,8 @@ final class SessionToolbar {
         menuButton = gtk_menu_button_new()!
         gtk_menu_button_set_icon_name(c(menuButton), "ht-menu-symbolic")
         gtk_widget_add_css_class(menuButton, "glyph")
+        // Centered, so the header bar's taller button row doesn't stretch it past the Mac's 28 px.
+        gtk_widget_set_valign(menuButton, GTK_ALIGN_CENTER)
         gtk_widget_set_focus_on_click(menuButton, 0)
         hint(menuButton, "Main Menu\nTabs, windows, zoom, themes, appearance and settings.")
         accessibleLabel(menuButton, "Main Menu")
@@ -39,6 +41,7 @@ final class SessionToolbar {
             if toggle { widget = gtk_toggle_button_new()!; gtk_button_set_icon_name(c(widget), icon) } else { widget = gtk_button_new_from_icon_name(icon)! }
             gtk_widget_add_css_class(widget, "glyph")
             gtk_widget_add_css_class(widget, "flat")
+            gtk_widget_set_valign(widget, GTK_ALIGN_CENTER)
             // Like the Mac's toolbar buttons, they never take the keyboard focus from the terminal.
             gtk_widget_set_focus_on_click(widget, 0)
             accessibleLabel(widget, name)
@@ -124,6 +127,7 @@ final class SessionToolbar {
 
     func setMenu(_ model: OpaquePointer) {
         gtk_menu_button_set_menu_model(c(menuButton), c(model))
+        nameMenuItems(menuButton)
     }
 
     /// Follows the selected tab: its title and location, whether it's connected, and which layout it shows.
@@ -135,8 +139,10 @@ final class SessionToolbar {
         setLabel(titleLabel, title)
         setLabel(subtitleLabel, subtitle)
         setVisible(subtitleLabel, !subtitle.isEmpty)
-        hint(titleBox, [title, subtitle].joined(separator: " ")
-             + "\nDouble-click to return the window and text to their default size; right-click to make the current size the default.")
+        // On the labels themselves too, so screen readers (and the parity check) find it on the title, as on the Mac.
+        let titleHint = [title, subtitle].filter { !$0.isEmpty }.joined(separator: " ")
+            + "\nDouble-click to return the window and text to their default size; right-click to make the current size the default."
+        for widget in [titleBox, titleLabel, subtitleLabel] { hint(widget, titleHint) }
         gtk_window_set_title(c(workspace.window), title)
 
         if case .connected(let endpoint) = tab.state.connection {
