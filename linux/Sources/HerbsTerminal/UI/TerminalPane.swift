@@ -32,7 +32,7 @@ final class TerminalPane {
     private(set) var exited = false
 
     // The title and location the toolbar shows.
-    private let initialTitle = NSUserName() + "@" + Host.hostName
+    private let initialTitle = ParityScene.isActive ? ParityScene.title : NSUserName() + "@" + Host.hostName
     private var reportedTitle = ""
     private(set) var remoteTarget: String?
     private var remoteLocation: String?
@@ -153,13 +153,20 @@ final class TerminalPane {
     func start() {
         guard !started else { return }
         started = true
-        let shell = Host.loginShell
-        let base: [String: String] = ["TERM": "xterm-256color", "COLORTERM": "truecolor", "TERM_PROGRAM": "HerbsTerminal",
-                                      "SHELL": shell, "HOME": FileManager.default.homeDirectoryForCurrentUser.path]
+        let scene = ParityScene.isActive
+        let shell = scene ? "/bin/sh" : Host.loginShell
+        let base: [String: String] = scene ? ParityScene.shellEnvironment
+            : ["TERM": "xterm-256color", "COLORTERM": "truecolor", "TERM_PROGRAM": "HerbsTerminal",
+               "SHELL": shell, "HOME": FileManager.default.homeDirectoryForCurrentUser.path]
         var environment = base
         var arguments: [String] = []
-        var login = true
-        if let integrated = ShellIntegration.launch(shell: shell, environment: base) {
+        var login = !scene
+        if scene {
+            Host.run(["mkdir", "-p", ParityScene.home], timeout: 5)
+            startDirectory = ParityScene.home
+            // flatpak-spawn doesn't hand PS1 to the host shell, so the scene's shell sets it itself.
+            arguments = ["-c", "PS1='\(ParityScene.prompt)'; export PS1; exec /bin/sh -i"]
+        } else if let integrated = ShellIntegration.launch(shell: shell, environment: base) {
             environment = integrated.environment
             arguments = integrated.arguments
             login = integrated.execName.hasPrefix("-")
@@ -321,6 +328,7 @@ final class TerminalPane {
     }
 
     static func abbreviate(_ path: String) -> String {
+        if let scene = ParityScene.displayPath(path) { return scene }
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         if path == home { return "~" }
         if path.hasPrefix(home + "/") { return "~" + path.dropFirst(home.count) }

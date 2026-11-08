@@ -3,7 +3,8 @@ import SwiftTerm
 
 @MainActor
 final class SessionLegend: ObservableObject, @preconcurrency LocalProcessTerminalViewDelegate {
-    private let initialTitle = NSUserName() + "@" + ProcessInfo.processInfo.hostName.components(separatedBy: ".")[0]
+    private let initialTitle = ParityScene.isActive ? ParityScene.title
+        : NSUserName() + "@" + ProcessInfo.processInfo.hostName.components(separatedBy: ".")[0]
     private var reportedTitle = ""
     private var exited = false
     private(set) var remoteTarget: String? = nil
@@ -59,7 +60,7 @@ final class SessionLegend: ObservableObject, @preconcurrency LocalProcessTermina
         let terminal = view.getTerminal()
         let path = displayLocation(terminal.hostCurrentDocument) ?? displayLocation(terminal.hostCurrentDirectory)
             ?? (process.running ? workingDirectory(process.shellPid) : nil)
-        if let path, subtitle != path { subtitle = path }
+        if let path = path.map(ParityScene.displayPath), subtitle != path { subtitle = path }
     }
 
     private func displayLocation(_ value: String?) -> String? {

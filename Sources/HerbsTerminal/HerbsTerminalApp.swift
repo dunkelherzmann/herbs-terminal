@@ -33,7 +33,7 @@ enum AboutPanel {
 /// Where the app keeps its own files, for every store that needs one.
 enum AppFolders {
     static func support(_ base: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]) -> URL {
-        base.appendingPathComponent("HerbsTerminal", isDirectory: true)
+        (ParityScene.isActive ? ParityScene.home : base).appendingPathComponent("HerbsTerminal", isDirectory: true)
     }
 
     static func loginDatabase(_ base: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]) -> URL {
@@ -58,7 +58,8 @@ final class LaunchDelegate: NSObject, NSApplicationDelegate {
         // Herb's Terminal has its own tab strip; macOS window tabs would add a second, conflicting set.
         NSWindow.allowsAutomaticWindowTabbing = false
         NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        // A parity check runs while the user works: its window opens without taking focus.
+        if !ParityScene.isActive { NSApp.activate(ignoringOtherApps: true) }
     }
 
     /// Ask once for every window before quitting, as Terminal does.

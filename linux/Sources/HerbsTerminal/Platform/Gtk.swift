@@ -218,6 +218,15 @@ func accessibleLabel(_ widget: Widget, _ text: String) {
     g_value_unset(&value)
 }
 
+/// The control's identifier for assistive tools (AT-SPI AccessibleId), the same string as on the Mac and Windows,
+/// so parity checks can match the controls. GTK takes it from the builder id, which only a builder can set.
+@MainActor func accessibleID(_ widget: Widget, _ identifier: String) {
+    let builder = gtk_builder_new()!
+    gtk_builder_expose_object(builder, identifier, UnsafeMutablePointer<GObject>(OpaquePointer(widget)))
+    g_object_unref(raw(builder))
+    ParityScene.register(widget, identifier)
+}
+
 func accessibleDescription(_ widget: Widget, _ text: String) {
     var value = GValue()
     g_value_init(&value, herb_type_string())

@@ -390,6 +390,17 @@ Tailcat connects machines that can't reach each other by IP. Herb's Terminal run
   - each MultiExec checkbox, named after its terminal.
 - **Password fields** in dialogs have visible labels.
 - **Motion:** window resizing follows Reduce Motion, and the visual bell never flashes more than twice a second.
+- **Identifiers:** toolbar controls carry the same accessibility identifier on Mac, Linux and Windows (`toolbar.newTab`, `toolbar.connect`, `toolbar.title`, `toolbar.exportSession`, `toolbar.takeScreenshot`, `toolbar.switchView`, `toolbar.multiExec`, `toolbar.tailcatPeers`, `toolbar.search`, `toolbar.mainMenu`), so the parity check can match them.
+
+### Parity checks
+
+`parity/check.sh` compares the Linux (and later Windows) version with the Mac version, scene by scene, as described in `parity/parity.json`. Each scene is a fixed state that the app opens itself:
+
+- **Mac:** a parity copy of the app (`parity/mac-copy.sh`, bundle identifier `org.herbsterminal.parity`) launched with `--parity-scene <name>`. Only that copy honours the flag. It has its own settings domain, keeps its files in a temporary folder, never restores or saves a session, and opens without taking focus.
+- **Linux:** the Flatpak build started with `--parity-scene <name>` and `HERBS_PARITY=1` (both are needed). It runs as a separate, non-unique application (`org.herbsterminal.app.Parity`) in a headless KWin session, with every XDG folder in a temporary folder. `--parity-capture FILE` saves the window's picture once the scene has settled (the same picture as Take Screenshot), with each identified control's place in the window beside it.
+- **The `main` scene:** one window, one local tab running `/bin/sh` in an empty home with the prompt `$ `, titled `parity@scene ~`.
+
+The check reads each version's controls through the accessibility API (macOS accessibility, AT-SPI), compares them by identifier (kind, label, hover text, value, enabled state, size, order, alignment, window size), scores the two pictures, and records the results as Craft Anything evidence in `dist/parity/report.html`.
 
 ## 10. Security summary
 

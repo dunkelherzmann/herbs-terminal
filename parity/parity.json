@@ -1,0 +1,30 @@
+{
+  "app": "Herb's Terminal",
+  "reference": "mac",
+  "geometry_tolerance": 2,
+  "looks": {
+    "perceptual_similarity_min": null,
+    "note": "Set from the first approved baseline; until then the score is reported, not judged."
+  },
+  "scenes": {
+    "main": {
+      "description": "A new window with one local tab: /bin/sh at the scene's home, prompt \"$ \", title parity@scene.",
+      "identifiers": ["toolbar."],
+      "spec": ["2. Window, tabs and toolbar / Toolbar"]
+    }
+  },
+  "allowed": {
+    "linux": {
+      "moved": ["toolbar.mainMenu"],
+      "mask": "the window controls strip and the Main Menu corner (SPECIFICATION.md, 11. Linux / Window and toolbar)",
+      "shortcut_text": {"⇧⌘S": "Ctrl+Alt+S", "⇧⌘K": "Ctrl+Shift+K", "⇧⌘M": "Ctrl+Shift+M", "⌘T": "Ctrl+Shift+T",
+                        "⌘N": "Ctrl+Shift+N", "⌘W": "Ctrl+Shift+W", "⌘S": "Ctrl+Shift+S", "⌘F": "Ctrl+Shift+F",
+                        "⌘,": "Ctrl+,", "⌘Q": "Ctrl+Shift+Q", "⌘+": "Ctrl++", "⌘−": "Ctrl+−", "⌘0": "Ctrl+0"}
+    },
+    "windows": {
+      "moved": ["toolbar.mainMenu"],
+      "mask": "the window controls strip and the Main Menu corner",
+      "shortcut_text": {}
+    }
+  }
+}

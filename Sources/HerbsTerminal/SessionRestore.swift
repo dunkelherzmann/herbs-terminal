@@ -27,6 +27,7 @@ enum SessionRestore {
     private static var pending: [SavedWindow]?
 
     static func save(_ workspaces: [Workspace], defaults: UserDefaults = .standard) {
+        guard !ParityScene.isActive else { return }
         guard TerminalProfile.shared.restoreSession else { defaults.removeObject(forKey: key); return }
         let windows = workspaces.map { workspace in
             // Editor tabs aren't reopened; the files stay where they were saved.
@@ -43,6 +44,7 @@ enum SessionRestore {
 
     /// The next window to reopen, read once per launch.
     static func takeNext(defaults: UserDefaults = .standard) -> SavedWindow? {
+        if ParityScene.isActive { return nil }
         if pending == nil {
             let saved = defaults.data(forKey: key).flatMap { try? JSONDecoder().decode([SavedWindow].self, from: $0) } ?? []
             pending = TerminalProfile.shared.restoreSession ? saved.filter { !$0.tabs.isEmpty } : []

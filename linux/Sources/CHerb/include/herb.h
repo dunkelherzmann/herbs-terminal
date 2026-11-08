@@ -103,5 +103,7 @@ void herb_launch_uri(GtkWindow *parent, const char *uri);
 
 /* Copies a picture of `widget` (a window, header bar included) to the clipboard. */
 gboolean herb_copy_widget_image(GtkWidget *widget);
+gboolean herb_save_widget_image(GtkWidget *widget, const char *path);
+gboolean herb_widget_bounds(GtkWidget *widget, double *out);
 
 #endif

@@ -57,46 +57,47 @@ public struct SessionToolbar<Actions: View>: View {
                 }
                 .frame(maxWidth: max(0, geometry.size.width - 508 - 2 * buttonWidth))
                 .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                .accessibilityIdentifier("toolbar.title")
                 .hint([title, subtitle].joined(separator: " ")
                       + "\nDouble-click to return the window and text to their default size; right-click to make the current size the default.")
             }
             HStack(spacing: 0) {
                 HStack(spacing: gap) {
-                    button("New Tab", "plus.rectangle.on.rectangle",
+                    button("toolbar.newTab", "New Tab", "plus.rectangle.on.rectangle",
                            help: "New Tab (⌘T)\nOpen another local terminal in this window.", newTab)
                     if let connectedTo {
-                        button("Connection", "network.badge.shield.half.filled", active: true,
+                        button("toolbar.connect", "Connection", "network.badge.shield.half.filled", active: true,
                                help: "Connected to \(connectedTo)\nShow connection details, disconnect, or open a new connection (⇧⌘K).", connect)
                     } else {
-                        button("Connect via SSH", "network",
+                        button("toolbar.connect", "Connect via SSH", "network",
                                help: "Connect via SSH (⇧⌘K)\nOpen a remote shell with a saved or new login; the explorer follows that host.", connect)
                     }
                 }
                 Spacer()
                 HStack(spacing: gap) {
-                    button("Export Session", "square.and.arrow.up",
+                    button("toolbar.exportSession", "Export Session", "square.and.arrow.up",
                            help: "Export Session (⌘S)\nSave everything in this terminal, scrollback included, to a text file.", exportSession)
-                    button("Take Screenshot", "camera",
+                    button("toolbar.takeScreenshot", "Take Screenshot", "camera",
                            help: "Take Screenshot (⇧⌘S)\nCopy a picture of this whole window to the clipboard, ready to paste.", takeScreenshot)
-                    button("Switch Terminal / Explorer", layout == .explorer ? "terminal" : "folder",
+                    button("toolbar.switchView", "Switch Terminal / Explorer", layout == .explorer ? "terminal" : "folder",
                            help: layout == .explorer ? "Show Terminal\nReplace the file explorer with this tab's shell." : "Show File Explorer\nBrowse files on the host this tab is connected to.") {
                         layout = layout == .explorer ? .terminal : .explorer
                     }
-                    button("MultiExec", "square.3.layers.3d", active: multiHostActive, toggle: true,
+                    button("toolbar.multiExec", "MultiExec", "square.3.layers.3d", active: multiHostActive, toggle: true,
                            help: multiHostActive ? "Exit MultiExec (⇧⌘M)\nBack to one tab at a time; typing goes to the current tab only."
                                                  : "MultiExec (⇧⌘M)\nShow every tab side by side and type into all of them at once.", multiHost)
-                    button("Tailcat Peers", "point.3.connected.trianglepath.dotted",
+                    button("toolbar.tailcatPeers", "Tailcat Peers", "point.3.connected.trianglepath.dotted",
                            help: "Tailcat Peers\nPair with machines that can't reach each other by IP, and connect through Tailcat.", tailcat)
                 }
                 HStack(spacing: gap) {
-                    button("Search", "magnifyingglass",
+                    button("toolbar.search", "Search", "magnifyingglass",
                            help: layout == .explorer ? "Find Files (⌘F)\nFilter this folder by name." : "Search Terminal (⌘F)\nFind text in this tab's scrollback.", search)
                         .keyboardShortcut("f")
                     Menu { menu } label: { glyph("line.3.horizontal") }
                         .menuStyle(.borderlessButton)
                         .menuIndicator(.hidden)
                         .fixedSize()
-                        .hint("Main Menu\nTabs, windows, zoom, themes, appearance and settings.").accessibilityLabel("Main Menu")
+                        .hint("Main Menu\nTabs, windows, zoom, themes, appearance and settings.").accessibilityLabel("Main Menu").accessibilityIdentifier("toolbar.mainMenu")
                 }
                 .padding(.leading, gap)
             }
@@ -115,11 +116,12 @@ public struct SessionToolbar<Actions: View>: View {
                         in: RoundedRectangle(cornerRadius: 5))
     }
 
+    /// `identifier` is the same on Mac, Linux and Windows, so parity checks can match the controls.
     /// `toggle` buttons (or any with `active` set) also tell VoiceOver whether they are on.
-    private func button(_ title: String, _ symbol: String, active: Bool = false, toggle: Bool = false, help: String,
+    private func button(_ identifier: String, _ title: String, _ symbol: String, active: Bool = false, toggle: Bool = false, help: String,
                         _ perform: @escaping () -> Void) -> some View {
         Button(action: perform) { glyph(symbol, active: active) }
-            .buttonStyle(.plain).hint(help).accessibilityLabel(title)
+            .buttonStyle(.plain).hint(help).accessibilityLabel(title).accessibilityIdentifier(identifier)
             .accessibilityValue(toggle || active ? (active ? "On" : "Off") : "")
             .accessibilityAddTraits(active ? .isSelected : [])
     }
