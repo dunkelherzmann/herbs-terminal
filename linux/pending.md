@@ -3,17 +3,15 @@
 What the Linux version still needs before it can ship with as few bugs as possible: everything a feature test found broken or missing, and every feature no automatic test covers yet. Fix broken items first, one pull request each, and tick an item with its PR number once it is fixed and its test passes. `bugs.md` and `enhancements.md` stay the record of requests and releases.
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-08 18:00)
+## Feature test results (2026-11-08 18:04)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Broken (4)
+### Broken (2)
 
 A test ran and the feature didn't do what the Mac version does.
 
 - [ ] **W4** Secrets in a command line (`user:pass@`, `--password=`, `*_TOKEN=`) hidden in the title. (§2): Secrets in a command line are hidden in the title: the program isn't in the title, so hiding wasn't shown: 'parity@scene ~'
-- [ ] **B10** Clear to Start, Clear Scrollback. (§2): Clear to Start and Clear Scrollback: expected 300 lines of output (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs [], last lines ['/bin/sh: 2: ', '            seq: not found', '$'])
-- [ ] **B11** Reset and Hard Reset. (§2): Reset and Hard Reset keep the shell working: expected the shell to answer after Reset and Hard Reset (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs [], last lines ['', '           …
 - [ ] **E8** Local: Undo and Redo, named after the action. (§5): Undo and Redo a move to Trash: expected note.txt to go to the Trash (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs [], last lines ["$ mkdir -p sub && printf 'hello\\n' > note.txt",…
 
 ### Not checked automatically (97)
