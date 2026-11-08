@@ -7,6 +7,11 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 
 ## To build
 
+- [ ] **Feature tests on the packaged exe** (§12, enhancements.md). `parity/tests` on Windows can run
+      `dist\HerbsTerminal.exe`, the single exe that ships, as well as the development build.
+- [ ] **App icon** (§12, enhancements.md). The launcher and the app's window show Herb's Terminal's icon.
+- [ ] **Static Swift runtime in the package** (§12, enhancements.md). The packed folder shrinks to the exe and the
+      Microsoft C++ runtime DLLs.
 - [x] **One portable `HerbsTerminal.exe`** (#33) (§12, enhancements.md). A small static launcher carries the
       packaged folder and runs it from a per-build copy under `%LOCALAPPDATA%`; each build is copied to the
       Windows PC's desktop as `Herb's Terminal.exe`.
