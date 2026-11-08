@@ -18,8 +18,8 @@ enum ChildProcess {
                     timeout: TimeInterval = 20) -> Result {
         guard let path = argv.first else { return Result(status: nil, output: Data()) }
         var inputPipe: [Int32] = [-1, -1], outputPipe: [Int32] = [-1, -1]
-        guard pipe2(&inputPipe, O_CLOEXEC) == 0 else { return Result(status: nil, output: Data()) }
-        guard pipe2(&outputPipe, O_CLOEXEC) == 0 else {
+        guard openPipe(&inputPipe) else { return Result(status: nil, output: Data()) }
+        guard openPipe(&outputPipe) else {
             close(inputPipe[0]); close(inputPipe[1])
             return Result(status: nil, output: Data())
         }
@@ -93,6 +93,13 @@ enum ChildProcess {
         // A program the command left running in the background can hold the output open; don't wait for it long.
         guard read.wait(timeout: .now() + 2) == .success else { return Result(status: exitCode(status), output: Data()) }
         return Result(status: exitCode(status), output: output.data)
+    }
+
+    /// A pipe whose ends other children don't inherit (the child gets its own copies through dup2).
+    private static func openPipe(_ ends: inout [Int32]) -> Bool {
+        guard pipe(&ends) == 0 else { return false }
+        for end in ends { _ = fcntl(end, F_SETFD, FD_CLOEXEC) }
+        return true
     }
 
     /// WIFEXITED / WEXITSTATUS, which Swift doesn't import as macros.
