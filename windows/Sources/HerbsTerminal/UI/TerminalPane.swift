@@ -31,6 +31,11 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     private var selecting = false
 
     var title = "Terminal"
+    /// The tab's number ("Terminal 2"), the lowest free one when it opened.
+    var number = 1
+    /// A name from Rename Tab; nil shows "Terminal <number>".
+    var customName: String?
+    var tabName: String { customName ?? "Terminal \(number)" }
     var onTitleChange: ((TerminalPane) -> Void)?
     var onExit: ((TerminalPane) -> Void)?
 
@@ -79,6 +84,50 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         }
         terminal.feed(text: "Connecting to \(endpoint.label)…\r\n")
         start(commandLine: commandLine, environment: environment)
+        connectedAt = Date()
+    }
+
+    /// Whether this tab is an SSH session that is still running.
+    var isConnected: Bool { remote != nil && !awaitingReconnect && isRunning }
+    private var disconnecting = false
+    private(set) var connectedAt: Date?
+
+    /// Ends the SSH session; the tab stays open and Enter reconnects.
+    func disconnect() {
+        guard remote != nil, isRunning else { return }
+        disconnecting = true
+        session?.close()
+    }
+
+    // MARK: Shell menu commands
+
+    /// Everything in the terminal, scrollback included, as text.
+    func exportText() -> String {
+        String(decoding: terminal.getBufferAsData(kind: .normal), as: UTF8.self)
+    }
+
+    /// Clear to Start: empties the screen and scrollback, then asks the shell to draw its prompt again.
+    func clearToStart() {
+        terminal.feed(text: "\u{1b}[3J\u{1b}[2J\u{1b}[H")
+        terminal.clearScrollback()
+        scrollOffset = 0
+        clearSelection()
+        session?.write([0x0C])
+        invalidate()
+    }
+
+    func clearScrollback() {
+        terminal.clearScrollback()
+        scrollOffset = 0
+        clearSelection()
+        invalidate()
+    }
+
+    func reset(hard: Bool) {
+        if hard { terminal.resetToInitialState() } else { terminal.softReset() }
+        scrollOffset = 0
+        clearSelection()
+        invalidate()
     }
 
     private func reconnect() {
@@ -94,8 +143,18 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     /// open with its last output, so the reason can be read, and Enter reconnects.
     private func processEnded() {
         let code = session?.exitCode ?? 0
+        connectedAt = nil
+        if let remote, disconnecting {
+            disconnecting = false
+            awaitingReconnect = true
+            terminal.feed(text: "\r\n\u{1b}[7m Disconnected from \(remote.label). Press Enter to reconnect, or Ctrl+Shift+W to close the tab. \u{1b}[0m\r\n")
+            invalidate()
+            onTitleChange?(self)
+            return
+        }
         if let remote, code != 0 {
             awaitingReconnect = true
+            onTitleChange?(self)
             terminal.feed(text: "\r\n\u{1b}[7m Connection to \(remote.label) ended (exit code \(code)). Press Enter to reconnect, or Ctrl+Shift+W to close the tab. \u{1b}[0m\r\n")
             invalidate()
             return
@@ -427,7 +486,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         }
     }
 
-    private func paste() {
+    func paste() {
         guard let hwnd, var text = clipboardText(hwnd), !text.isEmpty else { return }
         text = text.replacingOccurrences(of: "\r\n", with: "\r").replacingOccurrences(of: "\n", with: "\r")
         if terminal.bracketedPasteMode {
@@ -449,9 +508,9 @@ final class TerminalPane: WindowObject, TerminalDelegate {
 
     // MARK: Selection
 
-    private var hasSelection: Bool { selectionStart != nil && selectionEnd != nil && selectionStart != selectionEnd }
+    var hasSelection: Bool { selectionStart != nil && selectionEnd != nil && selectionStart != selectionEnd }
 
-    private func clearSelection() {
+    func clearSelection() {
         selectionStart = nil
         selectionEnd = nil
         invalidate()
@@ -501,7 +560,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         return lines.joined(separator: "\r\n")
     }
 
-    private func copySelection() {
+    func copySelection() {
         guard hasSelection, let hwnd else { return }
         setClipboardText(selectedText(), owner: hwnd)
         clearSelection()

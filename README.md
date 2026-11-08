@@ -103,10 +103,10 @@ The Flatpak asks for broad access, as terminals do: it runs your shell and `ssh`
 
 ## Windows (early)
 
-A native Win32 version is under way in [`windows/`](windows/README.md): tabs and a full-color terminal running PowerShell through ConPTY work today; the explorer and SSH come next. Build it with the Swift toolchain for Windows and Visual Studio Build Tools:
+A native Win32 version is under way in [`windows/`](windows/README.md). The toolbar and Main Menu, tabs, a full-color terminal, Settings, and SSH with saved logins work today; the explorer comes next. It's self-contained: unzip `Herbs-Terminal-<version>-windows-x86_64.zip` anywhere and open `HerbsTerminal.exe`, with nothing to install. Build that folder and zip into `dist\` with the Swift toolchain for Windows and Visual Studio Build Tools:
 
 ```powershell
-windows\dev\build.ps1 -Run
+windows\dev\build.ps1 -Package
 ```
 
 ## Built with

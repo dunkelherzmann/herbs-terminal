@@ -20,7 +20,7 @@ enum TestScript {
     static var active: Bool { !steps.isEmpty }
 
     private enum Step {
-        case type(String), newTab, settings, connect, logins, form([String], Int), ssh(SSHLogin), capture(String)
+        case type(String), newTab, settings, connect, logins, menu, menuCommand(UINT), form([String], Int), ssh(SSHLogin), capture(String)
     }
 
     private static func parse(_ arguments: [String]) -> [Step] {
@@ -35,8 +35,11 @@ enum TestScript {
                 case "\\s": steps.append(.settings)
                 case "\\k": steps.append(.connect)
                 case "\\l": steps.append(.logins)
+                case "\\m": steps.append(.menu)
                 default:
-                    if value.hasPrefix("\\f") {
+                    if value.hasPrefix("\\c"), let id = UINT(value.dropFirst(2)) {
+                        steps.append(.menuCommand(id))
+                    } else if value.hasPrefix("\\f") {
                         let body = String(value.dropFirst(2))
                         let parts = body.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
                         let fields = parts[0].split(separator: "|", omittingEmptySubsequences: false).map(String.init)
@@ -70,6 +73,8 @@ enum TestScript {
         case .settings: workspace.showSettings()
         case .connect: workspace.showConnect()
         case .logins: workspace.showLogins()
+        case .menu: workspace.openMainMenu()
+        case .menuCommand(let id): workspace.perform(id)
         case .form(let values, let button): FormDialog.current?.scripted(values: values, button: button)
         case .ssh(let login): workspace.connectSSH(login)
         case .capture(let path):
@@ -78,9 +83,30 @@ enum TestScript {
             if let settings = SettingsWindow.openWindow { capture(settings, to: base + "-settings.bmp") }
             if let logins = ManageLoginsWindow.openWindow { capture(logins, to: base + "-logins.bmp") }
             if let dialog = FormDialog.current?.window { capture(dialog, to: base + "-dialog.bmp") }
+            // An open popup menu (class #32768) is captured from the screen, since it doesn't draw for PrintWindow.
+            if let menu = withWide("#32768", { FindWindowW($0, nil) }), IsWindowVisible(menu) {
+                captureScreen(of: menu, to: base + "-menu.bmp")
+                EndMenu()
+            }
             PostQuitMessage(0)
         }
         return !steps.isEmpty
+    }
+
+    private static func captureScreen(of window: HWND, to path: String) {
+        var rect = RECT()
+        GetWindowRect(window, &rect)
+        let width = rect.right - rect.left, height = rect.bottom - rect.top
+        let screen = GetDC(nil)
+        let dc = CreateCompatibleDC(screen)
+        let bitmap = CreateCompatibleBitmap(screen, width, height)
+        let old = SelectObject(dc, bitmap)
+        BitBlt(dc, 0, 0, width, height, screen, rect.left, rect.top, DWORD(SRCCOPY))
+        SelectObject(dc, old)
+        save(bitmap, dc: screen, width: width, height: height, to: path)
+        DeleteObject(bitmap)
+        DeleteDC(dc)
+        ReleaseDC(nil, screen)
     }
 
     /// Saves the window as a 32-bit BMP, drawn by PrintWindow (works while the window is behind others).
@@ -93,6 +119,14 @@ enum TestScript {
         let bitmap = CreateCompatibleBitmap(screen, width, height)
         let old = SelectObject(dc, bitmap)
         PrintWindow(hwnd, dc, 2) // PW_RENDERFULLCONTENT
+        SelectObject(dc, old)
+        save(bitmap, dc: dc, width: width, height: height, to: path)
+        DeleteObject(bitmap)
+        DeleteDC(dc)
+        ReleaseDC(nil, screen)
+    }
+
+    private static func save(_ bitmap: HBITMAP?, dc: HDC?, width: Int32, height: Int32, to path: String) {
         var info = BITMAPINFO()
         info.bmiHeader.biSize = DWORD(MemoryLayout<BITMAPINFOHEADER>.size)
         info.bmiHeader.biWidth = width
@@ -102,11 +136,6 @@ enum TestScript {
         info.bmiHeader.biCompression = DWORD(BI_RGB)
         var pixels = [UInt8](repeating: 0, count: Int(width * height * 4))
         GetDIBits(dc, bitmap, 0, UINT(height), &pixels, &info, UINT(DIB_RGB_COLORS))
-        SelectObject(dc, old)
-        DeleteObject(bitmap)
-        DeleteDC(dc)
-        ReleaseDC(nil, screen)
-
         // A plain 32-bit BMP: 14-byte file header, 40-byte info header, then top-down rows.
         var file = Data()
         func le<T: FixedWidthInteger>(_ value: T) { withUnsafeBytes(of: value.littleEndian) { file.append(contentsOf: $0) } }

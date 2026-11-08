@@ -488,14 +488,14 @@ final class ManageLoginsWindow: WindowObject {
 }
 
 /// The Save dialog; returns the chosen path.
-func saveFile(owner: HWND?, title: String, name: String, filter: [(String, String)]) -> String? {
+func saveFile(owner: HWND?, title: String, name: String, filter: [(String, String)], defaultExtension: String = "csv") -> String? {
     var buffer = [WCHAR](repeating: 0, count: 4096)
     let initial = Array(name.utf16)
     for (index, unit) in initial.enumerated() where index < buffer.count - 1 { buffer[index] = unit }
     var filterUnits: [WCHAR] = []
     for (label, pattern) in filter { filterUnits += Array(label.utf16) + [0] + Array(pattern.utf16) + [0] }
     filterUnits.append(0)
-    let extensionUnits = Array("csv".utf16) + [0]
+    let extensionUnits = Array(defaultExtension.utf16) + [0]
     return filterUnits.withUnsafeBufferPointer { (filterPointer: UnsafeBufferPointer<WCHAR>) -> String? in
         extensionUnits.withUnsafeBufferPointer { (extensionPointer: UnsafeBufferPointer<WCHAR>) -> String? in
             withWide(title) { titlePointer in
