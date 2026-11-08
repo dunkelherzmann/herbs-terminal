@@ -12,7 +12,7 @@ enum MenuCommand: UINT {
     case previousTab, nextTab, renameTab, moveTabLeft, moveTabRight
     case clearToStart, clearScrollback, reset, hardReset
     case fullScreen, settings, manageLogins, about, quit
-    case restoreDefaultSize, makeSizeDefault, closeTab
+    case restoreDefaultSize, makeSizeDefault, closeTab, takeScreenshot
     // Ranges for lists: tabs and color presets.
     static let firstTab: UINT = 1000
     static let firstPreset: UINT = 2000
@@ -73,6 +73,7 @@ enum MainMenu {
         }
         submenu(menu, "Shell") { sub in
             item(sub, "Export Session…\tCtrl+Shift+S", .exportSession, enabled: pane != nil)
+            item(sub, "Take Screenshot\tCtrl+Alt+S", .takeScreenshot)
             submenu(sub, "New Tab with Profile") { profiles in
                 for profile in TerminalProfile.shared.profiles { item(profiles, profile.name, MenuCommand.newTab.rawValue, enabled: false) }
             }

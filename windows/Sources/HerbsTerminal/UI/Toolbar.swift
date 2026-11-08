@@ -8,7 +8,7 @@ import WinSDK
 @MainActor
 final class WindowChrome {
     enum Item: Hashable {
-        case menu, newTab, connect, export, explorer, multiExec, peers, search, title
+        case menu, newTab, connect, export, screenshot, explorer, multiExec, peers, search, title
         case minimize, maximize, close
         case tab(Int), tabClose(Int)
 
@@ -24,6 +24,8 @@ final class WindowChrome {
         var connected: String?
         var maximized = false
         var windowActive = true
+        /// For a moment after Take Screenshot: its button shows a check mark and says so.
+        var screenshotCopied = false
     }
 
     /// The parts of the toolbar not yet in the Windows version: drawn as on the Mac and Linux, but dimmed.
@@ -109,10 +111,9 @@ final class WindowChrome {
             left += glyphWidth + gap
         }
         var right = x - s(8)
-        for item in [Item.search, .peers, .multiExec, .explorer, .export] {
+        for item in [Item.search, .peers, .multiExec, .explorer, .screenshot, .export] {
             rects[item] = RECT(left: right - glyphWidth, top: glyphTop, right: right, bottom: glyphTop + glyphHeight)
-            right -= glyphWidth + gap
-            if item == .search { right -= gap } // Search stands a little apart, as on Linux.
+            right -= glyphWidth + gap   // Search sits as close to Tailcat Peers as the other buttons, as on Linux.
         }
         // The title takes what the window can spare in the middle, centered on the window when it fits.
         let titleWidth = measure(state.title, fonts.title) + (state.subtitle.isEmpty ? 0 : s(5) + measure(state.subtitle, fonts.subtitle))
@@ -182,6 +183,7 @@ final class WindowChrome {
         // Toolbar glyphs (Segoe Fluent Icons).
         let glyphs: [Item: String] = [
             .menu: "\u{E700}", .newTab: "\u{E710}", .connect: "\u{E703}", .export: "\u{E72D}",
+            .screenshot: state.screenshotCopied ? "\u{E73E}" : "\u{E722}", // CheckMark, Camera
             .explorer: "\u{E8B7}", .multiExec: "\u{E81E}", .peers: "\u{E716}", .search: "\u{E721}",
         ]
         for (item, glyph) in glyphs {
@@ -280,6 +282,9 @@ final class WindowChrome {
             }
             return "Connect via SSH (Ctrl+Shift+K)\nOpen a remote shell with a saved or new login."
         case .export: return "Export Session (Ctrl+Shift+S)\nSave everything in this terminal, scrollback included, to a text file."
+        case .screenshot:
+            if state.screenshotCopied { return "Screenshot copied\nPaste it anywhere with Ctrl+V." }
+            return "Take Screenshot (Ctrl+Alt+S)\nCopy a picture of this whole window to the clipboard, ready to paste."
         case .explorer: return "Show File Explorer (Ctrl+Shift+X)" + notYet
         case .multiExec: return "MultiExec (Ctrl+Shift+M)" + notYet
         case .peers: return "Tailcat Peers" + notYet
@@ -355,6 +360,7 @@ final class WindowChrome {
         case .minimize: 10
         case .maximize: 11
         case .close: 12
+        case .screenshot: 13
         case .tab(let index): UINT_PTR(100 + index)
         case .tabClose(let index): UINT_PTR(1000 + index)
         }

@@ -231,9 +231,15 @@ enum SSH {
         return FileManager.default.fileExists(atPath: system) ? system : nil
     }
 
+    /// A host that is switched off or restarts without closing the connection sends nothing, and TCP alone would
+    /// keep the session open for many minutes. ssh asks the server for an answer every 5 seconds and gives up after
+    /// 2 missed answers, so the session ends within about 15 seconds, as on the Mac and Linux.
+    static let keepAliveOptions = ["-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=2"]
+
     static func commandLine(_ endpoint: RemoteEndpoint) -> String? {
         guard let ssh = executable else { return nil }
-        return ([ssh, "-p", String(endpoint.port), "\(endpoint.username)@\(endpoint.host)"]).map(quoteArgument).joined(separator: " ")
+        return ([ssh] + keepAliveOptions + ["-p", String(endpoint.port), "\(endpoint.username)@\(endpoint.host)"])
+            .map(quoteArgument).joined(separator: " ")
     }
 }
 
