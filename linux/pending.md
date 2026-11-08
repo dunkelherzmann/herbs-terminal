@@ -110,3 +110,11 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **Z5** Self-contained: nothing extra to install. (§10): checked by each platform's packaging script
 
 <!-- feature-tests:end -->
+
+## Bugs to fix
+
+Hand-written from `bugs.md`; fix these before the features above, one pull request each, and tick each with its PR number.
+
+- [ ] **The self-test crashes when `HERBS_TEST_SSH` is set but empty or malformed.** It should report a failed check instead of stopping with "Index out of range". (§11 Build and packaging, Checks)
+- [ ] **The debug build has 31 compiler warnings, three of them errors in the Swift 6 language mode.** Main-actor statics used from nonisolated code (`TransferQueue.shared` as a default argument in `RemoteExplorerModel.swift`, `defaultIterations` in the shared `CredentialStore.swift`), plus deprecated `utf8String` and VTE calls. (§11 Build and packaging)
+- [ ] **The Flatpak build fails when GitHub's release downloads are down.** Give the manifest a mirror URL for the tailcat archive, or vendor it. (§11 Build and packaging)
