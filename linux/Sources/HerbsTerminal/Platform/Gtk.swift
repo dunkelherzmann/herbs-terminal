@@ -541,7 +541,11 @@ private func nameItems(in widget: Widget) {
     var child = gtk_widget_get_first_child(widget)
     while let current = child {
         if string(gtk_widget_get_css_name(current)) == "modelbutton" {
-            if let text = firstLabelText(current) { accessibleLabel(current, text) }
+            if let text = firstLabelText(current) {
+                // A "labelled by" relation would win over the label, so it goes first.
+                gtk_accessible_reset_relation(c(current), GTK_ACCESSIBLE_RELATION_LABELLED_BY)
+                accessibleLabel(current, text)
+            }
         } else {
             nameItems(in: current)
         }

@@ -454,7 +454,8 @@ The Linux version is the same app on GTK 4, libadwaita and VTE, packaged as the 
 - Minimize, maximize and close sit at the right end of the toolbar, as on Linux and Windows desktops. The Main Menu takes the left corner, followed by New Tab and Connect via SSH; the rest of the toolbar is as on the Mac.
 - The Main Menu also holds a **Shell** submenu with the Mac's Shell and Edit menu commands (export, profiles, splits, MultiExec, Run Command on Hosts, connections, tabs, Clear and Reset), and Quit.
 - Toolbar buttons never take the keyboard focus from the terminal. The window's shortcuts are handled before the terminal sees the key.
-- Hover hints are GTK tooltips with the same text; screen readers get the same descriptions.
+- Toolbar buttons are 30 × 28 px as on the Mac, and the Main Menu is a plain glyph with a background only while hovered or pressed.
+- Hover hints are GTK tooltips with the same text; screen readers get the same descriptions, the title's included. Items in the Main Menu and other menus are named after their text for screen readers (GTK leaves menu items unnamed).
 
 ### Shortcuts
 
