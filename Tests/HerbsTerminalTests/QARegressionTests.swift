@@ -379,7 +379,8 @@ func aServerThatStopsAnsweringTimesOut() throws {
 func hostCommandOutputIsCappedWhileItRuns() async throws {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/bin/sh")
-    process.arguments = ["-c", "yes 0123456789 | head -c 3000000"]
+    // A finite stream: `yes | head` never ends on macOS when broken pipes are ignored.
+    process.arguments = ["-c", "head -c 3000000 /dev/zero | tr '\\000' 0"]
     let target = HostTarget(endpoint: RemoteEndpoint(host: "local", username: "me"), password: nil, source: "test")
     let result = await MultiHostModel.execute(process, target: target)
     #expect(result.output.hasSuffix("… output truncated"))
