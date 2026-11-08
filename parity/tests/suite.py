@@ -176,7 +176,9 @@ def _(c):
 
 @test("W4", "Secrets in a command line are hidden in the title")
 def _(c):
-    c.run("sh -c 'sleep 4' x --password=hunter2 API_TOKEN=s3cr3t", "ping -n 5 127.0.0.1 --password=hunter2 >nul", settle=1.5)
+    # The secrets ride on a program that keeps running (ping refuses unknown options and would end at once).
+    c.run("sh -c 'sleep 4' x --password=hunter2 API_TOKEN=s3cr3t",
+          'cmd /d /c "ping -n 5 127.0.0.1 >nul & rem --password=hunter2 API_TOKEN=s3cr3t"', settle=1.5)
     s = c.state()
     seen = c.window(s)["title"] + " " + c.window(s)["subtitle"]
     c.expect("hunter2" not in seen and "s3cr3t" not in seen, f"the title shows a secret: {seen!r}")

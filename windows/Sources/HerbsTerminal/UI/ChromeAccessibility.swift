@@ -17,10 +17,11 @@ extension WindowChrome {
         }
         var entries: [Entry] = []
 
-        func add(_ item: Item, _ identifier: String, controlType: Int32 = Int32(HERB_UIA_BUTTON), popup: Bool = false) {
+        /// `name` fixes a control's name where its hover text changes with the state, as on the Mac and Linux.
+        func add(_ item: Item, _ identifier: String, name: String? = nil, controlType: Int32 = Int32(HERB_UIA_BUTTON), popup: Bool = false) {
             guard let rect = rects[item] else { return }
             let parts = Self.hintParts(Self.hint(for: item, state: state) ?? "")
-            entries.append(Entry(identifier: identifier, name: parts.name, help: parts.help, accelerator: parts.accelerator,
+            entries.append(Entry(identifier: identifier, name: name ?? parts.name, help: parts.help, accelerator: parts.accelerator,
                                  rect: rect, controlType: controlType, enabled: !state.isUnavailable(item), popup: popup,
                                  tag: Int(Self.toolID(item))))
         }
@@ -28,7 +29,7 @@ extension WindowChrome {
         // In reading order: left to right along the toolbar, then the tab strip, then the window buttons.
         add(.menu, "toolbar.mainMenu", popup: true)
         add(.newTab, "toolbar.newTab")
-        add(.connect, "toolbar.connect")
+        add(.connect, "toolbar.connect", name: state.connected == nil ? "Connect via SSH" : "Connection")
         if let parts = titleParts(dpi: dpi, state: state) {
             let help = Self.hintParts(Self.hint(for: .title, state: state) ?? "").help
             entries.append(Entry(identifier: "toolbar.title", name: state.title, help: help, accelerator: nil, rect: parts.title,
@@ -40,10 +41,10 @@ extension WindowChrome {
         }
         add(.export, "toolbar.exportSession")
         add(.screenshot, "toolbar.takeScreenshot")
-        add(.explorer, "toolbar.switchView")
+        add(.explorer, "toolbar.switchView", name: "Switch Terminal / Explorer")
         add(.multiExec, "toolbar.multiExec")
         add(.peers, "toolbar.tailcatPeers")
-        add(.search, "toolbar.search")
+        add(.search, "toolbar.search", name: "Search")
         for index in state.tabNames.indices {
             add(.tab(index), "tabStrip.tab.\(index + 1)", controlType: Int32(HERB_UIA_TAB_ITEM))
             add(.tabClose(index), "tabStrip.close.\(index + 1)")

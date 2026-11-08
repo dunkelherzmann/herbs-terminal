@@ -235,7 +235,7 @@ enum TestBridge {
                         entry["kind"] = "terminal"
                         entry["layout"] = pane.showingExplorer ? "explorer" : "terminal"
                         entry["panes"] = [["number": number, "focused": true, "columns": pane.terminal.cols, "rows": pane.terminal.rows,
-                                           "title": pane.title, "subtitle": "", "exited": !pane.isRunning, "text": pane.exportText(),
+                                           "title": pane.title, "subtitle": pane.subtitle, "exited": !pane.isRunning, "text": pane.exportText(),
                                            "fontSize": settings.effectiveSize] as [String: Any]]
                         if let explorer = pane.explorer { entry["explorer"] = explorer.bridgeState }
                     } else if let editor = tab as? TextEditorPane {
@@ -247,7 +247,7 @@ enum TestBridge {
                     return entry
                 }
                 let active = workspace.activePane
-                return ["title": active?.title ?? "", "subtitle": "", "multiExec": false, "excluded": [Int](), "tabs": tabs]
+                return ["title": active?.title ?? "", "subtitle": active?.subtitle ?? "", "multiExec": false, "excluded": [Int](), "tabs": tabs]
             },
             "dialogs": openDialogs().map { ["heading": $0.heading, "responses": $0.buttons, "fields": $0.fields] as [String: Any] },
             "toplevels": threadWindows().filter { IsWindowVisible($0) }.map(windowText),
