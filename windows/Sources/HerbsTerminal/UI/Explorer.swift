@@ -15,7 +15,14 @@ final class ExplorerPane: WindowObject {
     private var fonts: (ui: HFONT?, glyph: HFONT?, heading: HFONT?) = (nil, nil, nil)
     private(set) var folder: String
     /// Set when the explorer shows an SSH tab's host instead of this PC.
-    let remote: RemoteSession?
+    /// The channel the explorer uses: the tab's login, or root's in Administrator mode.
+    private(set) var remote: RemoteSession?
+    /// The tab's own login, which Administrator mode returns to.
+    private var userRemote: RemoteSession?
+    /// Administrator mode: the explorer works as root through sudo on the host.
+    var isAdministrator: Bool { remote?.asRoot == true }
+    /// The red bar's Leave button.
+    private var leaveRect = RECT()
     /// The host account's home folder, learned on the first listing.
     private var remoteHome = "/"
     /// Counts listings, so one that finishes after a newer one started is dropped.
@@ -51,7 +58,7 @@ final class ExplorerPane: WindowObject {
     }
 
     private enum BarItem: Hashable {
-        case back, forward, up, home, actions
+        case back, forward, up, home, admin, actions
     }
 
     private enum Command: UINT {
@@ -68,7 +75,7 @@ final class ExplorerPane: WindowObject {
     private var transferFlags: [Foundation.UUID: CancelFlag] = [:]
     private var retries: [Foundation.UUID: () -> Void] = [:]
     /// A second channel per host, so transfers don't hold up browsing.
-    private var transferChannels: [String: RemoteSession] = [:]
+    private var transferChannels: [ObjectIdentifier: RemoteSession] = [:]
     private var transferObserver: ObservationToken?
     private var stripButtons: [(rect: RECT, action: StripAction)] = []
     private let hints = HoverHints()
@@ -79,6 +86,7 @@ final class ExplorerPane: WindowObject {
     init(parent: HWND, start: String, remote: RemoteSession? = nil) {
         folder = start
         self.remote = remote
+        userRemote = remote
         hwnd = createWindow(self, className: Self.className, style: DWORD(WS_CHILD) | DWORD(WS_CLIPCHILDREN), parent: parent)
         guard let hwnd else { return }
         var controls = INITCOMMONCONTROLSEX(dwSize: DWORD(MemoryLayout<INITCOMMONCONTROLSEX>.size), dwICC: DWORD(ICC_LISTVIEW_CLASSES))
@@ -126,6 +134,7 @@ final class ExplorerPane: WindowObject {
     }
 
     func close() {
+        if isAdministrator { remote?.disconnect() }
         hints.release()
         for flag in transferFlags.values { flag.cancel() }
         if let hwnd { DestroyWindow(hwnd) }
@@ -188,6 +197,7 @@ final class ExplorerPane: WindowObject {
     private var dpi: UINT { hwnd.map { GetDpiForWindow($0) } ?? 96 }
     private var placesWidth: Int32 { scaled(190, dpi: dpi) }
     private var barHeight: Int32 { scaled(40, dpi: dpi) }
+    private var bannerHeight: Int32 { isAdministrator ? scaled(34, dpi: dpi) : 0 }
     private var statusHeight: Int32 { scaled(24, dpi: dpi) }
     /// The transfer strip: a heading and up to four transfers, while there are any.
     private var stripHeight: Int32 {
@@ -198,7 +208,7 @@ final class ExplorerPane: WindowObject {
         func s(_ v: Double) -> Int32 { scaled(v, dpi: dpi) }
         var rects: [BarItem: RECT] = [:]
         var x = placesWidth + s(8)
-        let top = (barHeight - s(28)) / 2
+        let top = bannerHeight + (barHeight - s(28)) / 2
         for item in [BarItem.back, .forward, .up, .home] {
             rects[item] = RECT(left: x, top: top, right: x + s(30), bottom: top + s(28))
             x += s(34)
@@ -206,6 +216,9 @@ final class ExplorerPane: WindowObject {
         var client = RECT()
         if let hwnd { GetClientRect(hwnd, &client) }
         rects[.actions] = RECT(left: client.right - s(8) - s(30), top: top, right: client.right - s(8), bottom: top + s(28))
+        if userRemote != nil {
+            rects[.admin] = RECT(left: client.right - s(8) - s(64), top: top, right: client.right - s(8) - s(34), bottom: top + s(28))
+        }
         return rects
     }
 
@@ -215,9 +228,10 @@ final class ExplorerPane: WindowObject {
         var client = RECT()
         GetClientRect(hwnd, &client)
         let bar = barRects
-        let left = (bar[.home]?.right ?? 0) + s(8), right = (bar[.actions]?.left ?? client.right) - s(8)
-        MoveWindow(location, left, (barHeight - s(26)) / 2, max(10, right - left), s(26), true)
-        MoveWindow(list, placesWidth, barHeight, client.right - placesWidth, client.bottom - barHeight - statusHeight - stripHeight, true)
+        let left = (bar[.home]?.right ?? 0) + s(8), right = ((bar[.admin] ?? bar[.actions])?.left ?? client.right) - s(8)
+        MoveWindow(location, left, bannerHeight + (barHeight - s(26)) / 2, max(10, right - left), s(26), true)
+        let top = bannerHeight + barHeight
+        MoveWindow(list, placesWidth, top, client.right - placesWidth, client.bottom - top - statusHeight - stripHeight, true)
         InvalidateRect(hwnd, nil, false)
     }
 
@@ -773,7 +787,8 @@ final class ExplorerPane: WindowObject {
                                  message: "Folders are deleted with everything in them. This can't be undone.",
                                  buttons: [.init(title: "Cancel", isDefault: true), .init(title: "Delete")]) == 1 else { return true }
             let paths = selection.map(\.path)
-            remoteChange({ client in for path in paths { try RemoteFiles.remove(path, client: client) } })
+            let asRoot = isAdministrator
+            remoteChange({ client in for path in paths { try RemoteFiles.remove(path, client: client, asRoot: asRoot) } })
         case .newFolder, .newFile:
             let isFolder = command == .newFolder
             let created = Locked<String?>(nil)
@@ -875,6 +890,81 @@ final class ExplorerPane: WindowObject {
         if let command = Command(rawValue: chosen) { perform(command) }
     }
 
+    // MARK: Administrator mode
+
+    private var enteringAdministrator = false
+    private var hoverLeave = false
+
+    /// The lock: works as root on the host. The sudo password is checked on its own first, then reaches sudo once
+    /// on standard input when the root SFTP server starts; it isn't kept anywhere else. Accounts with
+    /// password-free sudo aren't asked.
+    func enterAdministrator(password scripted: String? = nil) {
+        guard let user = userRemote, !isAdministrator, !enteringAdministrator else { return }
+        let owner = GetAncestor(hwnd, UINT(GA_ROOT))
+        let host = user.endpoint.host
+        enteringAdministrator = true
+        status = "Checking sudo on \(host)…"
+        statusIsError = false
+        if let hwnd { InvalidateRect(hwnd, nil, false) }
+        func finish(_ problem: String?) {
+            enteringAdministrator = false
+            status = ""
+            if let problem { FormDialog.tell(owner: owner, title: "Administrator mode isn't available", message: problem) }
+            if let hwnd { InvalidateRect(hwnd, nil, false) }
+        }
+        MainThread.background({ try user.sudoNeedsPassword() }) { [weak self] result in
+            guard let self else { return }
+            guard case .success(let needs) = result else {
+                if case .failure(let error) = result { finish(error.localizedDescription) }
+                return
+            }
+            var password: String?
+            if needs {
+                if let scripted {
+                    password = scripted
+                } else {
+                    guard let answer = FormDialog.run(owner: owner, title: "Administrator Mode on \(host)",
+                                                      message: "Enter the sudo password for \(user.endpoint.username) on \(host). While Administrator mode is on, the explorer works as root there.",
+                                                      fields: [.init(label: "Password", secure: true)],
+                                                      buttons: [.init(title: "Cancel"), .init(title: "Enter Administrator Mode", isDefault: true)]),
+                          answer.button == 1 else { finish(nil); return }
+                    password = answer.values[0]
+                }
+            }
+            let typed = password
+            MainThread.background({ () throws -> RemoteSession? in
+                if let typed, !(try user.checkSudo(typed)) { return nil }
+                let root = user.administrator(sudoPassword: typed)
+                _ = try root.run { try $0.stat("/", follow: true) } // Starts the root SFTP server now, so problems show here.
+                return root
+            }) { [weak self] result in
+                guard let self else { return }
+                switch result {
+                case .success(let root?):
+                    finish(nil)
+                    self.remote = root
+                    self.layout()
+                    self.remoteNavigate(to: self.folder, record: false)
+                case .success(nil):
+                    finish("That password didn't work, or this account can't use sudo on \(host).")
+                case .failure(let error):
+                    finish("Couldn't start the administrator session on \(host): \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    /// Ends the root session; the explorer goes back to the tab's own login, in the same folder.
+    func leaveAdministrator() {
+        guard isAdministrator, let root = remote else { return }
+        remote = userRemote
+        transferChannels[ObjectIdentifier(root)]?.disconnect()
+        transferChannels[ObjectIdentifier(root)] = nil
+        root.disconnect()
+        layout()
+        remoteNavigate(to: folder, record: false)
+    }
+
     // MARK: Uploads and downloads
 
     /// Uploads files and folders from this PC into `folder` on this explorer's host, under free names.
@@ -889,9 +979,9 @@ final class ExplorerPane: WindowObject {
     }
 
     private func channel(for session: RemoteSession) -> RemoteSession {
-        if let channel = transferChannels[session.endpoint.label] { return channel }
+        if let channel = transferChannels[ObjectIdentifier(session)] { return channel }
         let channel = session.twin()
-        transferChannels[session.endpoint.label] = channel
+        transferChannels[ObjectIdentifier(session)] = channel
         return channel
     }
 
@@ -1023,12 +1113,15 @@ final class ExplorerPane: WindowObject {
             .forward: "Forward (Alt+→)\nGo forward again after going back.",
             .up: "Up (Alt+↑)\nGo to the folder that holds this one.",
             .home: "Home (Alt+Home)\nGo to your home folder.",
+            .admin: isAdministrator ? "Leave Administrator Mode\nGo back to working with your own account's access."
+                                    : "Administrator Mode\nWork as root with sudo on this host: open and change any file. Asks for the sudo password.",
             .actions: "File Actions\n" + (remote == nil ? "Cut, copy, paste, move to the Recycle Bin, select all, new folder or file, hidden files and reload."
                                                          : "Upload, download, cut, copy, paste, delete, select all, new folder or file, hidden files and reload."),
         ]
-        for (index, item) in [BarItem.back, .forward, .up, .home, .actions].enumerated() {
+        for (index, item) in [BarItem.back, .forward, .up, .home, .actions, .admin].enumerated() {
             if let rect = barRects[item], let text = bar[item] { entries.append((UINT_PTR(1 + index), rect, text)) }
         }
+        if isAdministrator { entries.append((UINT_PTR(50), leaveRect, "Leave Administrator Mode\nGo back to working with your own account's access.")) }
         for (index, place) in placeRects.enumerated() {
             entries.append((UINT_PTR(100 + index), place.0, "\(place.1.name)\n\(place.1.path)"))
         }
@@ -1066,7 +1159,10 @@ final class ExplorerPane: WindowObject {
             download(selectedEntries.map(\.path), from: remote, into: URL(fileURLWithPath: String(name.dropFirst(9))))
             return true
         }
+        if name.hasPrefix("admin=") { enterAdministrator(password: String(name.dropFirst(6))); return true }
         switch name {
+        case "admin": enterAdministrator(); return true
+        case "leaveAdmin": leaveAdministrator(); return true
         case "up": goUp(); return true
         case "back": goBack(); return true
         default: break
@@ -1236,12 +1332,26 @@ final class ExplorerPane: WindowObject {
         fill(dc, client, barBackground)
         fill(dc, RECT(left: 0, top: 0, right: placesWidth, bottom: client.bottom), sideBackground)
         fill(dc, RECT(left: placesWidth - 1, top: 0, right: placesWidth, bottom: client.bottom), colors.border)
-        fill(dc, RECT(left: placesWidth, top: barHeight - 1, right: client.right, bottom: barHeight), colors.border)
+        fill(dc, RECT(left: placesWidth, top: bannerHeight + barHeight - 1, right: client.right, bottom: bannerHeight + barHeight), colors.border)
         SetBkMode(dc, TRANSPARENT)
+
+        // Administrator mode: a red bar across the top until you leave it.
+        if isAdministrator {
+            let red = colorRef(196, 43, 28)
+            fill(dc, RECT(left: 0, top: 0, right: client.right, bottom: bannerHeight), red)
+            draw(dc, "\u{E785}", RECT(left: s(10), top: 0, right: s(34), bottom: bannerHeight), font: fonts.glyph, color: colorRef(255, 255, 255), center: true)
+            leaveRect = RECT(left: client.right - s(90), top: s(4), right: client.right - s(10), bottom: bannerHeight - s(4))
+            draw(dc, "Administrator mode: changes are made as root on \(remote?.endpoint.host ?? "the host").",
+                 RECT(left: s(40), top: 0, right: leaveRect.left - s(10), bottom: bannerHeight), font: fonts.ui, color: colorRef(255, 255, 255), ellipsis: true)
+            roundFill(dc, leaveRect, blend(red, colorRef(255, 255, 255), hoverLeave ? 0.3 : 0.18), radius: s(4))
+            draw(dc, "Leave", leaveRect, font: fonts.ui, color: colorRef(255, 255, 255), center: true)
+        } else {
+            leaveRect = RECT()
+        }
 
         // Places.
         placeRects = []
-        var y = s(10)
+        var y = bannerHeight + s(10)
         for section in places {
             draw(dc, section.section.uppercased(), RECT(left: s(14), top: y, right: placesWidth - s(8), bottom: y + s(20)),
                  font: fonts.heading, color: colors.dim)
@@ -1261,13 +1371,15 @@ final class ExplorerPane: WindowObject {
         }
 
         // Location bar buttons.
-        let glyphs: [BarItem: String] = [.back: "\u{E72B}", .forward: "\u{E72A}", .up: "\u{E74A}", .home: "\u{E80F}", .actions: "\u{E712}"]
+        let glyphs: [BarItem: String] = [.back: "\u{E72B}", .forward: "\u{E72A}", .up: "\u{E74A}", .home: "\u{E80F}", .actions: "\u{E712}",
+                                         .admin: isAdministrator ? "\u{E785}" : "\u{E72E}"]
         let enabled: [BarItem: Bool] = [.back: !history.isEmpty, .forward: !future.isEmpty,
                                         .up: remote == nil ? (folder as NSString).deletingLastPathComponent != folder : folder != "/",
-                                        .home: true, .actions: true]
+                                        .home: true, .actions: true, .admin: !enteringAdministrator]
         for (item, rect) in barRects {
             if hover == item, enabled[item] == true { roundFill(dc, rect, blend(barBackground, colors.text, 0.1), radius: s(4)) }
-            draw(dc, glyphs[item] ?? "", rect, font: fonts.glyph, color: enabled[item] == true ? colors.text : blend(colors.text, barBackground, 0.65),
+            let color = item == .admin && isAdministrator ? colorRef(196, 43, 28) : colors.text
+            draw(dc, glyphs[item] ?? "", rect, font: fonts.glyph, color: enabled[item] == true ? color : blend(colors.text, barBackground, 0.65),
                  center: true)
         }
 
@@ -1326,8 +1438,11 @@ final class ExplorerPane: WindowObject {
             let point = POINT(x: Int32(loWord(lParam)), y: Int32(hiWord(lParam)))
             if let action = stripButtons.first(where: { point.x >= $0.rect.left && point.x < $0.rect.right && point.y >= $0.rect.top && point.y < $0.rect.bottom })?.action {
                 stripClick(action)
+            } else if isAdministrator, point.x >= leaveRect.left, point.x < leaveRect.right, point.y >= leaveRect.top, point.y < leaveRect.bottom {
+                leaveAdministrator()
             } else if let item = barItem(at: point) {
                 switch item {
+                case .admin: if isAdministrator { leaveAdministrator() } else { enterAdministrator() }
                 case .back: goBack()
                 case .forward: goForward()
                 case .up: goUp()
@@ -1345,7 +1460,10 @@ final class ExplorerPane: WindowObject {
                 TrackMouseEvent(&track)
                 trackingMouse = true
             }
-            let item = barItem(at: POINT(x: Int32(loWord(lParam)), y: Int32(hiWord(lParam))))
+            let point = POINT(x: Int32(loWord(lParam)), y: Int32(hiWord(lParam)))
+            let overLeave = isAdministrator && point.x >= leaveRect.left && point.x < leaveRect.right && point.y >= leaveRect.top && point.y < leaveRect.bottom
+            if overLeave != hoverLeave { hoverLeave = overLeave; InvalidateRect(hwnd, nil, false) }
+            let item = barItem(at: point)
             if item != hover { hover = item; InvalidateRect(hwnd, nil, false) }
             return 0
         case WM_MOUSELEAVE:

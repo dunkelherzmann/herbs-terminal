@@ -17,6 +17,9 @@ if CommandLine.arguments.count > 1, CommandLine.arguments[1] == SFTPRelay.flag {
     exit(SFTPRelay.run(Array(CommandLine.arguments.dropFirst(2))))
 }
 
+// A parity scene keeps its files in a private folder; that has to be set before any store opens.
+ParityScene.prepare()
+
 MainActor.assumeIsolated {
     if CommandLine.arguments.contains("--self-test") {
         attachParentConsole()

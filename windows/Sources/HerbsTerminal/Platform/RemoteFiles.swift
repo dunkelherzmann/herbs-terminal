@@ -8,12 +8,39 @@ import WinSDK
 final class RemoteSession: @unchecked Sendable {
     let endpoint: RemoteEndpoint
     private let password: String?
+    /// Administrator mode: the host's own SFTP server runs under sudo, so every request runs as root.
+    let asRoot: Bool
+    /// The sudo password, sent once on sudo's standard input (`sudo -S`); nil for password-free sudo.
+    private let sudoPassword: String?
     private let lock = NSLock()
     private var client: SFTPClient?
 
-    init(endpoint: RemoteEndpoint, password: String?) {
+    init(endpoint: RemoteEndpoint, password: String?, asRoot: Bool = false, sudoPassword: String? = nil) {
         self.endpoint = endpoint
         self.password = password
+        self.asRoot = asRoot
+        self.sudoPassword = sudoPassword
+    }
+
+    /// The same login as root (Administrator mode).
+    func administrator(sudoPassword: String?) -> RemoteSession {
+        RemoteSession(endpoint: endpoint, password: password, asRoot: true, sudoPassword: sudoPassword)
+    }
+
+    /// Finds the SFTP server, wherever its OpenSSH package put it (as on the Mac and Linux).
+    static let serverSearch = "for p in /usr/lib/openssh/sftp-server /usr/libexec/openssh/sftp-server /usr/lib/ssh/sftp-server "
+        + "/usr/libexec/sftp-server /usr/lib/sftp-server /usr/sbin/sftp-server; do "
+        + "if [ -x \"$p\" ]; then exec \"$p\"; fi; done; echo \"no sftp-server found\" >&2; exit 127"
+
+    /// True unless sudo works without a password for this account on the host.
+    func sudoNeedsPassword() throws -> Bool {
+        !(try execute("sudo -n -v 2>/dev/null && echo herbs-sudo-ok")).contains("herbs-sudo-ok")
+    }
+
+    /// Checks the sudo password on its own first: a wrong one must never reach the SFTP session, where sudo would
+    /// wait for another attempt.
+    func checkSudo(_ password: String) throws -> Bool {
+        (try execute("sudo -S -k -v -p '' 2>/dev/null && echo herbs-sudo-ok", input: password + "\n")).contains("herbs-sudo-ok")
     }
 
     /// Runs `body` with the channel, connecting first if needed. A channel that has died is replaced once.
@@ -57,18 +84,18 @@ final class RemoteSession: @unchecked Sendable {
 
     /// Runs one shell command on the host and returns what it printed. Windows' ssh can't reuse the tab's
     /// connection, so this signs in once more, the same way as the SFTP channel. It ends after 20 seconds.
-    func execute(_ command: String) throws -> String {
+    func execute(_ command: String, input: String? = nil) throws -> String {
         let setup = try relaySetup()
         let process = Process()
         process.executableURL = URL(fileURLWithPath: AskpassBroker.executablePath)
         process.arguments = [SFTPRelay.flag] + setup.arguments + ["-T", "\(endpoint.username)@\(endpoint.host)", command]
-        let input = Pipe(), output = Pipe()
-        process.standardInput = input
+        let pipe = Pipe(), output = Pipe()
+        process.standardInput = pipe
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
         try process.run()
-        try? input.fileHandleForWriting.write(contentsOf: Data(setup.preamble.utf8))
-        try? input.fileHandleForWriting.close()
+        try? pipe.fileHandleForWriting.write(contentsOf: Data((setup.preamble + (input ?? "")).utf8))
+        try? pipe.fileHandleForWriting.close()
         let watchdog = DispatchWorkItem { if process.isRunning { process.terminate() } }
         DispatchQueue.global().asyncAfter(deadline: .now() + 20, execute: watchdog)
         let data = output.fileHandleForReading.readDataToEndOfFile()
@@ -79,12 +106,24 @@ final class RemoteSession: @unchecked Sendable {
 
     private func connect() throws -> SFTPClient {
         let setup = try relaySetup()
-        let arguments = setup.arguments + ["-T", "-s", "\(endpoint.username)@\(endpoint.host)", "sftp"]
-        let preamble = setup.preamble
+        var arguments = setup.arguments
+        var preamble = setup.preamble
+        if asRoot {
+            // sudo reads its password line first; everything after it is the SFTP conversation.
+            let sudo = sudoPassword == nil ? "sudo -n" : "sudo -S -k -p ''"
+            arguments += ["-T", "\(endpoint.username)@\(endpoint.host)", "\(sudo) /bin/sh -c '\(Self.serverSearch)'"]
+            if let sudoPassword { preamble += sudoPassword + "\n" }
+        } else {
+            arguments += ["-T", "-s", "\(endpoint.username)@\(endpoint.host)", "sftp"]
+        }
         do {
             return try SFTPClient(executable: AskpassBroker.executablePath, arguments: [SFTPRelay.flag] + arguments,
                                   preamble: Data(preamble.utf8))
         } catch {
+            if asRoot {
+                throw FileIssue("The root SFTP server didn't start on \(endpoint.host) (\(error.localizedDescription)). "
+                    + "The host needs OpenSSH's sftp-server, and sudo must accept the password.")
+            }
             throw FileIssue("Couldn't open the files of \(endpoint.label): \(error.localizedDescription) "
                 + "The explorer signs in with the tab's saved password, or with SSH keys.")
         }
@@ -122,13 +161,32 @@ enum RemoteFiles {
     }
 
     /// Deletes `path`, emptying folders first. Links are removed, never followed.
-    static func remove(_ path: String, client: SFTPClient) throws {
+    ///
+    /// `asRoot` (Administrator mode): SFTP removes by path, so another account that could change a folder in the
+    /// tree could swap it for a link mid-delete and point root's deletes elsewhere. As root, a folder is only
+    /// emptied when root owns it and the folder holding it and no other account can write to them; otherwise
+    /// nothing more is deleted and the error says why.
+    static func remove(_ path: String, client: SFTPClient, asRoot: Bool = false, top: Bool = true) throws {
         let attributes = try client.stat(path)
         if attributes.directory {
-            for entry in try client.list(path) { try remove(remoteJoin(path, entry.name), client: client) }
+            if asRoot {
+                if top { try requireRootOnly(RemotePath.parent(path), try client.stat(RemotePath.parent(path)), deleting: path) }
+                try requireRootOnly(path, attributes, deleting: path)
+            }
+            for entry in try client.list(path) { try remove(remoteJoin(path, entry.name), client: client, asRoot: asRoot, top: false) }
             try client.remove(path, directory: true)
         } else {
             try client.remove(path)
+        }
+    }
+
+    private static func requireRootOnly(_ folder: String, _ attributes: RemoteAttributes, deleting path: String) throws {
+        let mode = attributes.mode ?? 0o7777
+        // Group write is fine for root's and the administrators' groups, whose members can use sudo anyway.
+        let trustedGroup = attributes.gid == 0 || attributes.gid == 80
+        guard attributes.uid == 0, mode & 0o002 == 0, mode & 0o020 == 0 || trustedGroup else {
+            throw FileIssue("“\(RemotePath.name(path))” wasn't deleted as root: \(folder) can be changed by another account, "
+                + "which could redirect the deletion. Turn off Administrator mode to delete it with your own account's access.")
         }
     }
 
@@ -233,7 +291,7 @@ extension RemoteEndpoint {
 
 extension RemoteSession {
     /// Another channel to the same host with the same login, so transfers don't hold up browsing.
-    func twin() -> RemoteSession { RemoteSession(endpoint: endpoint, password: password) }
+    func twin() -> RemoteSession { RemoteSession(endpoint: endpoint, password: password, asRoot: asRoot, sudoPassword: sudoPassword) }
 }
 
 /// Streams files and folders between this PC and a host over one SFTP channel, as Linux's `SFTPTransfer` does.

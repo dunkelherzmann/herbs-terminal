@@ -2,16 +2,26 @@ import Foundation
 
 /// Where the app keeps its own files, for every store that needs one.
 enum AppFolders {
-    static func support(_ base: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]) -> URL {
+    /// Set once at start-up, before any store opens, to keep every file in one private folder (the Windows
+    /// parity scene uses it; Linux points its XDG folders there instead).
+    nonisolated(unsafe) static var privateBase: URL?
+
+    static var supportBase: URL {
+        privateBase ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    }
+
+    static func support(_ base: URL = supportBase) -> URL {
         base.appendingPathComponent("HerbsTerminal", isDirectory: true)
     }
 
-    static func loginDatabase(_ base: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]) -> URL {
+    static func loginDatabase(_ base: URL = supportBase) -> URL {
         support(base).appendingPathComponent("logins.sqlite3")
     }
 
     static var cache: URL {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("HerbsTerminal", isDirectory: true)
+        let base = privateBase?.appendingPathComponent("cache", isDirectory: true)
+            ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        return base.appendingPathComponent("HerbsTerminal", isDirectory: true)
     }
 }
 
