@@ -44,7 +44,7 @@ enum TestBridge {
         busy = false
         if let out = try? JSONSerialization.data(withJSONObject: response, options: [.sortedKeys]) {
             let temporary = folder + "/response.tmp", final = folder + "/response.json"
-            FileManager.default.createFile(atPath: temporary, contents: out)
+            _ = FileManager.default.createFile(atPath: temporary, contents: out)
             _ = withWide(temporary) { from in withWide(final) { to in MoveFileExW(from, to, DWORD(MOVEFILE_REPLACE_EXISTING)) } }
         }
     }

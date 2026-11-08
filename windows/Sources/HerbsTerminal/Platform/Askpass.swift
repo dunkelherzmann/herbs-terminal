@@ -30,7 +30,7 @@ final class AskpassBroker: @unchecked Sendable {
         }
         guard ok, let descriptor else { throw FileIssue("Couldn't secure the password helper's pipe.") }
         security = descriptor
-        let first = try makeInstance(first: true)
+        nonisolated(unsafe) let first = try makeInstance(first: true)
         Thread.detachNewThread { [self] in serve(first) }
     }
 

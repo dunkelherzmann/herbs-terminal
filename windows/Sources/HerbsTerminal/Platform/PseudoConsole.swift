@@ -92,7 +92,7 @@ final class PseudoConsole: @unchecked Sendable {
         let reader = Thread { [self] in readLoop(window: windowValue) }
         reader.name = "ConPTY reader"
         reader.start()
-        let process = info.hProcess
+        nonisolated(unsafe) let process = info.hProcess
         let waiter = Thread {
             WaitForSingleObject(process, INFINITE)
             PostMessageW(HWND(bitPattern: windowValue), UINT(WM_APP_EXITED), 0, 0)
@@ -157,7 +157,7 @@ final class PseudoConsole: @unchecked Sendable {
     func close() {
         guard !closed else { return }
         closed = true
-        let console = self.console, input = self.input, process = self.process
+        nonisolated(unsafe) let console = self.console, input = self.input, process = self.process
         self.console = nil
         Thread.detachNewThread {
             if let console { ClosePseudoConsole(console) }
