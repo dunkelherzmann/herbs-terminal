@@ -53,7 +53,24 @@ final class ExplorerPane: WindowObject {
     private enum Command: UINT {
         case open = 3100, openInTerminal, openWith, cut, copy, paste, copyPath, rename, delete, deletePermanently
         case properties, showInFileExplorer, newFolder, newFile, showHidden, reload, selectAll, folderProperties
+        case upload, uploadFolder, download
     }
+
+    // MARK: Transfers
+
+    /// This explorer's uploads and downloads, shown in the strip under the file list (the Mac and Linux show the
+    /// same list).
+    let transfers = TransferQueue()
+    private var transferFlags: [Foundation.UUID: CancelFlag] = [:]
+    private var retries: [Foundation.UUID: () -> Void] = [:]
+    /// A second channel per host, so transfers don't hold up browsing.
+    private var transferChannels: [String: RemoteSession] = [:]
+    private var transferObserver: ObservationToken?
+    private var stripButtons: [(rect: RECT, action: StripAction)] = []
+    private let hints = HoverHints()
+
+    private enum StripAction { case clear, cancel(Foundation.UUID), retry(Foundation.UUID) }
+    private enum Transfer { case upload(URL, into: String), download(String, into: URL) }
 
     init(parent: HWND, start: String, remote: RemoteSession? = nil) {
         folder = start
@@ -95,12 +112,18 @@ final class ExplorerPane: WindowObject {
             }
         }
         HeaderColors.attach(to: list)
+        // Files dropped from File Explorer: uploaded to a host, copied here on this PC.
+        DragAcceptFiles(hwnd, true)
+        if let list { DragAcceptFiles(list, true) }
+        transferObserver = transfers.objectWillChange.observe { [weak self] in self?.layout() }
         applyTheme()
         places = remote == nil ? Self.standardPlaces() : remotePlaces
         navigate(to: start, record: false)
     }
 
     func close() {
+        hints.release()
+        for flag in transferFlags.values { flag.cancel() }
         if let hwnd { DestroyWindow(hwnd) }
         hwnd = nil
         for font in [fonts.ui, fonts.glyph, fonts.heading] where font != nil { DeleteObject(font) }
@@ -162,6 +185,10 @@ final class ExplorerPane: WindowObject {
     private var placesWidth: Int32 { scaled(190, dpi: dpi) }
     private var barHeight: Int32 { scaled(40, dpi: dpi) }
     private var statusHeight: Int32 { scaled(24, dpi: dpi) }
+    /// The transfer strip: a heading and up to four transfers, while there are any.
+    private var stripHeight: Int32 {
+        transfers.items.isEmpty ? 0 : scaled(30, dpi: dpi) + Int32(min(4, transfers.items.count)) * scaled(26, dpi: dpi) + scaled(4, dpi: dpi)
+    }
 
     private var barRects: [BarItem: RECT] {
         func s(_ v: Double) -> Int32 { scaled(v, dpi: dpi) }
@@ -186,7 +213,7 @@ final class ExplorerPane: WindowObject {
         let bar = barRects
         let left = (bar[.home]?.right ?? 0) + s(8), right = (bar[.actions]?.left ?? client.right) - s(8)
         MoveWindow(location, left, (barHeight - s(26)) / 2, max(10, right - left), s(26), true)
-        MoveWindow(list, placesWidth, barHeight, client.right - placesWidth, client.bottom - barHeight - statusHeight, true)
+        MoveWindow(list, placesWidth, barHeight, client.right - placesWidth, client.bottom - barHeight - statusHeight - stripHeight, true)
         InvalidateRect(hwnd, nil, false)
     }
 
@@ -484,7 +511,12 @@ final class ExplorerPane: WindowObject {
             status = "\(selection.count) item\(selection.count == 1 ? "" : "s") \(command == .cut ? "cut" : "copied")"
             statusIsError = false
             if let hwnd { InvalidateRect(hwnd, nil, false) }
-        case .paste: paste(into: folder)
+        case .paste:
+            if RemoteClipboard.isCurrent, let session = RemoteClipboard.session {
+                download(RemoteClipboard.paths, from: session, into: URL(fileURLWithPath: folder))
+            } else {
+                paste(into: folder)
+            }
         case .copyPath:
             setClipboardText((selection.isEmpty ? [folder] : selection.map(\.path)).joined(separator: "\r\n"), owner: hwnd)
         case .rename:
@@ -493,6 +525,7 @@ final class ExplorerPane: WindowObject {
         case .deletePermanently: delete(selection, permanently: true)
         case .properties: for entry in selection { _ = withWide(entry.path) { SHObjectProperties(hwnd, DWORD(SHOP_FILEPATH), $0, nil) } }
         case .folderProperties: _ = withWide(folder) { SHObjectProperties(hwnd, DWORD(SHOP_FILEPATH), $0, nil) }
+        case .upload, .uploadFolder, .download: break // Host explorers only.
         case .showInFileExplorer:
             let argument = selection.first.map { "/select,\(quoteArgument($0.path))" } ?? quoteArgument(folder)
             _ = withWide("explorer.exe") { exe in withWide(argument) { args in ShellExecuteW(hwnd, nil, exe, args, nil, SW_SHOWNORMAL) } }
@@ -673,7 +706,7 @@ final class ExplorerPane: WindowObject {
             if case .success(let attributes) = result, attributes.directory {
                 self.remoteNavigate(to: path, record: true)
             } else {
-                self.status = "Opening files from a host comes with downloads and the text editor."
+                self.status = "Opening files from a host comes with the text editor; Download copies it to this PC."
                 self.statusIsError = false
                 if let hwnd = self.hwnd { InvalidateRect(hwnd, nil, false) }
             }
@@ -686,17 +719,19 @@ final class ExplorerPane: WindowObject {
         switch command {
         case .cut, .copy:
             guard !selection.isEmpty, let remote else { return true }
-            RemoteClipboard.host = remote.endpoint.label
-            RemoteClipboard.paths = selection.map(\.path)
-            RemoteClipboard.move = command == .cut
+            RemoteClipboard.put(selection.map(\.path), move: command == .cut, from: remote, owner: hwnd)
             status = "\(selection.count) item\(selection.count == 1 ? "" : "s") \(command == .cut ? "cut" : "copied")"
             statusIsError = false
             if let hwnd { InvalidateRect(hwnd, nil, false) }
         case .paste:
-            guard let remote, RemoteClipboard.host == remote.endpoint.label, !RemoteClipboard.paths.isEmpty else {
-                status = ShellClipboard.hasFiles ? "Copying files from this PC to a host comes with uploads." : "Nothing to paste."
-                statusIsError = false
-                if let hwnd { InvalidateRect(hwnd, nil, false) }
+            guard let remote, RemoteClipboard.isCurrent, RemoteClipboard.host == remote.endpoint.label else {
+                if let (paths, _) = ShellClipboard.get(owner: hwnd), !paths.isEmpty {
+                    upload(paths, into: folder) // Files copied on this PC (or in File Explorer) go up to the host.
+                } else {
+                    status = RemoteClipboard.isCurrent ? "Items from another host can't be pasted here; download them first." : "Nothing to paste."
+                    statusIsError = false
+                    if let hwnd { InvalidateRect(hwnd, nil, false) }
+                }
                 return true
             }
             let paths = RemoteClipboard.paths, move = RemoteClipboard.move
@@ -706,7 +741,7 @@ final class ExplorerPane: WindowObject {
                                 message: "“\(RemotePath.name(path))” can't go inside itself. Choose a destination outside it.")
                 return true
             }
-            if move { RemoteClipboard.paths = [] }
+            if move { RemoteClipboard.clear() }
             let names = Locked<Set<String>>([])
             remoteChange({ client in
                 for path in paths {
@@ -735,6 +770,18 @@ final class ExplorerPane: WindowObject {
                 if isFolder { try client.mkdir(remoteJoin(folder, name)) } else { try RemoteFiles.newFile(remoteJoin(folder, name), client: client) }
                 created.update { $0 = name }
             }, select: { created.value.map { [$0] } ?? [] })
+        case .upload:
+            let paths = openFiles(owner: GetAncestor(hwnd, UINT(GA_ROOT)), title: "Upload to \(remote?.endpoint.label ?? "the host")")
+            if !paths.isEmpty { upload(paths, into: folder) }
+        case .uploadFolder:
+            if let path = chooseFolder(owner: GetAncestor(hwnd, UINT(GA_ROOT)), title: "Choose a folder to upload to \(remote?.endpoint.label ?? "the host").") {
+                upload([path], into: folder)
+            }
+        case .download:
+            guard !selection.isEmpty, let remote else { return true }
+            if let target = chooseFolder(owner: GetAncestor(hwnd, UINT(GA_ROOT)), title: "Download to which folder on this PC?") {
+                download(selection.map(\.path), from: remote, into: URL(fileURLWithPath: target))
+            }
         case .openInTerminal, .openWith, .properties, .folderProperties, .showInFileExplorer:
             break // Not for host files.
         default:
@@ -767,7 +814,7 @@ final class ExplorerPane: WindowObject {
         }
         func divider() { AppendMenuW(menu, UINT(MF_SEPARATOR), 0, nil) }
         let selection = selectedEntries
-        let canPaste = remote.map { RemoteClipboard.host == $0.endpoint.label && !RemoteClipboard.paths.isEmpty } ?? false
+        let canPaste = ShellClipboard.hasFiles || (remote.map { RemoteClipboard.isCurrent && RemoteClipboard.host == $0.endpoint.label } ?? false)
         if onItem, !selection.isEmpty {
             item("Open\tEnter", .open)
             divider()
@@ -778,9 +825,15 @@ final class ExplorerPane: WindowObject {
             divider()
             item("Rename…\tF2", .rename, enabled: selection.count == 1)
             item("Delete…\tDelete", .delete)
+            divider()
+            item("Download…", .download)
         } else {
             item("New Folder\tCtrl+Shift+N", .newFolder)
             item("New File", .newFile)
+            divider()
+            item("Upload Files…", .upload)
+            item("Upload Folder…", .uploadFolder)
+            if !selection.isEmpty { item("Download…", .download) }
             divider()
             item("Paste\tCtrl+V", .paste, enabled: canPaste)
             item("Copy Path", .copyPath)
@@ -791,6 +844,175 @@ final class ExplorerPane: WindowObject {
         }
         let chosen = MainMenu.trackPopup(menu, at: screen, owner: owner, rightAligned: rightAligned)
         if let command = Command(rawValue: chosen) { perform(command) }
+    }
+
+    // MARK: Uploads and downloads
+
+    /// Uploads files and folders from this PC into `folder` on this explorer's host, under free names.
+    func upload(_ paths: [String], into folder: String) {
+        guard let remote else { return }
+        for path in paths { run(.upload(URL(fileURLWithPath: path), into: folder), on: remote) }
+    }
+
+    /// Downloads host items into `folder` on this PC, under free names.
+    func download(_ paths: [String], from session: RemoteSession, into folder: URL) {
+        for path in paths { run(.download(path, into: folder), on: session) }
+    }
+
+    private func channel(for session: RemoteSession) -> RemoteSession {
+        if let channel = transferChannels[session.endpoint.label] { return channel }
+        let channel = session.twin()
+        transferChannels[session.endpoint.label] = channel
+        return channel
+    }
+
+    /// One transfer, queued on the host's transfer channel. The strip shows its progress; Cancel stops it and
+    /// discards the partial copy; Retry runs it again from the start.
+    private func run(_ transfer: Transfer, on session: RemoteSession) {
+        let id: Foundation.UUID
+        switch transfer {
+        case .upload(let url, let folder):
+            id = transfers.enqueueUpload(localURL: url, remotePath: remoteJoin(folder, url.lastPathComponent), totalBytes: 0)
+        case .download(let path, let folder):
+            id = transfers.enqueueDownload(remotePath: path, localURL: folder.appendingPathComponent(RemotePath.name(path)), totalBytes: 0)
+        }
+        retries[id] = { [weak self] in self?.run(transfer, on: session) }
+        let flag = CancelFlag()
+        transferFlags[id] = flag
+        let queue = transfers
+        let meter = ProgressMeter { done in MainThread.async { queue.updateProgress(id: id, bytesTransferred: done) } }
+        let channel = channel(for: session)
+        MainThread.background({
+            try channel.run { client in
+                let worker = RemoteTransfer(client: client, progress: meter.add, isCancelled: { flag.isSet })
+                let total: Int64
+                switch transfer {
+                case .upload(let url, _): total = RemoteTransfer.size(of: url)
+                case .download(let path, _): total = try worker.size(of: path)
+                }
+                MainThread.async {
+                    if let index = queue.items.firstIndex(where: { $0.id == id }) { queue.items[index].totalBytes = total }
+                    queue.updateProgress(id: id, bytesTransferred: 0)
+                }
+                switch transfer {
+                case .upload(let url, let folder):
+                    try worker.upload(url, to: try RemoteFiles.destination(for: url.lastPathComponent, in: folder, client: client))
+                case .download(let path, let folder):
+                    try worker.download(path, to: RemoteTransfer.localDestination(for: RemotePath.name(path), in: folder))
+                }
+            }
+        }) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success: queue.markCompleted(id: id)
+            case .failure(let error):
+                if flag.isSet { queue.cancel(id: id) } else { queue.markFailed(id: id, message: error.localizedDescription) }
+            }
+            self.transferFlags[id] = nil
+            // Show what arrived when it landed in the folder on screen.
+            switch transfer {
+            case .upload(_, let folder) where self.remote != nil && folder == self.folder: self.reload()
+            case .download(_, let folder) where self.remote == nil && Self.fullPath(folder.path) == self.folder: self.reload()
+            default: break
+            }
+        }
+    }
+
+    private func stripClick(_ action: StripAction) {
+        switch action {
+        case .clear:
+            transfers.items.removeAll { item in
+                switch item.state { case .pending, .inProgress: return false; default: return true }
+            }
+            retries = retries.filter { id, _ in transfers.items.contains { $0.id == id } }
+        case .cancel(let id):
+            transferFlags[id]?.cancel()
+            transfers.cancel(id: id)
+        case .retry(let id):
+            guard let again = retries.removeValue(forKey: id) else { return }
+            transfers.items.removeAll { $0.id == id }
+            again()
+        }
+    }
+
+    private func paintStrip(_ dc: HDC?, client: RECT, colors: WindowChrome.Colors, background: COLORREF) {
+        stripButtons = []
+        let height = stripHeight
+        guard height > 0 else { return }
+        func s(_ v: Double) -> Int32 { scaled(v, dpi: dpi) }
+        let top = client.bottom - statusHeight - height
+        let left = placesWidth + s(10), right = client.right - s(10)
+        fill(dc, RECT(left: placesWidth, top: top, right: client.right, bottom: top + 1), colors.border)
+        draw(dc, "Transfers", RECT(left: left, top: top + s(4), right: right, bottom: top + s(28)), font: fonts.heading, color: colors.text)
+        let clearWidth = s(110)
+        let clear = RECT(left: right - clearWidth, top: top + s(4), right: right, bottom: top + s(28))
+        draw(dc, "Clear Finished", clear, font: fonts.ui, color: colors.accentText, center: true)
+        stripButtons.append((clear, .clear))
+        var y = top + s(30)
+        for item in transfers.items.suffix(4) {
+            let row = RECT(left: left, top: y, right: right, bottom: y + s(24))
+            draw(dc, { if case .upload = item.direction { return true }; return false }() ? "\u{E898}" : "\u{E896}", RECT(left: row.left, top: row.top, right: row.left + s(22), bottom: row.bottom),
+                 font: fonts.glyph, color: colors.dim, center: true)
+            let nameRect = RECT(left: row.left + s(26), top: row.top, right: row.left + s(220), bottom: row.bottom)
+            draw(dc, item.name, nameRect, font: fonts.ui, color: colors.text, ellipsis: true)
+            let middle = RECT(left: nameRect.right + s(10), top: row.top, right: row.right - s(80), bottom: row.bottom)
+            let action = RECT(left: row.right - s(70), top: row.top, right: row.right, bottom: row.bottom)
+            switch item.state {
+            case .failed(let message):
+                draw(dc, message, middle, font: fonts.ui, color: colorRef(196, 43, 28), ellipsis: true)
+                if retries[item.id] != nil { draw(dc, "Retry", action, font: fonts.ui, color: colors.accentText, center: true); stripButtons.append((action, .retry(item.id))) }
+            case .completed:
+                draw(dc, "Done", middle, font: fonts.ui, color: colors.dim)
+            case .cancelled:
+                draw(dc, "Cancelled", middle, font: fonts.ui, color: colors.dim)
+                if retries[item.id] != nil { draw(dc, "Retry", action, font: fonts.ui, color: colors.accentText, center: true); stripButtons.append((action, .retry(item.id))) }
+            case .pending, .inProgress:
+                // A progress bar, then the bytes so far.
+                let barHeight = s(6), barTop = (middle.top + middle.bottom - barHeight) / 2
+                let barRight = middle.right - s(130)
+                fill(dc, RECT(left: middle.left, top: barTop, right: barRight, bottom: barTop + barHeight), blend(background, colors.text, 0.12))
+                let width = Int32(Double(barRight - middle.left) * item.progressFraction)
+                fill(dc, RECT(left: middle.left, top: barTop, right: middle.left + width, bottom: barTop + barHeight), colors.accent)
+                var amount = ByteCountFormatter.string(fromByteCount: item.totalBytes, countStyle: .file)
+                if case .inProgress(let done, _) = item.state {
+                    amount = ByteCountFormatter.string(fromByteCount: done, countStyle: .file) + " of " + amount
+                }
+                draw(dc, amount, RECT(left: barRight + s(8), top: row.top, right: middle.right, bottom: row.bottom), font: fonts.ui, color: colors.dim, ellipsis: true)
+                draw(dc, "\u{E711}", action, font: fonts.glyph, color: colors.text, center: true)
+                stripButtons.append((action, .cancel(item.id)))
+            }
+            y += s(26)
+        }
+    }
+
+    /// Hover hints for the drawn controls: the location bar, the places and the transfer strip.
+    private func updateHints(client: RECT) {
+        guard let hwnd else { return }
+        var entries: [(id: UINT_PTR, rect: RECT, text: String)] = []
+        let bar: [BarItem: String] = [
+            .back: "Back (Alt+←)\nGo to the folder you were in before.",
+            .forward: "Forward (Alt+→)\nGo forward again after going back.",
+            .up: "Up (Alt+↑)\nGo to the folder that holds this one.",
+            .home: "Home (Alt+Home)\nGo to your home folder.",
+            .actions: "File Actions\n" + (remote == nil ? "Cut, copy, paste, move to the Recycle Bin, select all, new folder or file, hidden files and reload."
+                                                         : "Upload, download, cut, copy, paste, delete, select all, new folder or file, hidden files and reload."),
+        ]
+        for (index, item) in [BarItem.back, .forward, .up, .home, .actions].enumerated() {
+            if let rect = barRects[item], let text = bar[item] { entries.append((UINT_PTR(1 + index), rect, text)) }
+        }
+        for (index, place) in placeRects.enumerated() {
+            entries.append((UINT_PTR(100 + index), place.0, "\(place.1.name)\n\(place.1.path)"))
+        }
+        for (index, button) in stripButtons.enumerated() {
+            let text: String
+            switch button.action {
+            case .clear: text = "Clear Finished\nRemove completed, failed and cancelled transfers from this list."
+            case .cancel: text = "Cancel\nStop this transfer and discard the partial copy."
+            case .retry: text = "Retry\nRun this transfer again from the start."
+            }
+            entries.append((UINT_PTR(1000 + index), button.rect, text))
+        }
+        hints.update(owner: hwnd, entries)
     }
 
     // MARK: Scripted runs
@@ -807,6 +1029,14 @@ final class ExplorerPane: WindowObject {
     /// showHidden, reload, selectAll, up, back). Returns false for an unknown name.
     @discardableResult
     func perform(named name: String) -> Bool {
+        if name.hasPrefix("upload=") {
+            upload(name.dropFirst(7).split(separator: "|").map(String.init), into: folder)
+            return true
+        }
+        if name.hasPrefix("download="), let remote {
+            download(selectedEntries.map(\.path), from: remote, into: URL(fileURLWithPath: String(name.dropFirst(9))))
+            return true
+        }
         switch name {
         case "up": goUp(); return true
         case "back": goBack(); return true
@@ -836,7 +1066,7 @@ final class ExplorerPane: WindowObject {
         }
         func divider() { AppendMenuW(menu, UINT(MF_SEPARATOR), 0, nil) }
         let selection = selectedEntries
-        let canPaste = ShellClipboard.hasFiles
+        let canPaste = ShellClipboard.hasFiles || RemoteClipboard.isCurrent
         if onItem, !selection.isEmpty {
             item("Open\tEnter", .open)
             if selection.count == 1 && !selection[0].isFolder { item("Open With…", .openWith) }
@@ -1011,6 +1241,9 @@ final class ExplorerPane: WindowObject {
                  center: true)
         }
 
+        paintStrip(dc, client: client, colors: colors, background: barBackground)
+        updateHints(client: client)
+
         // Status line: item counts, or the last problem.
         let selected = selectedRows.count
         let counts = "\(rows.count) item\(rows.count == 1 ? "" : "s")" + (selected > 0 ? ", \(selected) selected" : "")
@@ -1061,7 +1294,9 @@ final class ExplorerPane: WindowObject {
             return 0
         case WM_LBUTTONDOWN:
             let point = POINT(x: Int32(loWord(lParam)), y: Int32(hiWord(lParam)))
-            if let item = barItem(at: point) {
+            if let action = stripButtons.first(where: { point.x >= $0.rect.left && point.x < $0.rect.right && point.y >= $0.rect.top && point.y < $0.rect.bottom })?.action {
+                stripClick(action)
+            } else if let item = barItem(at: point) {
                 switch item {
                 case .back: goBack()
                 case .forward: goForward()
@@ -1128,6 +1363,25 @@ final class ExplorerPane: WindowObject {
             default:
                 return nil
             }
+        case WM_DROPFILES:
+            let drop = HDROP(OpaquePointer(bitPattern: UInt(wParam)))
+            let count = DragQueryFileW(drop, 0xFFFF_FFFF, nil, 0)
+            var paths: [String] = []
+            for index in 0..<count {
+                let length = DragQueryFileW(drop, index, nil, 0)
+                var buffer = [WCHAR](repeating: 0, count: Int(length) + 1)
+                DragQueryFileW(drop, index, &buffer, UINT(buffer.count))
+                paths.append(String(decoding: buffer.prefix(Int(length)), as: UTF16.self))
+            }
+            DragFinish(drop)
+            guard !paths.isEmpty else { return 0 }
+            if remote != nil {
+                upload(paths, into: folder)
+            } else {
+                ShellOperation.run(.copy, paths, to: folder, owner: hwnd)
+                reload()
+            }
+            return 0
         case WM_APP_DEFERRED:
             if let rename = pendingRename {
                 pendingRename = nil
@@ -1292,6 +1546,7 @@ enum HeaderColors {
     static func attach(to list: HWND?) {
         guard let list else { return }
         SetWindowSubclass(list, { window, message, wParam, lParam, _, _ in
+            if message == UINT(WM_DROPFILES) { return SendMessageW(GetParent(window), message, wParam, lParam) }
             if message == UINT(WM_NOTIFY), let header = UnsafePointer<NMHDR>(bitPattern: UInt(lParam)),
                Int32(bitPattern: header.pointee.code) == -12 /* NM_CUSTOMDRAW */,
                header.pointee.hwndFrom == HWND(bitPattern: Int(SendMessageW(window, UINT(LVM_GETHEADER), 0, 0))) {

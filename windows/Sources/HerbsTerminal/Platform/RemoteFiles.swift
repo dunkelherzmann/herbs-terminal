@@ -176,9 +176,178 @@ enum RemoteClipboard {
     static var host: String?
     static var paths: [String] = []
     static var move = false
+    static var session: RemoteSession?
+    /// The Windows clipboard's sequence number right after the host items were copied.
+    private static var sequence: DWORD = 0
+
+    /// Host items were copied and nothing newer is on the Windows clipboard.
+    static var isCurrent: Bool { !paths.isEmpty && sequence == GetClipboardSequenceNumber() }
+
+    /// Copy or Cut in a host's explorer. The Windows clipboard gets the paths as text (so a later copy elsewhere
+    /// clearly replaces them), and pasting into this PC's explorer downloads the items.
+    static func put(_ paths: [String], move: Bool, from session: RemoteSession, owner: HWND?) {
+        host = session.endpoint.label
+        self.paths = paths
+        self.move = move
+        self.session = session
+        setClipboardText(paths.joined(separator: "\r\n"), owner: owner)
+        sequence = GetClipboardSequenceNumber()
+    }
+
+    static func clear() { paths = [] }
 }
 
 extension RemoteEndpoint {
     /// The names ssh's password prompt uses for this login ("user@host's password:").
     var passwordLogins: [String] { ["\(username)@\(host)"] }
+}
+
+extension RemoteSession {
+    /// Another channel to the same host with the same login, so transfers don't hold up browsing.
+    func twin() -> RemoteSession { RemoteSession(endpoint: endpoint, password: password) }
+}
+
+/// Streams files and folders between this PC and a host over one SFTP channel, as Linux's `SFTPTransfer` does.
+/// Uploads land under an unguessable temporary name opened exclusively and are renamed into place, so an
+/// interrupted upload never leaves a half-written file under the real name, and nothing already there is written
+/// through. Downloads are staged the same way on this PC.
+struct RemoteTransfer {
+    let client: SFTPClient
+    var progress: (Int64) -> Void = { _ in }
+    var isCancelled: () -> Bool = { false }
+
+    func upload(_ local: URL, to remote: String) throws {
+        try checkCancelled()
+        var isFolder: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: local.path, isDirectory: &isFolder) else {
+            throw FileIssue("“\(local.lastPathComponent)” no longer exists on this PC.")
+        }
+        if isFolder.boolValue {
+            try client.mkdir(remote)
+            for child in try FileManager.default.contentsOfDirectory(at: local, includingPropertiesForKeys: nil) {
+                try upload(child, to: remoteJoin(remote, child.lastPathComponent))
+            }
+            return
+        }
+        // Windows has no POSIX permissions to carry over; files arrive as rw-r--r--.
+        let tag = UUID().uuidString.prefix(8).lowercased()
+        let part = remoteJoin(RemotePath.parent(remote), ".\(RemotePath.name(remote)).\(tag).herbsterminal-part")
+        let source = try FileHandle(forReadingFrom: local)
+        defer { try? source.close() }
+        let handle = try client.open(part, flags: RemoteFiles.write | RemoteFiles.create | RemoteFiles.exclusive, mode: 0o644)
+        do {
+            try client.writeAll(handle) {
+                try checkCancelled()
+                guard let chunk = try source.read(upToCount: 32768), !chunk.isEmpty else { return nil }
+                progress(Int64(chunk.count))
+                return chunk
+            }
+            try client.close(handle)
+            try client.rename(part, remote)
+        } catch {
+            try? client.close(handle)
+            try? client.remove(part)
+            throw error
+        }
+    }
+
+    /// `top` is the item that was picked, followed if it's a link. Inside a folder, links are skipped, so a link
+    /// such as `loop -> ..` can't recurse forever.
+    func download(_ remote: String, to local: URL, top: Bool = true) throws {
+        try checkCancelled()
+        let attributes = try client.stat(remote, follow: top)
+        if attributes.link { return }
+        if attributes.directory {
+            try FileManager.default.createDirectory(at: local, withIntermediateDirectories: false)
+            for entry in try client.list(remote) {
+                try download(remoteJoin(remote, entry.name), to: local.appendingPathComponent(entry.name), top: false)
+            }
+            return
+        }
+        let part = local.deletingLastPathComponent().appendingPathComponent(".\(local.lastPathComponent).herbsterminal-part")
+        guard FileManager.default.createFile(atPath: part.path, contents: nil) else {
+            throw FileIssue("Couldn't write in “\(local.deletingLastPathComponent().path)”.")
+        }
+        do {
+            let target = try FileHandle(forWritingTo: part)
+            defer { try? target.close() }
+            let handle = try client.open(remote, flags: RemoteFiles.read)
+            defer { try? client.close(handle) }
+            try client.readAll(handle) { chunk in
+                try checkCancelled()
+                try target.write(contentsOf: chunk)
+                progress(Int64(chunk.count))
+            }
+            try target.close()
+            try FileManager.default.moveItem(at: part, to: local)
+        } catch {
+            try? FileManager.default.removeItem(at: part)
+            throw error
+        }
+    }
+
+    func size(of remote: String, top: Bool = true) throws -> Int64 {
+        let attributes = try client.stat(remote, follow: top)
+        if attributes.link { return 0 }
+        guard attributes.directory else { return Int64(attributes.size ?? 0) }
+        return try client.list(remote).reduce(0) { $0 + (try size(of: remoteJoin(remote, $1.name), top: false)) }
+    }
+
+    static func size(of local: URL) -> Int64 {
+        var isFolder: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: local.path, isDirectory: &isFolder), isFolder.boolValue else {
+            return ((try? FileManager.default.attributesOfItem(atPath: local.path)[.size]) as? NSNumber)?.int64Value ?? 0
+        }
+        let walker = FileManager.default.enumerator(atPath: local.path)
+        var total: Int64 = 0
+        while walker?.nextObject() != nil {
+            total += ((walker?.fileAttributes?[.size]) as? NSNumber)?.int64Value ?? 0
+        }
+        return total
+    }
+
+    /// A name on this PC that nothing has yet: `name`, then "name copy", "name copy 2"… as on the Mac and Linux.
+    static func localDestination(for name: String, in folder: URL) -> URL {
+        let ext = (name as NSString).pathExtension
+        let base = ext.isEmpty ? name : (name as NSString).deletingPathExtension
+        var candidate = folder.appendingPathComponent(name)
+        var index = 1
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = folder.appendingPathComponent(base + (index == 1 ? " copy" : " copy \(index)") + (ext.isEmpty ? "" : "." + ext))
+            index += 1
+        }
+        return candidate
+    }
+
+    private func checkCancelled() throws {
+        if isCancelled() { throw FileIssue("Transfer cancelled.") }
+    }
+}
+
+/// Shared between a background transfer and the Cancel button that stops it.
+final class CancelFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var set = false
+    var isSet: Bool { lock.withLock { set } }
+    func cancel() { lock.withLock { set = true } }
+}
+
+/// Collects byte counts from a background transfer and reports them about ten times a second.
+final class ProgressMeter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done: Int64 = 0
+    private var reported = Date.distantPast
+    private let report: @Sendable (Int64) -> Void
+
+    init(report: @escaping @Sendable (Int64) -> Void) { self.report = report }
+
+    func add(_ bytes: Int64) {
+        let snapshot: Int64? = lock.withLock {
+            done += bytes
+            guard Date().timeIntervalSince(reported) > 0.1 else { return nil }
+            reported = Date()
+            return done
+        }
+        if let snapshot { report(snapshot) }
+    }
 }

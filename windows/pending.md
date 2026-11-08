@@ -14,7 +14,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] **2. File explorer, hosts** (#18) (§4, §5): browse the SSH tab's host over SFTP (Windows OpenSSH has no
       `ControlMaster`, so the explorer opens its own session with the saved password), Home and File System
       places, rename, delete, New Folder / New File, copy and move on the host.
-- [ ] **3. Transfers** (§5): upload and download files and folder trees, the progress strip with Cancel and
+- [x] **3. Transfers** (#19) (§5): upload and download files and folder trees, the progress strip with Cancel and
       Retry, staged uploads, new names instead of overwriting; copy between this PC and a host with the clipboard.
 - [ ] **4. Text editor** (§5): open text files as a tab, Find, Wrap Lines, status line, encodings and line endings
       kept, Save locally and to hosts, unsaved-changes prompts.
