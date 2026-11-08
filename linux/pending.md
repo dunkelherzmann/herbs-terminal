@@ -3,11 +3,11 @@
 What the Linux version still needs before it can ship with as few bugs as possible: everything a feature test found broken or missing, and every feature no automatic test covers yet. Fix broken items first, one pull request each, and tick an item with its PR number once it is fixed and its test passes. `bugs.md` and `enhancements.md` stay the record of requests and releases.
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-08 19:06)
+## Feature test results (2026-11-08 19:33)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Not checked automatically (91)
+### Not checked automatically (87)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -69,11 +69,7 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **G4** Hidden and Locked (Mac only). (§5): Mac only
 - [ ] **G5** Apply to enclosed items; Apply changes only what was edited; Revert. (§5): the Get Info window isn't driven by the bridge yet
 - [ ] **G6** Works on this computer and on hosts. (§5): the Get Info window isn't driven by the bridge yet
-- [ ] **A1** Lock button starts Administrator mode for the tab, locally and on the connected host. (§5): needs a sudo password (not automated)
-- [ ] **A2** Every explorer action runs as root (sftp-server under sudo). (§5): needs a sudo password (not automated)
-- [ ] **A3** sudo password checked first, never stored; password-free sudo not asked. (§5): needs a sudo password (not automated)
-- [ ] **A4** Safe root delete rules. (§5): needs a sudo password (not automated)
-- [ ] **A5** Red bar until you leave; ends with the SSH session. (§5): needs a sudo password (not automated)
+- [ ] **A4** Safe root delete rules. (§5): deleting system folders as root isn't something to try on a real machine
 - [ ] **L1** Login database (host, port, username, password), several logins per host, host names ignore case. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L2** Administrator Password: AES-GCM with PBKDF2 600,000 rounds; locked at start, unlock once per… (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L3** Change the Administrator Password re-encrypts everything; removing it asks. (§6): covered by the unit and self tests of the shared vault code
