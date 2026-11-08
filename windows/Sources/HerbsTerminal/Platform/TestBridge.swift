@@ -141,6 +141,10 @@ enum TestBridge {
             return run ? "ran" : "enabled"
         }
         switch name {
+        case "connect-button":
+            // The toolbar's SSH button: connection details while connected, Connect via SSH otherwise.
+            if run { workspace.connectButton() }
+            return run ? "ran" : "enabled"
         case "toggle-explorer", "show-explorer":
             if run { workspace.toggleExplorer() }
             return run ? "ran" : "enabled"
@@ -242,6 +246,13 @@ enum TestBridge {
                         entry["panes"] = [["number": number, "focused": true, "columns": pane.terminal.cols, "rows": pane.terminal.rows,
                                            "title": pane.title, "subtitle": pane.subtitle, "exited": !pane.isRunning, "text": pane.exportText(),
                                            "fontSize": settings.effectiveSize] as [String: Any]]
+                        // A tab's connection, as the Mac and Linux report it.
+                        if let remote = pane.remote {
+                            entry["connection"] = pane.isConnected ? ["state": "connected", "account": remote.label]
+                                : pane.isRunning ? ["state": "connecting", "account": remote.label] : ["state": "failed", "account": remote.label]
+                        } else {
+                            entry["connection"] = ["state": "local"]
+                        }
                         if let explorer = pane.explorer { entry["explorer"] = explorer.bridgeState }
                     } else if let editor = tab as? TextEditorPane {
                         entry["kind"] = "editor"

@@ -781,17 +781,6 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         return userAtHost + " — " + trimmed
     }
 
-    /// Shells set their executable's full path as the title; the tab shows just its name ("powershell").
-    static func tabTitle(_ title: String) -> String {
-        let trimmed = title.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return "Terminal" }
-        if trimmed.lowercased().hasSuffix(".exe"), trimmed.contains("\\") {
-            let name = trimmed.split(separator: "\\").last.map(String.init) ?? trimmed
-            return String(name.dropLast(4))
-        }
-        return trimmed
-    }
-
     // MARK: Title and location
 
     private func setLocation(_ folder: String?) {
@@ -833,11 +822,10 @@ final class TerminalPane: WindowObject, TerminalDelegate {
 
     nonisolated func setTerminalTitle(source: Terminal, title: String) {
         MainActor.assumeIsolated {
-            // An SSH tab keeps its user@host until the remote shell names itself; ssh.exe's own path isn't news.
             if let remote {
-                // An SSH tab keeps its user@host until the remote shell names itself; ssh.exe's own path isn't news.
-                let named = Self.tabTitle(title)
-                self.title = named == "Terminal" || title.lowercased().hasSuffix("ssh.exe") ? remote.label : named
+                // As on the Mac and Linux, an SSH tab is titled with the account it connected to, whatever the
+                // remote shell calls itself.
+                self.title = remote.label
             } else {
                 baseTitle = Self.localTitle(reported: title)
                 composeLocalTitle()

@@ -7,6 +7,7 @@ Each test gets a fresh app (`Context`) and ends in one outcome:
   unverified the feature can't be checked automatically yet (the reason says why), so a person must try it.
 Tests registered with `manual` don't start the app.
 """
+import os
 import time
 
 TESTS = {}      # feature id -> list of (title, function or reason)
@@ -153,7 +154,64 @@ def has_window(state, title):
     return any(title.lower() in (t or "").lower() for t in state.get("toplevels", []))
 
 
-NEEDS_SSH = "needs an SSH test host (not set up yet)"
+NEEDS_SSH = "needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)"
+
+
+def ssh_account():
+    """The SSH test account, from HERBS_TEST_SSH or a private file outside the repository; None when not set up."""
+    value = os.environ.get("HERBS_TEST_SSH", "").strip()
+    if not value:
+        try:
+            with open(os.path.expanduser("~/.config/herbs-terminal/test-ssh"), encoding="utf-8") as f:
+                value = f.read().strip()
+        except OSError:
+            return None
+    login, _, rest = value.partition(":")
+    port, _, password = rest.partition(":")
+    user, _, host = login.partition("@")
+    if not (user and host and port.isdigit()):
+        return None
+    return {"user": user, "host": host, "port": int(port), "password": password, "label": f"{user}@{host}"}
+
+
+def connection(c, s=None):
+    return c.tab(s).get("connection", {})
+
+
+def expect_connected(c, account, s):
+    c.expect(connection(c, s).get("state") == "connected" and any(l.startswith(account["user"] + "@") for l in c.text(s).splitlines()),
+             f"expected a login to {account['label']} (saw: {connection(c, s)}; {summary(s)})")
+
+
+def connect_test_host(c, password=None):
+    """Connects the selected tab (Windows: a new tab) to the test host, answering a first host-key question."""
+    account = ssh_account()
+    if not account:
+        c.unverified(NEEDS_SSH)
+    c.bridge.call("connect", host=account["host"], port=account["port"], user=account["user"],
+                  password=account["password"] if password is None else password)
+    # The scene has its own empty known_hosts, so ssh asks about the host key first. A login can be reported
+    # failed while that question waits; only a failure that lasts with no question pending counts.
+    deadline, answered, failed_since = time.time() + 30, False, None
+    while time.time() < deadline:
+        s = c.state()
+        if not answered and "(yes/no" in c.text(s):
+            c.type("yes" + c.app.enter, settle=1)
+            answered, failed_since = True, None
+            continue
+        state = connection(c, s).get("state")
+        # Connected means logged in: the remote shell's prompt names the account (Windows reports a running
+        # ssh as connected before the login is done).
+        if state == "connected" and any(line.startswith(account["user"] + "@") for line in c.text(s).splitlines()):
+            return account, s
+        if state == "failed":
+            failed_since = failed_since or time.time()
+            if time.time() - failed_since > 5:
+                return account, s
+        else:
+            failed_since = None
+        time.sleep(0.5)
+    return account, c.state()
 NEEDS_GUI = "needs pointer or keyboard input the test bridge doesn't reach yet"
 
 # ---------------------------------------------------------------- W: Window and toolbar
@@ -164,7 +222,7 @@ def _(c):
     c.until(lambda s: [t["name"] for t in c.tabs(s)] == ["Terminal 1", "Terminal 2"] and c.tab(s)["name"] == "Terminal 2",
             "expected tabs Terminal 1 and Terminal 2, with the new one selected")
 
-manual("W2", "Connection details while connected", NEEDS_SSH)
+manual("W2", "Connection details while connected", "checked as S10")
 
 @test("W3", "The title follows the folder and the program")
 def _(c):
@@ -502,8 +560,48 @@ manual("R12", "Light and dark for the whole app", "visual: needs pictures in lig
 def _(c):
     c.command("connect", settle=1.5)
     c.until(lambda s: has_window(s, "Connect") or has_dialog(s, "Administrator") or s.get("dialogs"), "expected the Connect via SSH dialog")
-for fid in ("S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10"):
-    manual(fid, "SSH", NEEDS_SSH)
+@test("S2", "Once logged in, the explorer moves to the same host and account")
+def _(c):
+    account, s = connect_test_host(c)
+    expect_connected(c, account, s)
+    c.expect(account["label"] in c.window(s)["title"], f"the title doesn't name {account['label']}: {c.window(s)['title']!r}")
+    c.command("toggle-explorer", settle=2)
+    c.until(lambda s: c.tab(s).get("explorer", {}).get("remote") and c.tab(s)["explorer"].get("path", "").rstrip("/") == f"/home/{account['user']}",
+            f"expected the explorer in {account['user']}'s home on the host", timeout=15)
+
+@test("S4", "Disconnect returns the tab and title to this computer")
+def _(c):
+    account, s = connect_test_host(c)
+    expect_connected(c, account, s)
+    c.command("disconnect", settle=2)
+    c.until(lambda s: connection(c, s).get("state") in ("local", "failed") and account["label"] not in c.window(s)["title"],
+            "expected the tab back on this computer", timeout=15)
+
+@test("S5", "A failed login says so, and the title goes back to this computer")
+def _(c):
+    account, s = connect_test_host(c, password="wrong-" + str(int(time.time())))
+    # ssh asks again in the terminal after a refused saved password; give up there.
+    c.type("\x03", settle=1)
+    c.until(lambda s: connection(c, s).get("state") != "connected" and account["label"] not in c.window(s)["title"],
+            "expected the failed login to leave the tab on this computer", timeout=20)
+
+@test("S7", "No password on screen")
+def _(c):
+    account, s = connect_test_host(c)
+    expect_connected(c, account, s)
+    c.expect(account["password"] not in c.text(s), "the password is on the screen")
+
+@test("S10", "Connection details while connected")
+def _(c):
+    account, s = connect_test_host(c)
+    expect_connected(c, account, s)
+    c.command("connect-button", settle=1.5)
+    c.until(lambda s: has_window(s, "Connection") or any(account["label"] in d["heading"] or "Connection" in d["heading"] for d in s.get("dialogs", [])),
+            "expected the connection details")
+
+for fid, what in (("S3", "Following a typed ssh"), ("S6", "Shared connection and keepalive"), ("S8", "Host-key questions in the terminal"),
+                  ("S9", "Your own ssh configuration")):
+    manual(fid, what, "needs the user's own ssh setup or a dropped link; not automated yet")
 
 # ---------------------------------------------------------------- E: File explorer (in the scene's own folder only)
 
@@ -580,7 +678,25 @@ def _(c):
     c.until(lambda s: "note.txt" not in items(c, s), "expected Redo to move it again")
 
 manual("E9", "System file clipboard", "would use the system clipboard")
-manual("E10", "Host file operations", NEEDS_SSH)
+@test("E10", "Host: new folder, rename and delete")
+def _(c):
+    account, s = connect_test_host(c)
+    expect_connected(c, account, s)
+    c.command("toggle-explorer", settle=2)
+    if c.bridge.call("explorer-go", path=f"/home/{account['user']}") == "unsupported":
+        c.unverified("this platform's test bridge can't drive the explorer yet")
+    c.until(lambda s: c.tab(s).get("explorer", {}).get("remote"), "expected the host's files", timeout=15)
+    name = f"made-by-test-{int(time.time())}"
+    c.command("explorer.new-folder", settle=1.2)
+    s = c.until(lambda s: s.get("dialogs"), "expected the New Folder dialog")
+    c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() != "cancel"), [name])
+    c.until(lambda s: any(i.rstrip("/") == name for i in items(c, s)), "expected the new folder on the host", timeout=10)
+    c.bridge.call("explorer-select", names=[name + "/", name])
+    c.command("explorer.delete", settle=1.2)
+    s = c.state()
+    if s.get("dialogs"):
+        c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() not in ("cancel",)))
+    c.until(lambda s: not any(i.rstrip("/") == name for i in items(c, s)), "expected the folder gone from the host", timeout=10)
 manual("E11", "Pasting between this computer and a host", NEEDS_SSH)
 
 @test("E12", "A folder can't be pasted into itself")

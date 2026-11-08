@@ -260,7 +260,7 @@ final class Workspace: WindowObject {
     }
 
     /// The toolbar's SSH button: connection details while the tab is connected, Connect via SSH otherwise.
-    private func connectButton() {
+    func connectButton() {
         guard let pane = activePane, pane.isConnected, let remote = pane.remote else { showConnect(); return }
         var lines = ["Account: \(remote.username)", "Host: \(remote.host)", "Port: \(remote.port)", "Route: Direct SSH (Windows OpenSSH)"]
         if let since = pane.connectedAt {

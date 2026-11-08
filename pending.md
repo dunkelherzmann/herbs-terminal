@@ -3,15 +3,15 @@
 What the Mac version still needs before it can ship with as few bugs as possible: everything a feature test found broken or missing, and every feature no automatic test covers yet. Fix broken items first, one pull request each, and tick an item with its PR number once it is fixed and its test passes. `bugs.md` and `enhancements.md` stay the record of requests and releases.
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-08 18:22)
+## Feature test results (2026-11-08 19:08)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Not checked automatically (107)
+### Not checked automatically (102)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
-- [ ] **W2** Connect via SSH button; highlighted while connected, then shows the connection details (account,… (§2): needs an SSH test host (not set up yet)
+- [ ] **W2** Connect via SSH button; highlighted while connected, then shows the connection details (account,… (§2): checked as S10
 - [ ] **W6** Export Session button and shortcut: whole scrollback to `<tab> <date time>.txt`. (§2): the command is there; saving goes through the system's save dialog, which the bridge can't fill
 - [ ] **W7** Take Screenshot button and shortcut: picture of the window to the clipboard. (§2): not run on the Mac: it would replace what's on your clipboard
 - [ ] **W11** Search button: searches files in the explorer, the scrollback otherwise. (§2): the command is there; whether the search field opens isn't reported by the bridge yet
@@ -19,7 +19,7 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **W17** Hover hints on every control after about half a second, also in the background; screen readers get… (§2): covered by parity/check.sh (hover texts through the accessibility tree)
 - [ ] **T11** Session restore: tabs with folder, panes, explorer folder and name reopen at launch (on by… (§2): the test scene never saves or restores a session
 - [ ] **P5** Focused pane outlined; Zoom, Clear, Reset and Find act on it. (§2): visual: shown in the window's picture, not reported by the bridge
-- [ ] **P6** The tab's SSH connection and explorer belong to its first pane; the next pane takes over when it… (§2): needs an SSH test host (not set up yet)
+- [ ] **P6** The tab's SSH connection and explorer belong to its first pane; the next pane takes over when it… (§2): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **B1** Right-click menu: Copy, Paste, Paste Escaped Text, Select All, Find. (§2): the right-click menu needs a pointer click the bridge doesn't make yet
 - [ ] **B2** Right-click menu: Clear to Start, Clear Scrollback, Reset. (§2): the right-click menu needs a pointer click the bridge doesn't make yet
 - [ ] **B3** Right-click menu: Split Vertically, Split Horizontally, Close Pane, New Tab, Show File Explorer. (§2): the right-click menu needs a pointer click the bridge doesn't make yet
@@ -37,15 +37,10 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **R10** Settings ▸ Window: columns × rows for new windows (default 100 × 30), size badge toggle, Apply to… (§3): Settings opens; its Window page isn't read by the bridge yet
 - [ ] **R11** Settings ▸ Colors: color scheme, presets, import and removal. (§3): Settings opens; its Colors page isn't read by the bridge yet
 - [ ] **R12** Light and dark follow the system, for the whole app (dialogs and Settings included). (§3): visual: needs pictures in light and dark mode
-- [ ] **S2** Once logged in, the explorer moves to the same host and account. (§4): needs an SSH test host (not set up yet)
-- [ ] **S3** Typing `ssh user@host` or `ssh alias` in a local shell is followed like Connect via SSH (resolved… (§4): needs an SSH test host (not set up yet)
-- [ ] **S4** Exit or Disconnect returns the tab, title and explorer to this computer. (§4): needs an SSH test host (not set up yet)
-- [ ] **S5** Failed login or dropped link: a banner with the real state; title back to local. (§4): needs an SSH test host (not set up yet)
-- [ ] **S6** Shared connection (ControlMaster) so the explorer and transfers reuse the shell's login; keepalive… (§4): needs an SSH test host (not set up yet)
-- [ ] **S7** No command line, password or token on screen or in history; saved password through SSH_ASKPASS… (§4): needs an SSH test host (not set up yet)
-- [ ] **S8** Host-key questions, one-time codes and retries asked in the terminal. (§4): needs an SSH test host (not set up yet)
-- [ ] **S9** Your own `~/.ssh/config`, agent, keys and jump hosts are used. (§4): needs an SSH test host (not set up yet)
-- [ ] **S10** Connection details popover (account, host, port, route, remote home, time) with Disconnect and New… (§4): needs an SSH test host (not set up yet)
+- [ ] **S3** Typing `ssh user@host` or `ssh alias` in a local shell is followed like Connect via SSH (resolved… (§4): needs the user's own ssh setup or a dropped link; not automated yet
+- [ ] **S6** Shared connection (ControlMaster) so the explorer and transfers reuse the shell's login; keepalive… (§4): needs the user's own ssh setup or a dropped link; not automated yet
+- [ ] **S8** Host-key questions, one-time codes and retries asked in the terminal. (§4): needs the user's own ssh setup or a dropped link; not automated yet
+- [ ] **S9** Your own `~/.ssh/config`, agent, keys and jump hosts are used. (§4): needs the user's own ssh setup or a dropped link; not automated yet
 - [ ] **E1** Places: Home, the user folders, Computer, Trash, mounted devices; on a host Home and File System. (§5): checked in the accessibility tree by parity/check.sh; the bridge doesn't report places
 - [ ] **E2** Bookmarks (shortcut), kept per host; Remove Bookmark. (§5): needs pointer or keyboard input the test bridge doesn't reach yet
 - [ ] **E3** Back, Forward, Up, Home, Reload, show hidden files; Delete/BackSpace goes back. (§5): this platform's test bridge can't drive the explorer yet
@@ -55,20 +50,20 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **E7** Local: copy, move, move to Trash with "name copy" names; never overwrites. (§5): this platform's test bridge can't drive the explorer yet
 - [ ] **E8** Local: Undo and Redo, named after the action. (§5): this platform's test bridge can't drive the explorer yet
 - [ ] **E9** System file clipboard works both ways (Finder / file managers / File Explorer). (§5): would use the system clipboard
-- [ ] **E10** Host: move (undoable), copy on the host, delete after asking (whole folders). (§5): needs an SSH test host (not set up yet)
-- [ ] **E11** Pasting local files into a host uploads them; host items pasted locally download. (§5): needs an SSH test host (not set up yet)
+- [ ] **E10** Host: move (undoable), copy on the host, delete after asking (whole folders). (§5): this platform's test bridge can't drive the explorer yet
+- [ ] **E11** Pasting local files into a host uploads them; host items pasted locally download. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **E12** A folder can't be moved or copied into itself. (§5): this platform's test bridge can't drive the explorer yet
 - [ ] **E13** New Folder, New File (free "untitled" name), Rename; undoable locally, rename undoable on a host. (§5): this platform's test bridge can't drive the explorer yet
 - [ ] **E14** Search files (Find). (§5): this platform's test bridge can't drive the explorer yet
 - [ ] **E15** Open in Text Editor, Open with Default App, Reveal in Finder / Show in Files. (§5): this platform's test bridge can't drive the explorer yet
 - [ ] **E16** Open with Administrator Mode… on an item. (§5): needs a sudo password (not automated)
-- [ ] **X1** Upload and download single files and folder trees. (§5): needs an SSH test host (not set up yet)
-- [ ] **X2** Progress strip with Cancel and Retry; Clear Finished. (§5): needs an SSH test host (not set up yet)
-- [ ] **X3** Up to 16 requests in flight. (§5): needs an SSH test host (not set up yet)
-- [ ] **X4** A server silent for 30 s ends the request with an error; Reload works again. (§5): needs an SSH test host (not set up yet)
+- [ ] **X1** Upload and download single files and folder trees. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
+- [ ] **X2** Progress strip with Cancel and Retry; Clear Finished. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
+- [ ] **X3** Up to 16 requests in flight. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
+- [ ] **X4** A server silent for 30 s ends the request with an error; Reload works again. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **X5** Local copy, move and Trash run in the background with a "Copying…" note. (§5): needs a large folder and timing; not automated yet
-- [ ] **X6** Staged uploads (temporary name, exclusive, renamed into place). (§5): needs an SSH test host (not set up yet)
-- [ ] **X7** Name clashes get new names; links to folders inside trees are skipped. (§5): needs an SSH test host (not set up yet)
+- [ ] **X6** Staged uploads (temporary name, exclusive, renamed into place). (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
+- [ ] **X7** Name clashes get new names; links to folders inside trees are skipped. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **D1** Text files open as a tab in the window (double-click, Open in Text Editor); text detection by type… (§5): this platform's test bridge can't drive the explorer yet
 - [ ] **D2** New File… opens straight in the editor (locally and on hosts). (§5): this platform's test bridge can't drive the explorer yet
 - [ ] **D3** Monospaced font, undo, Find. (§5): the bridge can't type into the editor or read its status yet
@@ -100,7 +95,7 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **L9** Import (CSV, all-or-nothing). (§6): the Manage Logins window isn't driven by the bridge yet
 - [ ] **L10** Export ticked logins (checkbox column with select-all heading), file readable only by you,… (§6): the Manage Logins window isn't driven by the bridge yet
 - [ ] **L11** Double-click edits; Delete key or right-click removes after a confirmation defaulting to Cancel. (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **U7** Results per host: outcome, exit code, duration, output (64 KB cap, marked truncated). (§7): needs an SSH test host (not set up yet)
+- [ ] **U7** Results per host: outcome, exit code, duration, output (64 KB cap, marked truncated). (§7): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **C1** Add a peer: name, username, secret address, One-time or Persistent; addresses protected like logins. (§8): the window opens; adding a peer needs its form, which the bridge doesn't fill yet
 - [ ] **C2** Ping: Direct or Relayed with latency. (§8): needs a second machine running tailcat
 - [ ] **C3** Connect: shell and explorer through Tailcat, address never in arguments or history. (§8): needs a second machine running tailcat

@@ -101,6 +101,8 @@ enum TestBridge {
             "new-tab": { workspace.add() },
             "new-window": { openWindow?() },
             "connect": { workspace.showingSSHConnect = true },
+            // The toolbar's SSH button: connection details while connected, Connect via SSH otherwise.
+            "connect-button": { workspace.connectButton() },
             "disconnect": { workspace.disconnect() },
             "export-session": { workspace.exportSession() },
             "take-screenshot": { workspace.takeScreenshot() },
@@ -230,7 +232,10 @@ enum TestBridge {
                                         "fontSize": shell.settings.effectiveSize]
                             },
                         ]
-                        entry["explorer"] = ["shown": tab.state.layout == .explorer, "path": tab.state.directory.path,
+                        entry["connection"] = bridgeConnection(tab.state.connection)
+                        let remote: Bool = { if case .remote = tab.state.endpoint { return true }; return false }()
+                        entry["explorer"] = ["shown": tab.state.layout == .explorer, "remote": remote,
+                                             "path": remote ? tab.state.remoteDirectory : tab.state.directory.path,
                                              "items": [String](), "selected": [String]()] as [String: Any]
                         if let editor = tab.editor { entry["editor"] = ["name": editor.source.name, "edited": editor.isEdited, "text": editor.bridgeText] }
                         return entry
@@ -244,5 +249,15 @@ enum TestBridge {
             "settings": ["windowColumns": profile.windowColumns, "windowRows": profile.windowRows,
                          "askBeforeClosing": profile.askBeforeClosing],
         ]
+    }
+}
+
+/// A tab's connection for the feature tests: "local", "connecting", "connected" or "failed", and the account.
+func bridgeConnection(_ state: ConnectionState) -> [String: Any] {
+    switch state {
+    case .local: ["state": "local"]
+    case .connecting(let endpoint): ["state": "connecting", "account": endpoint.label]
+    case .connected(let endpoint): ["state": "connected", "account": endpoint.label]
+    case .failed(let reason): ["state": "failed", "reason": reason]
     }
 }
