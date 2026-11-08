@@ -223,6 +223,8 @@ enum TestBridge {
                 let legend = workspace.selected.focusedShell.legend
                 return [
                     "title": legend.title, "subtitle": legend.subtitle, "multiExec": workspace.multiExec,
+                    "visible": workspace.window?.isVisible ?? false, "onActiveSpace": workspace.window?.isOnActiveSpace ?? false,
+                    
                     "excluded": shells.enumerated().filter { workspace.excludedFromMultiExec.contains($0.element.id) }.map { $0.offset + 1 },
                     "tabs": workspace.tabs.map { tab -> [String: Any] in
                         var entry: [String: Any] = [
