@@ -30,7 +30,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     private var selectionEnd: Position?
     private var selecting = false
 
-    var title = "Terminal"
+    var title = TerminalPane.userAtHost
     /// The tab's number ("Terminal 2"), the lowest free one when it opened.
     var number = 1
     /// A name from Rename Tab; nil shows "Terminal <number>".
@@ -226,9 +226,9 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         guard let hwnd else { return }
         var rect = RECT()
         GetClientRect(hwnd, &rect)
-        let padding = Self.padding(hwnd)
-        let columns = max(2, Int((rect.right - 2 * padding) / max(1, fonts.cellWidth)))
-        let rows = max(1, Int((rect.bottom - 2 * padding) / max(1, fonts.cellHeight)))
+        let inset = Self.inset(hwnd)
+        let columns = max(2, Int((rect.right - inset.left - inset.right) / max(1, fonts.cellWidth)))
+        let rows = max(1, Int((rect.bottom - inset.top - inset.bottom) / max(1, fonts.cellHeight)))
         if columns != terminal.cols || rows != terminal.rows {
             terminal.resize(cols: columns, rows: rows)
             session?.resize(columns: columns, rows: rows)
@@ -237,7 +237,11 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         invalidate()
     }
 
-    static func padding(_ hwnd: HWND) -> Int32 { scaled(4, dpi: GetDpiForWindow(hwnd)) }
+    /// Space between the window and the text, as on the Mac: 8 px on the left and 6 px on top (4 px elsewhere).
+    static func inset(_ hwnd: HWND) -> (left: Int32, top: Int32, right: Int32, bottom: Int32) {
+        let dpi = GetDpiForWindow(hwnd)
+        return (scaled(8, dpi: dpi), scaled(6, dpi: dpi), scaled(4, dpi: dpi), scaled(4, dpi: dpi))
+    }
 
     private func invalidate() {
         if let hwnd { InvalidateRect(hwnd, nil, false) }
@@ -394,9 +398,9 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     private func invalidateCursor() {
         guard let hwnd else { return }
         let cursor = terminal.getCursorLocation()
-        let padding = Self.padding(hwnd)
-        var rect = RECT(left: padding + Int32(cursor.x) * fonts.cellWidth - 2, top: padding + Int32(cursor.y + scrollOffset) * fonts.cellHeight,
-                        right: padding + Int32(cursor.x + 2) * fonts.cellWidth + 2, bottom: padding + Int32(cursor.y + scrollOffset + 1) * fonts.cellHeight)
+        let inset = Self.inset(hwnd)
+        var rect = RECT(left: inset.left + Int32(cursor.x) * fonts.cellWidth - 2, top: inset.top + Int32(cursor.y + scrollOffset) * fonts.cellHeight,
+                        right: inset.left + Int32(cursor.x + 2) * fonts.cellWidth + 2, bottom: inset.top + Int32(cursor.y + scrollOffset + 1) * fonts.cellHeight)
         InvalidateRect(hwnd, &rect, false)
     }
 
@@ -552,8 +556,8 @@ final class TerminalPane: WindowObject, TerminalDelegate {
 
     /// The cell under a mouse position, in scroll-invariant rows.
     private func cell(at lParam: LPARAM) -> Position {
-        let padding = hwnd.map(Self.padding) ?? 0
-        let x = Int32(loWord(lParam)) - padding, y = Int32(hiWord(lParam)) - padding
+        let inset = hwnd.map(Self.inset) ?? (left: 0, top: 0, right: 0, bottom: 0)
+        let x = Int32(loWord(lParam)) - inset.left, y = Int32(hiWord(lParam)) - inset.top
         let column = max(0, min(terminal.cols, Int((x + fonts.cellWidth / 2) / max(1, fonts.cellWidth))))
         let row = max(0, min(terminal.rows - 1, Int(y >= 0 ? y / max(1, fonts.cellHeight) : -1)))
         return Position(col: column, row: viewTop + row)
@@ -639,14 +643,14 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         let oldFont = SelectObject(dc, fonts.normal)
         defer { SelectObject(dc, oldFont) }
 
-        let padding = Self.padding(hwnd)
+        let inset = Self.inset(hwnd)
         let cw = fonts.cellWidth, ch = fonts.cellHeight
         let top = viewTop
         let cursor = terminal.getCursorLocation()
         let cursorRow = cursor.y + scrollOffset
 
         for screenRow in 0..<terminal.rows {
-            let y = padding + Int32(screenRow) * ch
+            let y = inset.top + Int32(screenRow) * ch
             guard let line = terminal.getScrollInvariantLine(row: top + screenRow) else { continue }
             var column = 0
             while column < terminal.cols {
@@ -672,8 +676,8 @@ final class TerminalPane: WindowObject, TerminalDelegate {
                     }
                     column += cells
                 }
-                let x = padding + Int32(runStart) * cw
-                let runRect = RECT(left: x, top: y, right: padding + Int32(column) * cw, bottom: y + ch)
+                let x = inset.left + Int32(runStart) * cw
+                let runRect = RECT(left: x, top: y, right: inset.left + Int32(column) * cw, bottom: y + ch)
                 if look.background != colors.background { fill(dc, runRect, look.background) }
                 if !look.invisible {
                     SelectObject(dc, fonts.font(bold: look.bold, italic: look.italic))
@@ -684,9 +688,9 @@ final class TerminalPane: WindowObject, TerminalDelegate {
                     if look.strike { fill(dc, RECT(left: x, top: y + ch / 2, right: runRect.right, bottom: y + ch / 2 + max(1, ch / 14)), look.foreground) }
                 }
             }
-            if screenRow == cursorRow && cursorVisible { drawCursor(dc, line: line, column: cursor.x, x: padding + Int32(cursor.x) * cw, y: y) }
+            if screenRow == cursorRow && cursorVisible { drawCursor(dc, line: line, column: cursor.x, x: inset.left + Int32(cursor.x) * cw, y: y) }
         }
-        if focused { SetCaretPos(padding + Int32(cursor.x) * cw, padding + Int32(cursorRow) * ch) }
+        if focused { SetCaretPos(inset.left + Int32(cursor.x) * cw, inset.top + Int32(cursorRow) * ch) }
         BitBlt(screen, 0, 0, width, height, dc, 0, 0, DWORD(SRCCOPY))
     }
 
@@ -722,6 +726,29 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         }
     }
 
+    /// A local tab shows user@host, as on the Mac and Linux, and the running program's name beside it. Shells
+    /// report their own path ("C:\…\pwsh.exe"), and Command Prompt adds the command line while it runs
+    /// ("C:\…\cmd.exe - ping -n 5 host"); only the program's name is shown, never its arguments, which can
+    /// hold passwords.
+    static let userAtHost: String = {
+        if ParityScene.isActive { return ParityScene.title }
+        let environment = ProcessInfo.processInfo.environment
+        return (environment["USERNAME"] ?? "user") + "@" + (environment["COMPUTERNAME"] ?? "localhost").lowercased()
+    }()
+
+    static func localTitle(reported: String) -> String {
+        let trimmed = reported.trimmingCharacters(in: .whitespaces)
+        let parts = trimmed.components(separatedBy: " - ")
+        // While a command runs, Command Prompt shows "<title> - <command line>": keep the program's name only.
+        if parts.count > 1, let program = parts[1].split(separator: " ").first {
+            let name = program.split(separator: "\\").last.map(String.init) ?? String(program)
+            return userAtHost + " — " + (name.lowercased().hasSuffix(".exe") ? String(name.dropLast(4)) : name)
+        }
+        let isShellPath = trimmed.lowercased().hasSuffix(".exe") && trimmed.contains("\\")
+        if trimmed.isEmpty || isShellPath || trimmed == userAtHost { return userAtHost }
+        return userAtHost + " — " + trimmed
+    }
+
     /// Shells set their executable's full path as the title; the tab shows just its name ("powershell").
     static func tabTitle(_ title: String) -> String {
         let trimmed = title.trimmingCharacters(in: .whitespaces)
@@ -742,11 +769,12 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     nonisolated func setTerminalTitle(source: Terminal, title: String) {
         MainActor.assumeIsolated {
             // An SSH tab keeps its user@host until the remote shell names itself; ssh.exe's own path isn't news.
-            let named = Self.tabTitle(title)
-            if let remote, named == "Terminal" || title.lowercased().hasSuffix("ssh.exe") {
-                self.title = remote.label
+            if let remote {
+                // An SSH tab keeps its user@host until the remote shell names itself; ssh.exe's own path isn't news.
+                let named = Self.tabTitle(title)
+                self.title = named == "Terminal" || title.lowercased().hasSuffix("ssh.exe") ? remote.label : named
             } else {
-                self.title = named
+                self.title = Self.localTitle(reported: title)
             }
             onTitleChange?(self)
         }

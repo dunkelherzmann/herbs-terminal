@@ -602,3 +602,14 @@ private enum RE {
     static let selectionChanged = UINT(0x0702)
     static let findDown = 1
 }
+
+extension TextEditorPane {
+    /// Feature tests: the text being edited.
+    var bridgeText: String {
+        guard let edit else { return "" }
+        let length = GetWindowTextLengthW(edit)
+        var buffer = [WCHAR](repeating: 0, count: Int(length) + 1)
+        GetWindowTextW(edit, &buffer, length + 1)
+        return String(decoding: buffer[0..<Int(length)], as: UTF16.self).replacingOccurrences(of: "\r\n", with: "\n")
+    }
+}

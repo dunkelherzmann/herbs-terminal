@@ -258,6 +258,9 @@ final class FormDialog: WindowObject {
     }
 
     var window: HWND? { hwnd }
+    /// For the feature tests' bridge: the buttons' titles and how many fields there are.
+    var buttonTitles: [String] { buttons.map(\.title) }
+    var fieldCount: Int { edits.count }
 
     func handle(_ hwnd: HWND, _ message: UINT, _ wParam: WPARAM, _ lParam: LPARAM) -> LRESULT? {
         switch Int32(message) {
