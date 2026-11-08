@@ -11,7 +11,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
       `dist\HerbsTerminal.exe`, the single exe that ships, as well as the development build.
 - [x] **App icon** (#35) (§12, enhancements.md). The launcher and the app's window show Herb's Terminal's icon.
 - [ ] **Static Swift runtime in the package** (§12, enhancements.md). The packed folder shrinks to the exe and the
-      Microsoft C++ runtime DLLs.
+      Microsoft C++ runtime DLLs. On hold: measured, it makes the package larger, not smaller (enhancements.md).
 - [x] **One portable `HerbsTerminal.exe`** (#33) (§12, enhancements.md). A small static launcher carries the
       packaged folder and runs it from a per-build copy under `%LOCALAPPDATA%`; each build is copied to the
       Windows PC's desktop as `Herb's Terminal.exe`.
