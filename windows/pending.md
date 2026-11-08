@@ -60,8 +60,8 @@ Written by `parity/tests/report.py`; rerun the tests and the report rather than 
 
 A test ran and the feature didn't do what the Mac version does.
 
-- [ ] **W3** Title in the middle: `user@host ~`, following the shell's title, current folder and foreground… (§2): The title follows the folder and the program: expected the location / in the title (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '', dialogs [], last lines ['$ cd \\', '', '$'])
-- [ ] **W4** Secrets in a command line (`user:pass@`, `--password=`, `*_TOKEN=`) hidden in the title. (§2): Secrets in a command line are hidden in the title: the program isn't in the title, so hiding wasn't shown: 'parity@scene '
+- [x] **W3** (#41) Title in the middle: `user@host ~`, following the shell's title, current folder and foreground… (§2): The title follows the folder and the program: expected the location / in the title (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '', dialogs [], last lines ['$ cd \\', '', '$'])
+- [x] **W4** (#41) Secrets in a command line (`user:pass@`, `--password=`, `*_TOKEN=`) hidden in the title. (§2): Secrets in a command line are hidden in the title: the program isn't in the title, so hiding wasn't shown: 'parity@scene '
 - [ ] **T2** Tabs numbered "Terminal N", lowest free number. (§2): New tabs take the lowest free number: no answer to state in 10 s (did the app quit?)
 - [ ] **T7** Close Tab shortcut; on the last tab it closes the window. (§2): Close Tab: expected one tab left (saw: 1 window(s), tabs ['Terminal 1', 'Terminal 2'], 1 pane(s), title 'parity@scene' '', dialogs ['Close Terminal 2?'], last lines ['$'])
 - [ ] **T10** New tabs open in the current tab's folder or home (Settings), or the profile's start folder. (§2): New tabs open in the current tab's folder: expected the new tab to start in / (saw: 1 window(s), tabs ['Terminal 1', 'Terminal 2'], 1 pane(s), title 'parity@scene' '', dialogs [], last lines…
