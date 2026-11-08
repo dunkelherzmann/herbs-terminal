@@ -90,7 +90,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         self.commandLine = commandLine
         let start = directory ?? ProcessInfo.processInfo.environment["USERPROFILE"]
         // A local shell reports its folder at every prompt; until it does, the title shows where it started.
-        let launch = remote == nil ? ShellLocation.integrate(commandLine: commandLine, environment: environment) : (commandLine, environment)
+        let launch = remote == nil ? ShellLocation.integrate(commandLine: commandLine, environment: environment) : (commandLine: commandLine, environment: environment)
         if remote == nil { location = start }
         do {
             session = try PseudoConsole(commandLine: launch.commandLine, directory: start, extraEnvironment: launch.environment,
