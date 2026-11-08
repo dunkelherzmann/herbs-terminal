@@ -3,11 +3,11 @@
 What the Mac version still needs before it can ship with as few bugs as possible: everything a feature test found broken or missing, and every feature no automatic test covers yet. Fix broken items first, one pull request each, and tick an item with its PR number once it is fixed and its test passes. `bugs.md` and `enhancements.md` stay the record of requests and releases.
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-08 18:22)
+## Feature test results (2026-11-08 18:39)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Not checked automatically (107)
+### Not checked automatically (102)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -37,15 +37,10 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **R10** Settings ▸ Window: columns × rows for new windows (default 100 × 30), size badge toggle, Apply to… (§3): Settings opens; its Window page isn't read by the bridge yet
 - [ ] **R11** Settings ▸ Colors: color scheme, presets, import and removal. (§3): Settings opens; its Colors page isn't read by the bridge yet
 - [ ] **R12** Light and dark follow the system, for the whole app (dialogs and Settings included). (§3): visual: needs pictures in light and dark mode
-- [ ] **S2** Once logged in, the explorer moves to the same host and account. (§4): needs an SSH test host (not set up yet)
 - [ ] **S3** Typing `ssh user@host` or `ssh alias` in a local shell is followed like Connect via SSH (resolved… (§4): needs an SSH test host (not set up yet)
-- [ ] **S4** Exit or Disconnect returns the tab, title and explorer to this computer. (§4): needs an SSH test host (not set up yet)
-- [ ] **S5** Failed login or dropped link: a banner with the real state; title back to local. (§4): needs an SSH test host (not set up yet)
 - [ ] **S6** Shared connection (ControlMaster) so the explorer and transfers reuse the shell's login; keepalive… (§4): needs an SSH test host (not set up yet)
-- [ ] **S7** No command line, password or token on screen or in history; saved password through SSH_ASKPASS… (§4): needs an SSH test host (not set up yet)
 - [ ] **S8** Host-key questions, one-time codes and retries asked in the terminal. (§4): needs an SSH test host (not set up yet)
 - [ ] **S9** Your own `~/.ssh/config`, agent, keys and jump hosts are used. (§4): needs an SSH test host (not set up yet)
-- [ ] **S10** Connection details popover (account, host, port, route, remote home, time) with Disconnect and New… (§4): needs an SSH test host (not set up yet)
 - [ ] **E1** Places: Home, the user folders, Computer, Trash, mounted devices; on a host Home and File System. (§5): checked in the accessibility tree by parity/check.sh; the bridge doesn't report places
 - [ ] **E2** Bookmarks (shortcut), kept per host; Remove Bookmark. (§5): needs pointer or keyboard input the test bridge doesn't reach yet
 - [ ] **E3** Back, Forward, Up, Home, Reload, show hidden files; Delete/BackSpace goes back. (§5): this platform's test bridge can't drive the explorer yet
@@ -55,7 +50,7 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **E7** Local: copy, move, move to Trash with "name copy" names; never overwrites. (§5): this platform's test bridge can't drive the explorer yet
 - [ ] **E8** Local: Undo and Redo, named after the action. (§5): this platform's test bridge can't drive the explorer yet
 - [ ] **E9** System file clipboard works both ways (Finder / file managers / File Explorer). (§5): would use the system clipboard
-- [ ] **E10** Host: move (undoable), copy on the host, delete after asking (whole folders). (§5): needs an SSH test host (not set up yet)
+- [ ] **E10** Host: move (undoable), copy on the host, delete after asking (whole folders). (§5): this platform's test bridge can't drive the explorer yet
 - [ ] **E11** Pasting local files into a host uploads them; host items pasted locally download. (§5): needs an SSH test host (not set up yet)
 - [ ] **E12** A folder can't be moved or copied into itself. (§5): this platform's test bridge can't drive the explorer yet
 - [ ] **E13** New Folder, New File (free "untitled" name), Rename; undoable locally, rename undoable on a host. (§5): this platform's test bridge can't drive the explorer yet

@@ -195,7 +195,9 @@ def connect_test_host(c, password=None):
             answered, failed_since = True, None
             continue
         state = connection(c, s).get("state")
-        if state == "connected":
+        # Connected means logged in: the remote shell's prompt names the account (Windows reports a running
+        # ssh as connected before the login is done).
+        if state == "connected" and any(line.startswith(account["user"] + "@") for line in c.text(s).splitlines()):
             return account, s
         if state == "failed":
             failed_since = failed_since or time.time()

@@ -52,9 +52,17 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-08 18:19)
+## Feature test results (2026-11-08 18:42)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
+
+### Broken (3)
+
+A test ran and the feature didn't do what the Mac version does.
+
+- [ ] **S2** Once logged in, the explorer moves to the same host and account. (§4): Once logged in, the explorer moves to the same host and account: expected the explorer in herbs-test's home on the host (saw: 1 window(s), tabs ['Terminal 1', 'Terminal 2'], 1 pane(s), title 'herbs-test@192.168.1.241'…
+- [ ] **S4** Exit or Disconnect returns the tab, title and explorer to this computer. (§4): Disconnect returns the tab and title to this computer: expected the tab back on this computer (saw: 1 window(s), tabs ['Terminal 1', 'Terminal 2'], 1 pane(s), title 'herbs-test@192.168.1.241' '', dialogs [], last lines…
+- [ ] **E10** Host: move (undoable), copy on the host, delete after asking (whole folders). (§5): Host: new folder, rename and delete: no answer to explorer-go in 10 s (did the app quit?)
 
 ### Missing (26)
 
@@ -87,7 +95,7 @@ The command isn't there, or it's greyed out.
 - [ ] **U6** Run Command on Hosts: targets are selected saved logins and the live connection, own ssh channel… (§7): Run Command on Hosts window: `run-on-hosts` is greyed out
 - [ ] **C1** Add a peer: name, username, secret address, One-time or Persistent; addresses protected like logins. (§8): Tailcat Peers: add a peer: no `tailcat` command
 
-### Not checked automatically (91)
+### Not checked automatically (85)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -112,21 +120,15 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **R10** Settings ▸ Window: columns × rows for new windows (default 100 × 30), size badge toggle, Apply to… (§3): Settings opens; its Window page isn't read by the bridge yet
 - [ ] **R11** Settings ▸ Colors: color scheme, presets, import and removal. (§3): Settings opens; its Colors page isn't read by the bridge yet
 - [ ] **R12** Light and dark follow the system, for the whole app (dialogs and Settings included). (§3): visual: needs pictures in light and dark mode
-- [ ] **S2** Once logged in, the explorer moves to the same host and account. (§4): needs an SSH test host (not set up yet)
 - [ ] **S3** Typing `ssh user@host` or `ssh alias` in a local shell is followed like Connect via SSH (resolved… (§4): needs an SSH test host (not set up yet)
-- [ ] **S4** Exit or Disconnect returns the tab, title and explorer to this computer. (§4): needs an SSH test host (not set up yet)
-- [ ] **S5** Failed login or dropped link: a banner with the real state; title back to local. (§4): needs an SSH test host (not set up yet)
 - [ ] **S6** Shared connection (ControlMaster) so the explorer and transfers reuse the shell's login; keepalive… (§4): needs an SSH test host (not set up yet)
-- [ ] **S7** No command line, password or token on screen or in history; saved password through SSH_ASKPASS… (§4): needs an SSH test host (not set up yet)
 - [ ] **S8** Host-key questions, one-time codes and retries asked in the terminal. (§4): needs an SSH test host (not set up yet)
 - [ ] **S9** Your own `~/.ssh/config`, agent, keys and jump hosts are used. (§4): needs an SSH test host (not set up yet)
-- [ ] **S10** Connection details popover (account, host, port, route, remote home, time) with Disconnect and New… (§4): needs an SSH test host (not set up yet)
 - [ ] **E1** Places: Home, the user folders, Computer, Trash, mounted devices; on a host Home and File System. (§5): checked in the accessibility tree by parity/check.sh; the bridge doesn't report places
 - [ ] **E2** Bookmarks (shortcut), kept per host; Remove Bookmark. (§5): needs pointer or keyboard input the test bridge doesn't reach yet
 - [ ] **E3** Back, Forward, Up, Home, Reload, show hidden files; Delete/BackSpace goes back. (§5): going into a folder works; Back, Forward, Up and Home are buttons the bridge doesn't press yet
 - [ ] **E4** Clickable path segments and an editable location (accepts `~` and relative paths). (§5): needs pointer or keyboard input the test bridge doesn't reach yet
 - [ ] **E9** System file clipboard works both ways (Finder / file managers / File Explorer). (§5): would use the system clipboard
-- [ ] **E10** Host: move (undoable), copy on the host, delete after asking (whole folders). (§5): needs an SSH test host (not set up yet)
 - [ ] **E11** Pasting local files into a host uploads them; host items pasted locally download. (§5): needs an SSH test host (not set up yet)
 - [ ] **E16** Open with Administrator Mode… on an item. (§5): needs a sudo password (not automated)
 - [ ] **X1** Upload and download single files and folder trees. (§5): needs an SSH test host (not set up yet)
