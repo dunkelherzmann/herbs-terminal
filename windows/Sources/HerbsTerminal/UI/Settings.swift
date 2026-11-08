@@ -15,7 +15,7 @@ final class SettingsWindow: WindowObject {
 
     private enum Control: Int32, CaseIterable {
         case font = 100, size, cursor, blink, theme, importTheme, appearance, shell, scrollback, columns, rows, askBeforeClosing,
-             restore, close
+             restore, close, newTabs
     }
 
     /// Opens Settings, or brings the open one to the front.
@@ -38,7 +38,7 @@ final class SettingsWindow: WindowObject {
 
     private init(owner: HWND?) {
         let dpi = owner.map { GetDpiForWindow($0) } ?? 96
-        var rect = RECT(left: 0, top: 0, right: scaled(460, dpi: dpi), bottom: scaled(468, dpi: dpi))
+        var rect = RECT(left: 0, top: 0, right: scaled(460, dpi: dpi), bottom: scaled(498, dpi: dpi))
         let style = DWORD(WS_OVERLAPPED) | DWORD(WS_CAPTION) | DWORD(WS_SYSMENU) | DWORD(WS_MINIMIZEBOX)
         AdjustWindowRectExForDpi(&rect, style, false, 0, dpi)
         var x = CW_USEDEFAULT, y = CW_USEDEFAULT
@@ -107,6 +107,7 @@ final class SettingsWindow: WindowObject {
 
         heading("Shell")
         combo(.shell, editable: true)
+        combo(.newTabs, width: s(240))
         label("Scrollback lines")
         number(.scrollback, x: fieldX, width: s(90))
         y += rowHeight
@@ -127,9 +128,12 @@ final class SettingsWindow: WindowObject {
                                x: s(460) - s(16) - s(90), y: y, width: s(90), height: s(28), id: .close)
     }
 
+    /// Where a new local tab's shell starts, as on the Mac.
+    private static let newTabPlaces = ["Same folder as the current tab", "Home folder"]
+
     private static let labels: [Control: String] = [
         .font: "Font", .size: "Size", .cursor: "Cursor", .blink: "Blinking cursor", .appearance: "Appearance",
-        .shell: "Shell", .askBeforeClosing: "Ask before closing a running shell",
+        .shell: "Shell", .newTabs: "New tabs open in", .askBeforeClosing: "Ask before closing a tab with running processes",
     ]
 
     @discardableResult
@@ -182,6 +186,7 @@ final class SettingsWindow: WindowObject {
         let choices = ShellChoice.available
         let current = ShellChoice.current
         fillCombo(.shell, choices.map(\.title), selected: choices.first { $0.commandLine == current }?.title ?? current, editable: true)
+        fillCombo(.newTabs, Self.newTabPlaces, selected: Self.newTabPlaces[profile.newTabsInSameFolder ? 0 : 1])
         setText(.scrollback, String(settings.scrollbackLines))
         setText(.columns, String(profile.windowColumns))
         setText(.rows, String(profile.windowRows))
@@ -258,6 +263,8 @@ final class SettingsWindow: WindowObject {
         case .appearance:
             profile.appearance = selection(.appearance)
             if let hwnd { DialogTheme.apply(to: hwnd) }
+        case .newTabs:
+            profile.newTabsInSameFolder = selection(.newTabs) == Self.newTabPlaces[0]
         case .shell:
             let value = fromList ? selection(.shell) : text(.shell)
             ShellChoice.current = ShellChoice.available.first { $0.title == value }?.commandLine ?? value

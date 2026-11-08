@@ -50,7 +50,12 @@ enum Trash {
                     throw FileIssue("Couldn't write the Trash record for “\(url.lastPathComponent)”.")
                 }
                 let target = trash + "/files/" + name
-                guard rename(path, target) == 0 else {
+                // Inside the Flatpak, folders on one disk can be separate mounts (/tmp and home on Ubuntu), and
+                // rename refuses to cross them; on the host it's an ordinary rename.
+                let moved = rename(path, target) == 0
+                    || (errno == EXDEV && Host.isFlatpak && Host.run(["mv", "-n", "--", path, target], timeout: 10).status == 0
+                        && !FileManager.default.fileExists(atPath: path))
+                guard moved else {
                     let reason = String(cString: strerror(errno))
                     try? FileManager.default.removeItem(atPath: info)
                     problem = reason

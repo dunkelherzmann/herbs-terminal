@@ -61,12 +61,31 @@ final class Workspace: WindowObject {
     /// The tabs in order, for the feature tests' bridge.
     var allTabs: [WorkspaceTab] { tabs }
 
+    /// Opens a tab as on the Mac: in the profile's start folder when it has one, else in the current tab's folder
+    /// when that's a local shell and Settings asks for it, else in the home folder.
     func newTab() {
+        let directory = newTabDirectory()
         if ParityScene.isActive {
-            addPane()?.start(commandLine: ParityScene.commandLine, directory: ParityScene.home, environment: ParityScene.shellEnvironment)
+            addPane()?.start(commandLine: ParityScene.commandLine, directory: directory ?? ParityScene.home, environment: ParityScene.shellEnvironment)
         } else {
-            addPane()?.start()
+            addPane()?.start(directory: directory)
         }
+    }
+
+    private func newTabDirectory() -> String? {
+        let profile = TerminalProfile.shared
+        let start = profile.settings(for: nil).startDirectory.trimmingCharacters(in: .whitespaces)
+        var candidate: String?
+        if !start.isEmpty {
+            let home = ProcessInfo.processInfo.environment["USERPROFILE"] ?? ""
+            candidate = start.hasPrefix("~") ? home + start.dropFirst() : start
+        } else if profile.newTabsInSameFolder, let pane = activePane, pane.remote == nil {
+            candidate = pane.location
+        }
+        // Only a folder on this PC (a WSL shell can report a Linux path).
+        var isFolder: ObjCBool = false
+        guard let candidate, FileManager.default.fileExists(atPath: candidate, isDirectory: &isFolder), isFolder.boolValue else { return nil }
+        return candidate
     }
 
     /// A new, selected tab whose process the caller starts. It takes the lowest free number, as on the Mac.
@@ -199,13 +218,19 @@ final class Workspace: WindowObject {
             return
         }
         guard let pane = tabs[index] as? TerminalPane else { return }
-        if confirm, TerminalProfile.shared.askBeforeClosing, pane.isRunning,
-           FormDialog.ask(owner: hwnd, title: "Close \(pane.tabName)?",
-                          message: pane.isConnected ? "Its SSH session to \(pane.remote!.label) will end." : "Its shell is still running and will end.",
-                          buttons: [.init(title: "Cancel"), .init(title: "Close Tab", isDefault: true)]) != 1 {
-            return
-        }
+        if confirm, !confirmClosing([pane], scope: "this tab") { return }
         close(pane)
+    }
+
+    /// As on the Mac: asks only when a program is running in the foreground (or an SSH session is open), and names
+    /// what would end. A shell waiting at its prompt closes without a question.
+    private func confirmClosing(_ panes: [TerminalPane], scope: String) -> Bool {
+        guard TerminalProfile.shared.askBeforeClosing else { return true }
+        let running = panes.compactMap(\.runningProgram)
+        guard !running.isEmpty else { return true }
+        return FormDialog.ask(owner: hwnd, title: "Do you want to terminate running processes in \(scope)?",
+                              message: "Closing \(scope) will terminate: " + running.joined(separator: ", ") + ".",
+                              buttons: [.init(title: "Cancel"), .init(title: "Terminate", isDefault: true)]) == 1
     }
 
     private func move(from index: Int, to target: Int) {
@@ -846,13 +871,7 @@ final class Workspace: WindowObject {
                 }
                 return 0
             }
-            let running = panes.filter(\.isRunning).count
-            if TerminalProfile.shared.askBeforeClosing, running > 0,
-               FormDialog.ask(owner: hwnd, title: "Close this window?",
-                              message: running == 1 ? "A shell is still running and will end." : "\(running) shells are still running and will end.",
-                              buttons: [.init(title: "Cancel"), .init(title: "Close Window", isDefault: true)]) != 1 {
-                return 0
-            }
+            if !confirmClosing(panes, scope: "this window") { return 0 }
             closeAll()
             DestroyWindow(hwnd)
             return 0

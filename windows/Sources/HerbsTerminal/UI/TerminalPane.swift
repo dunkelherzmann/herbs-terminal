@@ -36,7 +36,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     /// The title the shell gave itself, shown before the program in the foreground.
     private var baseTitle = TerminalPane.userAtHost
     /// The program running in the foreground of a local tab, with its arguments (secrets hidden).
-    private var foregroundProgram: String?
+    private(set) var foregroundProgram: String?
     /// The shell's current folder as it last reported it, shown beside the title.
     private(set) var location: String?
     /// The folder beside the title: the shell's current folder, with the home folder as "~".
@@ -69,7 +69,11 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         // Files and folders dropped from File Explorer are typed as paths, as on the Mac and Linux.
         if let hwnd { DragAcceptFiles(hwnd, true) }
         apply(settings)
+        startupCommand = settings.startupCommand.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    /// The profile's startup command, typed into a local shell when it starts.
+    private var startupCommand = ""
 
     /// This tab's file explorer, made the first time it's shown, and whether it's showing instead of the terminal.
     var explorer: ExplorerPane?
@@ -95,7 +99,11 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         do {
             session = try PseudoConsole(commandLine: launch.commandLine, directory: start, extraEnvironment: launch.environment,
                                         columns: terminal.cols, rows: terminal.rows, window: hwnd)
-            if remote == nil { SetTimer(hwnd, Self.programTimer, 1000, nil) }
+            if remote == nil {
+                SetTimer(hwnd, Self.programTimer, 1000, nil)
+                // Waits in the console's input until the shell reads it, like typing ahead.
+                if !startupCommand.isEmpty { session?.write(Array((startupCommand + "\r").utf8)) }
+            }
         } catch {
             terminal.feed(text: "\u{1b}[31m\(error.localizedDescription)\u{1b}[0m\r\n")
             invalidate()
@@ -798,6 +806,14 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         guard next != title else { return }
         title = next
         onTitleChange?(self)
+    }
+
+    /// What closing this tab would end, as the Mac's question lists it: the program in the foreground, or the
+    /// SSH session. Nil for a local shell with nothing running.
+    var runningProgram: String? {
+        if let remote, isConnected { return "ssh (\(remote.label))" }
+        refreshForegroundProgram()
+        return foregroundProgram.map { String($0.split(separator: " ").first ?? Substring($0)) }
     }
 
     private func refreshForegroundProgram() {

@@ -38,8 +38,20 @@ enum ChildProcess {
         let envp: [UnsafeMutablePointer<CChar>?] = variables.map { strdup($0) } + [nil]
         defer { arguments.forEach { free($0) }; envp.forEach { free($0) } }
 
+        // A clean start, as Foundation's Process gives: no blocked signals, and every signal back to its default
+        // (the app ignores SIGPIPE, and GLib's threads may block others; flatpak-spawn waits on signals).
+        var attributes = posix_spawnattr_t()
+        posix_spawnattr_init(&attributes)
+        defer { posix_spawnattr_destroy(&attributes) }
+        var none = sigset_t(), all = sigset_t()
+        sigemptyset(&none)
+        sigfillset(&all)
+        posix_spawnattr_setsigmask(&attributes, &none)
+        posix_spawnattr_setsigdefault(&attributes, &all)
+        posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF))
+
         var pid: pid_t = 0
-        let started = posix_spawn(&pid, path, &actions, nil, arguments, envp) == 0
+        let started = posix_spawn(&pid, path, &actions, &attributes, arguments, envp) == 0
         // The child has its own copies; the app keeps the write end of the input and the read end of the output.
         close(inputPipe[0])
         close(outputPipe[1])

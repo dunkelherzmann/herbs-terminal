@@ -141,6 +141,11 @@ enum ConnectDialog {
         let store = CredentialStore.shared ?? CredentialStore.unavailable()
         var draft = (host: "", port: "22", username: "", password: "", save: false)
         var problem: String?
+        // As on the Mac: the first time SSH is used, explain the Administrator Password; later, offer to unlock.
+        if CredentialStore.unavailableReason == nil {
+            if store.protection == .unset { LoginVaultPrompts.explainSetup(store, owner: owner) }
+            else if store.isLocked { _ = LoginVaultPrompts.unlock(store, owner: owner) }
+        }
         while true {
             let logins = store.isLocked ? [] : store.logins
             var notice = ""

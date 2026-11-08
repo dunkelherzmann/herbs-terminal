@@ -3,7 +3,7 @@
 What the Linux version still needs before it can ship with as few bugs as possible: everything a feature test found broken or missing, and every feature no automatic test covers yet. Fix broken items first, one pull request each, and tick an item with its PR number once it is fixed and its test passes. `bugs.md` and `enhancements.md` stay the record of requests and releases.
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-08 07:48)
+## Feature test results (2026-11-08 18:20)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
@@ -115,6 +115,6 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 
 Hand-written from `bugs.md`; fix these before the features above, one pull request each, and tick each with its PR number.
 
-- [ ] **The self-test crashes when `HERBS_TEST_SSH` is set but empty or malformed.** It should report a failed check instead of stopping with "Index out of range". (§11 Build and packaging, Checks)
-- [ ] **The debug build has 31 compiler warnings, three of them errors in the Swift 6 language mode.** Main-actor statics used from nonisolated code (`TransferQueue.shared` as a default argument in `RemoteExplorerModel.swift`, `defaultIterations` in the shared `CredentialStore.swift`), plus deprecated `utf8String` and VTE calls. (§11 Build and packaging)
-- [ ] **The Flatpak build fails when GitHub's release downloads are down.** Give the manifest a mirror URL for the tailcat archive, or vendor it. (§11 Build and packaging)
+- [x] **The self-test crashes when `HERBS_TEST_SSH` is set but empty or malformed.** (#40) It should report a failed check instead of stopping with "Index out of range". (§11 Build and packaging, Checks)
+- [x] **The debug build has 31 compiler warnings, three of them errors in the Swift 6 language mode.** (#39) Main-actor statics used from nonisolated code (`TransferQueue.shared` as a default argument in `RemoteExplorerModel.swift`, `defaultIterations` in the shared `CredentialStore.swift`), plus deprecated `utf8String` and VTE calls. (§11 Build and packaging)
+- [x] **The Flatpak build fails when GitHub's release downloads are down.** (#43) Give the manifest a mirror URL for the tailcat archive, or vendor it. (§11 Build and packaging)
