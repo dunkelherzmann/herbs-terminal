@@ -8,6 +8,8 @@ import WinSDK
 final class TerminalPane: WindowObject, TerminalDelegate {
     static let className = "HerbsTerminalPane"
     private static let blinkTimer: UINT_PTR = 1
+    /// Waits a moment after the process ends, so its last words reach the screen before the tab reacts.
+    private static let endedTimer: UINT_PTR = 2
 
     private(set) var hwnd: HWND?
     let terminal: Terminal
@@ -42,15 +44,63 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     }
 
     /// Starts the shell. Call once the pane has its size, so the shell starts with the right grid.
-    func start(commandLine: String = ShellChoice.commandLine, directory: String? = nil) {
+    func start(commandLine: String = ShellChoice.commandLine, directory: String? = nil, environment: [String: String] = [:]) {
         guard let hwnd, session == nil else { return }
         let start = directory ?? ProcessInfo.processInfo.environment["USERPROFILE"]
         do {
-            session = try PseudoConsole(commandLine: commandLine, directory: start, columns: terminal.cols, rows: terminal.rows, window: hwnd)
+            session = try PseudoConsole(commandLine: commandLine, directory: start, extraEnvironment: environment,
+                                        columns: terminal.cols, rows: terminal.rows, window: hwnd)
         } catch {
             terminal.feed(text: "\u{1b}[31m\(error.localizedDescription)\u{1b}[0m\r\n")
             invalidate()
         }
+    }
+
+    /// The SSH login this tab runs, if it is an SSH tab. The password stays in memory only, for Reconnect.
+    private(set) var remote: RemoteEndpoint?
+    private var remotePassword: String?
+    private var awaitingReconnect = false
+
+    /// Runs ssh to `endpoint` as this tab's process. A password goes to ssh through the askpass broker, once;
+    /// without one (or when it's refused) ssh asks in the terminal, and keys from ssh-agent work as usual.
+    func startSSH(_ endpoint: RemoteEndpoint, password: String?) {
+        remote = endpoint
+        remotePassword = password
+        title = endpoint.label
+        onTitleChange?(self)
+        guard let commandLine = SSH.commandLine(endpoint) else {
+            terminal.feed(text: "\u{1b}[31mWindows' OpenSSH client isn't installed. Add it in Settings ▸ System ▸ Optional features ▸ OpenSSH Client.\u{1b}[0m\r\n")
+            invalidate()
+            return
+        }
+        var environment: [String: String] = [:]
+        if let password, !password.isEmpty, let broker = AskpassBroker.shared {
+            environment = broker.environment(token: broker.issue(password, for: endpoint.passwordLogins))
+        }
+        terminal.feed(text: "Connecting to \(endpoint.label)…\r\n")
+        start(commandLine: commandLine, environment: environment)
+    }
+
+    private func reconnect() {
+        guard let remote else { return }
+        awaitingReconnect = false
+        session?.close()
+        session = nil
+        terminal.feed(text: "\r\n")
+        startSSH(remote, password: remotePassword)
+    }
+
+    /// The process ended. A shell that exits closes its tab; an SSH session that ends with an error stays
+    /// open with its last output, so the reason can be read, and Enter reconnects.
+    private func processEnded() {
+        let code = session?.exitCode ?? 0
+        if let remote, code != 0 {
+            awaitingReconnect = true
+            terminal.feed(text: "\r\n\u{1b}[7m Connection to \(remote.label) ended (exit code \(code)). Press Enter to reconnect, or Ctrl+Shift+W to close the tab. \u{1b}[0m\r\n")
+            invalidate()
+            return
+        }
+        onExit?(self)
     }
 
     func close() {
@@ -62,7 +112,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         hwnd = nil
     }
 
-    var isRunning: Bool { session.map { !$0.hasExited } ?? false }
+    var isRunning: Bool { !awaitingReconnect && (session.map { !$0.hasExited } ?? false) }
 
     // MARK: Appearance
 
@@ -150,7 +200,12 @@ final class TerminalPane: WindowObject, TerminalDelegate {
             return 0
         case WM_APP_EXITED:
             drainOutput()
-            onExit?(self)
+            SetTimer(hwnd, Self.endedTimer, 200, nil)
+            return 0
+        case WM_TIMER where wParam == Self.endedTimer:
+            KillTimer(hwnd, Self.endedTimer)
+            drainOutput()
+            processEnded()
             return 0
         case WM_TIMER:
             cursorBlinkOn.toggle()
@@ -255,6 +310,10 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     // MARK: Input
 
     func send(_ bytes: [UInt8]) {
+        if awaitingReconnect {
+            if bytes == [13] { reconnect() }
+            return
+        }
         if scrollOffset != 0 { scrollOffset = 0; invalidate() }
         session?.write(bytes)
     }
@@ -589,7 +648,13 @@ final class TerminalPane: WindowObject, TerminalDelegate {
 
     nonisolated func setTerminalTitle(source: Terminal, title: String) {
         MainActor.assumeIsolated {
-            self.title = Self.tabTitle(title)
+            // An SSH tab keeps its user@host until the remote shell names itself; ssh.exe's own path isn't news.
+            let named = Self.tabTitle(title)
+            if let remote, named == "Terminal" || title.lowercased().hasSuffix("ssh.exe") {
+                self.title = remote.label
+            } else {
+                self.title = named
+            }
             onTitleChange?(self)
         }
     }

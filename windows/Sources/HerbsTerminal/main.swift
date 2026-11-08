@@ -11,6 +11,9 @@ func attachParentConsole() {
     }
 }
 
+// ssh runs this same executable as its SSH_ASKPASS helper; that mode never opens a window.
+if let status = HelperMode.run() { exit(status) }
+
 MainActor.assumeIsolated {
     if CommandLine.arguments.contains("--self-test") {
         attachParentConsole()

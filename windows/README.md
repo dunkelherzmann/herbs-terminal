@@ -2,7 +2,7 @@
 
 A native Win32 version of Herb's Terminal, in Swift. The terminal emulator is SwiftTerm's engine (the same one the Mac app uses), shells run in a Windows pseudo console (ConPTY), and the screen is painted with GDI. The login vault is the Mac app's own code, compiled unchanged: small `CryptoKit`, `CommonCrypto`, `SQLite3` and `Darwin` modules give it Apple's names on Windows CNG, the system's `winsqlite3` and the Universal CRT, so a vault made on a Mac or on Linux opens here.
 
-**Status: early.** The terminal works; the file explorer, SSH and the rest are still to come (see the roadmap below).
+**Status: early.** The terminal, Settings and SSH with saved logins work; the file explorer and the rest are still to come (see the roadmap below).
 
 ## Building
 
@@ -32,7 +32,9 @@ The app is `windows\.build\out\Products\Debug-windows-x86_64\HerbsTerminal.exe` 
 - Block, underline and bar cursors from the profile, blinking or steady
 - Light and dark mode follow Windows, title bar included; per-monitor DPI
 - Settings (Ctrl+, or the window menu): font and size, cursor shape and blinking, color theme with `.itermcolors` import, light/dark/system appearance, the shell for new tabs (PowerShell 7, Windows PowerShell, Command Prompt, WSL, Git Bash or any command line), scrollback length, new window size, and confirm-before-closing. Changes apply to open terminals at once and are saved in `%LOCALAPPDATA%\HerbsTerminal\settings.json`, the same model as the Linux version
-- Login vault (AES-256-GCM, PBKDF2-SHA256) on Windows CNG, verified against the NIST and RFC test vectors
+- **SSH:** Connect via SSH (Ctrl+Shift+K, the SSH button beside New Tab, or the window menu) opens the login in a new tab running Windows' own OpenSSH client (`System32\OpenSSH\ssh.exe`). Pick a saved login or type one, and optionally save it. A password reaches ssh only once, through a one-time token traded over a private named pipe (SSH_ASKPASS), never on a command line or in the terminal; host-key questions, one-time codes and retries are asked in the terminal as usual, and keys from `ssh-agent` or `~/.ssh` work without a password. When a session ends with an error the tab stays open with the reason; Enter reconnects
+- **Manage Logins:** the saved logins in a list with New, Edit, Delete, Import and Export (CSV, the same format as the Mac and Linux), and the Administrator Password: create, change or remove it, and unlock once per session
+- Login vault (AES-256-GCM, PBKDF2-SHA256) on Windows CNG, verified against the NIST and RFC test vectors; the database is `%LOCALAPPDATA%\HerbsTerminal\logins.sqlite3`
 
 ## Shortcuts
 
@@ -46,12 +48,13 @@ The app is `windows\.build\out\Products\Debug-windows-x86_64\HerbsTerminal.exe` 
 | Alt+1–8, Alt+9 | Tab 1–8, last tab |
 | Ctrl+= / Ctrl+- / Ctrl+0 | Zoom in, out, reset |
 | Ctrl+, | Settings |
+| Ctrl+Shift+K | Connect via SSH |
 | Ctrl+Shift+C, Ctrl+Shift+V | Copy, paste |
 | Shift+Page Up / Down, Ctrl+Shift+Home / End | Scroll back |
 
 ## Testing without touching the desktop
 
-`--self-test` checks the crypto and the login vault and prints PASS/FAIL lines (exit code 0 when all pass).
+`--self-test` checks the crypto, the login vault, ssh command lines and the password broker, and prints PASS/FAIL lines (exit code 0 when all pass).
 
 Scripted runs drive the app from the command line instead of simulated keystrokes, so nothing is typed into other windows:
 
@@ -59,12 +62,12 @@ Scripted runs drive the app from the command line instead of simulated keystroke
 HerbsTerminal.exe --type "Get-ChildItem\r" --type "\t" --type "ver\r" --capture shot.bmp
 ```
 
-Each `--type` goes straight into the active terminal 1.5 s apart (`\r` is Enter, `\e` Escape, a lone `\t` opens a new tab, a lone `\s` opens Settings); `--capture` saves the window as a BMP (and Settings, if open, beside it) and quits. The window opens without taking focus.
+Steps run 1.5 s apart. `--type` sends text straight into the active terminal (`\r` is Enter, `\e` Escape); a lone `\t` opens a new tab, `\s` Settings, `\k` Connect via SSH, `\l` Manage Logins, and `\f` followed by `value|value|…#button` fills the open dialog and presses that button (`+check` as the last value ticks its checkbox). `--ssh user@host:port` (after `--ssh-password`) opens an SSH tab directly. `--capture` saves the window, and any open Settings, Manage Logins or dialog beside it, as BMPs and quits. The window opens without taking focus.
 
 ## Roadmap
 
 1. Main Menu, named profiles (Settings edits the default profile today), dark-mode Settings
-2. SSH: Connect via SSH, Manage Logins with the vault, saved hosts (Windows OpenSSH has no `ControlMaster`, so the explorer opens its own SFTP session)
+2. SSH follow-ups: noticing an `ssh` typed in a local tab, the connection details window, saved hosts and MultiExec targets
 3. File explorer: local files, then remote over SFTP, with the transfer queue and the text editor
 4. Split panes, MultiExec, session restore, Export Session
 5. Mouse reporting for full-screen programs, find in scrollback, IME composition window

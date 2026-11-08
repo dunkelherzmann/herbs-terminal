@@ -32,6 +32,7 @@ enum SelfTest {
               empty?.tag.map { String(format: "%02x", $0) }.joined() == "530f8afbc74536b9a963b4f1c4cb738b")
 
         vaultChecks()
+        sshChecks()
         print(failures == 0 ? "All checks passed." : "\(failures) check(s) failed.")
         return failures == 0 ? 0 : 1
     }
