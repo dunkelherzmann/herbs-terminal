@@ -302,7 +302,7 @@ struct SFTPTransfer {
             return
         }
         let part = local.deletingLastPathComponent().appendingPathComponent(".\(local.lastPathComponent).herbsterminal-part")
-        FileManager.default.createFile(atPath: part.path, contents: nil)
+        _ = FileManager.default.createFile(atPath: part.path, contents: nil)
         do {
             let target = try FileHandle(forWritingTo: part)
             defer { try? target.close() }

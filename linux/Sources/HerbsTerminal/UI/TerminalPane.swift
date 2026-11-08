@@ -140,7 +140,7 @@ final class TerminalPane {
         var background = color("Background Color")!
         background.alpha *= settings.backgroundOpacity
         var fg = gdk(foreground), bg = gdk(background)
-        var palette = (theme?.palette ?? TerminalTheme.basicPalette).map(gdk)
+        let palette = (theme?.palette ?? TerminalTheme.basicPalette).map(gdk)
         palette.withUnsafeBufferPointer { vte_terminal_set_colors(c(terminal), &fg, &bg, $0.baseAddress, 16) }
         if let cursor = color("Cursor Color") { var value = gdk(cursor); vte_terminal_set_color_cursor(c(terminal), &value) }
         if let cursorText = theme?.colors["Cursor Text Color"] { var value = gdk(cursorText); vte_terminal_set_color_cursor_foreground(c(terminal), &value) }
@@ -293,8 +293,11 @@ final class TerminalPane {
 
     /// The shell's current folder: as the shell reports it (OSC 7), or as the host sees it.
     var currentDirectory: String? {
-        if let uri = string(vte_terminal_get_current_directory_uri(c(terminal))), let url = URL(string: uri), url.isFileURL {
-            return url.path
+        if let uri = vte_terminal_ref_termprop_uri(c(terminal), VTE_TERMPROP_CURRENT_DIRECTORY_URI) {
+            defer { g_uri_unref(uri) }
+            let text = g_uri_to_string(uri)
+            defer { g_free(text) }
+            if let url = string(text).flatMap({ URL(string: $0) }), url.isFileURL { return url.path }
         }
         return lastReport?.directory
     }
@@ -453,19 +456,19 @@ final class TerminalPane {
 
     private func configureFind() {
         let previous = iconButton("go-up-symbolic", label: "Previous match", hint: "Previous (Shift+Return)\nFind the match above.") { [weak self] in
-            self.map { vte_terminal_search_find_previous(c($0.terminal)) }
+            if let self { vte_terminal_search_find_previous(c(self.terminal)) }
         }
         let next = iconButton("go-down-symbolic", label: "Next match", hint: "Next (Return)\nFind the match below.") { [weak self] in
-            self.map { vte_terminal_search_find_next(c($0.terminal)) }
+            if let self { vte_terminal_search_find_next(c(self.terminal)) }
         }
         let done = iconButton("window-close-symbolic", label: "Close Find", hint: "Done (Esc)\nClose Find and go back to typing.") { [weak self] in
             self?.hideFind()
         }
         append(findBar, findEntry, previous, next, done)
         on(findEntry, "search-changed") { [weak self] _ in self?.search() }
-        on(findEntry, "activate") { [weak self] _ in self.map { vte_terminal_search_find_previous(c($0.terminal)) } }
-        on(findEntry, "next-match") { [weak self] _ in self.map { vte_terminal_search_find_previous(c($0.terminal)) } }
-        on(findEntry, "previous-match") { [weak self] _ in self.map { vte_terminal_search_find_next(c($0.terminal)) } }
+        on(findEntry, "activate") { [weak self] _ in if let self { vte_terminal_search_find_previous(c(self.terminal)) } }
+        on(findEntry, "next-match") { [weak self] _ in if let self { vte_terminal_search_find_previous(c(self.terminal)) } }
+        on(findEntry, "previous-match") { [weak self] _ in if let self { vte_terminal_search_find_next(c(self.terminal)) } }
         on(findEntry, "stop-search") { [weak self] _ in self?.hideFind() }
         vte_terminal_search_set_wrap_around(c(terminal), 1)
     }
@@ -501,7 +504,7 @@ final class TerminalPane {
         }
         on(terminal, "window-title-changed") { [weak self] _ in
             guard let self else { return }
-            self.reportedTitle = string(vte_terminal_get_window_title(c(self.terminal))) ?? ""
+            self.reportedTitle = string(vte_terminal_get_termprop_string(c(self.terminal), VTE_TERMPROP_XTERM_TITLE, nil)) ?? ""
             self.refresh()
         }
         on(terminal, "current-directory-uri-changed") { [weak self] _ in self?.refresh() }
