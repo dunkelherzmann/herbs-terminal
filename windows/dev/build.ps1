@@ -81,10 +81,18 @@ Set-Content -Encoding utf8 (Join-Path $windows 'Sources\HerbsTerminal\Version.sw
 $configuration = if ($Release) { 'release' } else { 'debug' }
 $scratch = '.build'
 
+# The app's icon (resource 1, which the window class loads), linked into HerbsTerminal.exe.
+$icon = Join-Path $windows 'Resources\HerbsTerminal.ico'
+$res = Join-Path $windows "$scratch\HerbsTerminal.res"
+New-Item -ItemType Directory -Force (Split-Path $res) | Out-Null
+Set-Content -Encoding ascii (Join-Path $windows "$scratch\HerbsTerminal.rc") "1 ICON `"$($icon.Replace('\', '\\'))`""
+& rc.exe /nologo "/fo$res" (Join-Path $windows "$scratch\HerbsTerminal.rc")
+if ($LASTEXITCODE -ne 0) { throw "rc.exe couldn't compile the app's icon." }
+
 Push-Location $windows
 try {
     $ErrorActionPreference = 'Continue'
-    cmd /c "swift build -c $configuration --scratch-path $scratch 2>&1" |
+    cmd /c "swift build -c $configuration --scratch-path $scratch -Xlinker `"$res`" 2>&1" |
         Where-Object { $_ -notmatch 'wchar_t|unable to create symbolic link' -and $_ -notmatch '^\s*(\||`-|note:)' }
     if ($LASTEXITCODE -ne 0) { throw "swift build failed." }
     $ErrorActionPreference = 'Stop'
@@ -166,6 +174,7 @@ if ($Package) {
     $payloadPath = $payload.Replace('\', '\\')
     Set-Content -Encoding ascii $rc @"
 #include <winver.h>
+1 ICON "$($icon.Replace('\', '\\'))"
 1 RCDATA "$payloadPath"
 1 24 "$((Join-Path $source 'launcher.manifest').Replace('\', '\\'))"
 VS_VERSION_INFO VERSIONINFO
