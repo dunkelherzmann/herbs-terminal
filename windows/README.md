@@ -47,6 +47,7 @@ A development build is `windows\.build\out\Products\Debug-windows-x86_64\HerbsTe
 - Full color (16, 256 and 24-bit), bold, italic, underline, strikethrough, dim, inverse; wide (CJK) characters
 - Scrollback with the mouse wheel and Shift+Page Up / Down; full-screen programs scroll with the wheel
 - Mouse selection (double-click selects a word), copy and paste as in Windows Terminal: Ctrl+C copies when text is selected, Ctrl+V pastes, right-click copies or pastes; bracketed paste
+- Dropping files or folders from File Explorer on a terminal types their paths, as on the Mac and Linux, quoted for the tab's shell: single quotes for PowerShell, double quotes for Command Prompt, `/mnt/c/…` for WSL, and POSIX quoting for Git Bash and SSH tabs
 - Block, underline and bar cursors from the profile, blinking or steady
 - Light and dark mode follow Windows, title bar included; per-monitor DPI
 - Settings (Ctrl+, or the window menu): font and size, cursor shape and blinking, color theme with `.itermcolors` import, light/dark/system appearance, the shell for new tabs (PowerShell 7, Windows PowerShell, Command Prompt, WSL, Git Bash or any command line), scrollback length, new window size, and confirm-before-closing. Changes apply to open terminals at once and are saved in `%LOCALAPPDATA%\HerbsTerminal\settings.json`, the same model as the Linux version
@@ -88,7 +89,7 @@ Scripted runs drive the app from the command line instead of simulated keystroke
 HerbsTerminal.exe --type "Get-ChildItem\r" --type "\t" --type "ver\r" --capture shot.bmp
 ```
 
-Steps run 1.5 s apart. `--type` sends text straight into the active terminal (`\r` is Enter, `\e` Escape); a lone `\t` opens a new tab, `\s` Settings, `\k` Connect via SSH, `\l` Manage Logins, `\m` the Main Menu, `\c<id>` a menu command, and `\f` followed by `value|value|…#button` fills the open dialog and presses that button (`+check` as the last value ticks its checkbox). `--ssh user@host:port` (after `--ssh-password`) opens an SSH tab directly. `--capture` saves the window, and any open Settings, Manage Logins, dialog or menu beside it, as BMPs and quits. The window opens without taking focus.
+Steps run 1.5 s apart. `--type` sends text straight into the active terminal (`\r` is Enter, `\e` Escape); a lone `\t` opens a new tab, `\s` Settings, `\k` Connect via SSH, `\l` Manage Logins, `\m` the Main Menu, `\c<id>` a menu command, and `\f` followed by `value|value|…#button` fills the open dialog and presses that button (`+check` as the last value ticks its checkbox). `--ssh user@host:port` (after `--ssh-password`) opens an SSH tab directly. `--drop "path|path"` drops files on the active terminal the way File Explorer does. `--capture` saves the window, and any open Settings, Manage Logins, dialog or menu beside it, as BMPs and quits. The window opens without taking focus.
 
 ## Roadmap
 
