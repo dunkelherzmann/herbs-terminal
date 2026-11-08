@@ -4,13 +4,21 @@
 #   windows\dev\build.ps1 -Release   release build
 #   windows\dev\build.ps1 -Run       build, then start the app
 #   windows\dev\build.ps1 -SelfTest  build, then run the headless self-test
-#   windows\dev\build.ps1 -Package   self-contained release build in dist\HerbsTerminal-windows, plus a zip
+#   windows\dev\build.ps1 -Package   the single portable dist\HerbsTerminal.exe, plus a zip, copied to the desktop
 #
-# A packaged build is self-contained: beside HerbsTerminal.exe are exactly the Swift runtime, Foundation and
-# Microsoft C++ runtime DLLs it uses (found by following each file's imports), deployed app-locally. Nothing needs
-# installing: copy the folder anywhere, or unzip it, and open HerbsTerminal.exe on Windows 10 (1809 or later) or
-# 11. (Linking the Swift runtime in statically was tried: Swift 6.4's static runtime crashes on Windows when a
-# property wrapper writes through its enclosing instance, which the settings and login code rely on.)
+# A packaged build is one HerbsTerminal.exe that needs nothing installed. The app itself needs the Swift runtime,
+# Foundation and the Microsoft C++ runtime DLLs beside it, so the package first gathers exactly the DLLs it uses
+# (found by following each file's imports) in dist\HerbsTerminal-windows. launcher\launcher.c, a small C program
+# with the static C runtime that imports only Windows DLLs, then carries that folder inside itself, compressed:
+# on first run it unpacks it to %LOCALAPPDATA%\HerbsTerminal\Versions\<version>-<hash>, removes the copies of older
+# builds, and runs the app from there. It runs on Windows 10 (1809 or later) and 11.
+#
+# Why not one statically linked exe: with Swift 6.4, --static-swift-stdlib links, but generic key-path access
+# (the @Published wrapper the settings and login code use) crashes, because the compiler always calls
+# swift_readAtKeyPath and swift_modifyAt*KeyPath through __imp_ slots and lld fills those wrongly when the runtime
+# is linked in; defining the three slots in a C file fixes that. The blocker is the C++ runtime: the static Swift
+# libraries are built against the DLL version (/MD), and the linker refuses to mix them with the static one
+# ("/failifmismatch: RuntimeLibrary"), so a statically linked app still needs vcruntime140 and msvcp140.
 #
 # Needs the Swift toolchain for Windows (6.x) and Visual Studio 2022 or its Build Tools with the C++ workload
 # (MSVC and a Windows SDK). The script finds both and sets up the MSVC environment itself, so it runs from any
@@ -132,14 +140,95 @@ if ($Package) {
     Copy-Item (Join-Path $repo 'LICENSE') (Join-Path $out 'LICENSE.txt')
     Copy-Item (Join-Path $windows 'NOTICES-windows.txt') $out
 
-    $zip = Join-Path $repo "dist\Herbs-Terminal-$base.$patch-windows-x86_64.zip"
-    if (Test-Path $zip) { Remove-Item -Force $zip }
-    Compress-Archive -Path $out -DestinationPath $zip
     $size = '{0:N1} MB' -f ((Get-ChildItem $out -Recurse | Measure-Object Length -Sum).Sum / 1MB)
-    Write-Host "Packaged $out ($size; $($bundled.Count) DLLs: $($bundled.Values -join ', '))"
+    Write-Host "Gathered $out ($size; $($bundled.Count) DLLs: $($bundled.Values -join ', '))"
+
+    # The single exe: the launcher with that folder inside it.
+    $source = Join-Path $windows 'launcher'
+    $obj = Join-Path $windows "$scratch\launcher"
+    if (Test-Path $obj) { Remove-Item -Recurse -Force $obj }
+    New-Item -ItemType Directory -Force $obj | Out-Null
+    function Invoke-Tool([string]$tool, [string[]]$arguments) {
+        $output = & $tool @arguments 2>&1
+        if ($LASTEXITCODE -ne 0) { $output | Write-Host; throw "$tool failed ($LASTEXITCODE)." }
+        $output
+    }
+    $cflags = @('/nologo', '/O2', '/MT', '/W4', '/WX', '/utf-8', '/D_UNICODE', '/D_CRT_SECURE_NO_WARNINGS')
+    $pack = Join-Path $obj 'pack.exe'
+    Invoke-Tool cl.exe ($cflags + @("/Fo$obj\", "/Fe$pack", (Join-Path $source 'pack.c'), '/link', 'cabinet.lib')) | Out-Null
+    $payload = Join-Path $obj 'payload.bin'
+    $id = (Invoke-Tool $pack @($out, $version, $payload) | Select-Object -Last 1).ToString().Trim()
+
+    $numbers = (($version -split '[^\d]+') + @(0, 0, 0, 0))[0..3] -join ','
+    $rc = Join-Path $obj 'launcher.rc'
+    $payloadPath = $payload.Replace('\', '\\')
+    Set-Content -Encoding ascii $rc @"
+#include <winver.h>
+1 RCDATA "$payloadPath"
+1 24 "$((Join-Path $source 'launcher.manifest').Replace('\', '\\'))"
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION $numbers
+PRODUCTVERSION $numbers
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "dunkelherzmann"
+      VALUE "FileDescription", "Herb's Terminal"
+      VALUE "FileVersion", "$version"
+      VALUE "InternalName", "HerbsTerminal"
+      VALUE "LegalCopyright", "Copyright (c) 2026 Herbert Cisneros. MIT License."
+      VALUE "OriginalFilename", "HerbsTerminal.exe"
+      VALUE "ProductName", "Herb's Terminal"
+      VALUE "ProductVersion", "$version"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END
+"@
+    $res = Join-Path $obj 'launcher.res'
+    Invoke-Tool rc.exe @('/nologo', "/I$source", "/fo$res", $rc) | Out-Null
+    $single = Join-Path $repo 'dist\HerbsTerminal.exe'
+    Invoke-Tool cl.exe ($cflags + @("/Fo$obj\", "/Fe$single", (Join-Path $source 'launcher.c'), $res, '/link',
+        '/SUBSYSTEM:WINDOWS', '/MANIFEST:NO', 'cabinet.lib', 'user32.lib', 'shell32.lib')) | Out-Null
+
+    # The launcher must import nothing but Windows itself.
+    $imports = cmd /c "dumpbin /nologo /dependents `"$single`"" | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^[\w.-]+\.dll$' }
+    foreach ($dll in $imports) {
+        if ((Test-Path (Join-Path $redist.FullName $dll)) -or -not (Test-Path (Join-Path $env:SystemRoot "System32\$dll"))) {
+            throw "HerbsTerminal.exe imports $dll, which isn't part of Windows."
+        }
+    }
+
+    $zip = Join-Path $repo "dist\Herbs-Terminal-$version-windows-x86_64.zip"
+    if (Test-Path $zip) { Remove-Item -Force $zip }
+    Compress-Archive -Path $single, (Join-Path $out 'LICENSE.txt'), (Join-Path $out 'NOTICES-windows.txt') -DestinationPath $zip
+    Write-Host ("Packaged {0} ({1:N1} MB, unpacks to %LOCALAPPDATA%\HerbsTerminal\Versions\{2})" -f $single, ((Get-Item $single).Length / 1MB), $id)
     Write-Host "Zipped   $zip"
-    $exe = Join-Path $out 'HerbsTerminal.exe'
+
+    # A copy on the desktop, so the newest build is easy to find. It replaces the older copy and the shortcut
+    # earlier builds left there; if the older copy is running, it's left alone with a warning.
+    $desktop = [Environment]::GetFolderPath('Desktop')
+    if ($desktop) {
+        $copy = Join-Path $desktop "Herb's Terminal.exe"
+        try {
+            Copy-Item -Force $single $copy
+            Write-Host "Copied   $copy"
+            $shortcut = Join-Path $desktop "Herb's Terminal.lnk"
+            if (Test-Path -LiteralPath $shortcut) { Remove-Item -Force -LiteralPath $shortcut }
+        } catch {
+            Write-Warning "Couldn't replace $copy (is Herb's Terminal open?): $($_.Exception.Message)"
+        }
+    }
+    $exe = $single
 }
 
-if ($SelfTest) { & $exe --self-test; exit $LASTEXITCODE }
+# Piped, so PowerShell waits for the app (a Windows-subsystem exe) and shows its output.
+if ($SelfTest) { & $exe --self-test | Out-Host; exit $LASTEXITCODE }
 if ($Run) { Start-Process $exe }
