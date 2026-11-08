@@ -245,16 +245,9 @@ final class TailcatPeerStore: ObservableObject {
         do {
             let address = try address(of: peer)
             let output = await Task.detached { () -> String in
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: tailcat)
-                process.arguments = ["ping", "--until-direct", "--timeout=8s", address]
-                let pipe = Pipe()
-                process.standardOutput = pipe
-                process.standardError = pipe
-                guard (try? process.run()) != nil else { return "Could not start tailcat." }
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                process.waitUntilExit()
-                return String(decoding: data, as: UTF8.self)
+                let result = ChildProcess.run([tailcat, "ping", "--until-direct", "--timeout=8s", address], errors: true, timeout: 30)
+                if result.status == nil && result.output.isEmpty { return "Could not run tailcat." }
+                return String(decoding: result.output, as: UTF8.self)
             }.value
             routes[peer.id] = Tailcat.route(fromPing: output)
         } catch {
@@ -328,23 +321,11 @@ final class TailcatShare: ObservableObject {
     }
 
     private nonisolated static func ensureDefaultKey(_ tailcat: String) async {
-        let list = Process()
-        list.executableURL = URL(fileURLWithPath: tailcat)
-        list.arguments = ["genkey", "--list"]
-        let pipe = Pipe()
-        list.standardOutput = pipe
-        list.standardError = FileHandle.nullDevice
-        guard (try? list.run()) != nil else { return }
-        let names = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        list.waitUntilExit()
+        let list = ChildProcess.run([tailcat, "genkey", "--list"])
+        guard list.status != nil else { return }
+        let names = String(decoding: list.output, as: UTF8.self)
         guard !names.split(whereSeparator: \.isNewline).contains(where: { $0.trimmingCharacters(in: .whitespaces).hasPrefix("default") }) else { return }
-        let create = Process()
-        create.executableURL = URL(fileURLWithPath: tailcat)
-        create.arguments = ["genkey", "--key=default"]
-        create.standardOutput = FileHandle.nullDevice
-        create.standardError = FileHandle.nullDevice
-        try? create.run()
-        create.waitUntilExit()
+        _ = ChildProcess.run([tailcat, "genkey", "--key=default"])
     }
 }
 

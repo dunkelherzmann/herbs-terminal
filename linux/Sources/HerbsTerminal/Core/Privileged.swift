@@ -42,20 +42,7 @@ enum PrivilegedAccess {
     static func run(_ target: Target, sudo sudoArguments: [String], command: [String] = [], input: String? = nil,
                     timeout: TimeInterval = 20) -> Int32? {
         let (executable, arguments) = invocation(target, sudo: sudoArguments, command: command)
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        let stdin = Pipe()
-        process.standardInput = stdin
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        let done = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in done.signal() }
-        do { try process.run() } catch { return nil }
-        if let input { try? stdin.fileHandleForWriting.write(contentsOf: Data(input.utf8)) }
-        try? stdin.fileHandleForWriting.close()
-        guard done.wait(timeout: .now() + timeout) == .success else { process.terminate(); return nil }
-        return process.terminationStatus
+        return ChildProcess.run([executable] + arguments, input: input.map { Data($0.utf8) }, timeout: timeout).status
     }
 
     /// True unless sudo works without a password for this account.

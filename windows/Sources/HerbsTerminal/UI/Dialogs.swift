@@ -163,6 +163,7 @@ final class FormDialog: WindowObject {
 
         // Modal: the owner is disabled until the form closes.
         if let owner { EnableWindow(owner, false) }
+        DialogTheme.apply(to: hwnd)
         ShowWindow(hwnd, TestScript.active ? SW_SHOWNOACTIVATE : SW_SHOW)
         if let first = edits.indices.first(where: { !choiceFields.contains($0) }).flatMap({ edits[$0] }) ?? edits.first ?? nil { SetFocus(first) }
         var message = MSG()
@@ -263,6 +264,7 @@ final class FormDialog: WindowObject {
     var fieldCount: Int { edits.count }
 
     func handle(_ hwnd: HWND, _ message: UINT, _ wParam: WPARAM, _ lParam: LPARAM) -> LRESULT? {
+        if Int32(message) != WM_CTLCOLORSTATIC, let themed = DialogTheme.handle(hwnd, message, wParam) { return themed }
         switch Int32(message) {
         case WM_COMMAND:
             let id = Int32(wParam & 0xFFFF)
@@ -283,12 +285,9 @@ final class FormDialog: WindowObject {
             if let cancelIndex { choose(cancelIndex) } else { done = true }
             return 0
         case WM_CTLCOLORSTATIC:
-            let dc = HDC(bitPattern: UInt(wParam))
-            SetBkMode(dc, TRANSPARENT)
-            if let errorLabel, HWND(bitPattern: UInt(lParam)) == errorLabel { SetTextColor(dc, colorRef(196, 43, 28)) }
-            return LRESULT(Int(bitPattern: UnsafeRawPointer(GetSysColorBrush(COLOR_WINDOW))))
-        case WM_CTLCOLORBTN:
-            return LRESULT(Int(bitPattern: UnsafeRawPointer(GetSysColorBrush(COLOR_WINDOW))))
+            let brush = DialogTheme.colors(message, wParam)
+            if let errorLabel, HWND(bitPattern: UInt(lParam)) == errorLabel { SetTextColor(HDC(bitPattern: UInt(wParam)), DialogTheme.errorText) }
+            return brush
         default:
             return nil
         }

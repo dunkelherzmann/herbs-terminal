@@ -35,6 +35,33 @@ flatpak info --user org.flatpak.Builder >/dev/null 2>&1 || flatpak install --use
 printf '%s\n' "$VERSION" > "$ROOT/linux/version.txt"
 mkdir -p "$ROOT/dist"
 printf 'Building Herb'\''s Terminal %s for %s\n' "$VERSION" "$ARCH"
+# Downloads go into flatpak-builder's cache (downloads/<sha256>/<file>) first, so a source whose server is
+# briefly down doesn't stop the build: curl retries, and a GitHub release asset is fetched through GitHub's API
+# with gh, which keeps working when github.com's download links return errors. Every file is checked against
+# the manifest's checksum; flatpak-builder then finds it in the cache.
+prefetch() {
+    url="$1" sum="$2"
+    dir="$STATE/downloads/$sum" file="$STATE/downloads/$sum/$(basename "$url")"
+    [ -s "$file" ] && return 0
+    mkdir -p "$dir"
+    if ! curl -fsSL --retry 4 --retry-all-errors --retry-delay 3 -o "$file.part" "$url"; then
+        rm -f "$file.part"
+        case "$url" in
+            https://github.com/*/releases/download/*)
+                repo="$(printf '%s' "$url" | cut -d/ -f4-5)" tag="$(printf '%s' "$url" | cut -d/ -f8)"
+                command -v gh >/dev/null && gh release download "$tag" -R "$repo" -p "$(basename "$url")" -O "$file.part" --clobber || true ;;
+        esac
+    fi
+    if [ -s "$file.part" ] && [ "$(sha256sum "$file.part" | cut -d' ' -f1)" = "$sum" ]; then
+        mv "$file.part" "$file"
+    else
+        rm -f "$file.part"
+        printf 'Couldn'\''t fetch %s now; flatpak-builder will try it itself.\n' "$url" >&2
+    fi
+}
+awk '/^ *url: /{url=$2} /^ *sha256: /{if (url != "") print url, $2; url=""}' "$ROOT/linux/$APP.yml" |
+    while read -r url sum; do prefetch "$url" "$sum"; done
+
 # The state and build folders sit in paths the manifest's source copy skips.
 flatpak run org.flatpak.Builder --user --install-deps-from=flathub --state-dir="$STATE" --repo="$STATE/repo" \
     --force-clean "$ROOT/linux/build/app" "$ROOT/linux/$APP.yml"

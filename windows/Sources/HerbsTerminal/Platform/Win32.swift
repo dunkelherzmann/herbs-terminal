@@ -138,8 +138,3 @@ func setClipboardText(_ text: String, owner: HWND?) {
     if SetClipboardData(UINT(CF_UNICODETEXT), memory) == nil { GlobalFree(memory) }
 }
 
-/// A message box owned by `owner`.
-@discardableResult
-func messageBox(_ owner: HWND?, _ text: String, title: String = "Herb's Terminal", flags: UINT = UINT(MB_OK | MB_ICONINFORMATION)) -> Int32 {
-    withWide(text) { t in withWide(title) { c in MessageBoxW(owner, t, c, flags) } }
-}
