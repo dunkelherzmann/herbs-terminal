@@ -50,6 +50,10 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         apply(settings)
     }
 
+    /// This tab's file explorer, made the first time it's shown, and whether it's showing instead of the terminal.
+    var explorer: ExplorerPane?
+    var showingExplorer = false
+
     /// The command line this tab's process was started with, which decides how dropped paths are quoted.
     private(set) var commandLine = ""
 
