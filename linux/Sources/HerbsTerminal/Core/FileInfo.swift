@@ -141,17 +141,9 @@ enum Accounts {
         let command = group
             ? "getent group \(quoted) 2>/dev/null | cut -d: -f3 || dscl . -read /Groups/\(quoted) PrimaryGroupID 2>/dev/null | awk '{print $2}'"
             : "id -u \(quoted) 2>/dev/null"
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
-        process.arguments = endpoint.sshArguments(["-o", "BatchMode=yes", "-T"]) + [command]
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
-        process.standardInput = FileHandle.nullDevice
-        try process.run()
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        let text = String(decoding: data, as: UTF8.self).split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+        let result = ChildProcess.run(["/usr/bin/ssh"] + endpoint.sshArguments(["-o", "BatchMode=yes", "-T"]) + [command])
+        guard result.status != nil else { throw FileIssue("Couldn't ask \(endpoint.host) about “\(name)”.") }
+        let text = String(decoding: result.output, as: UTF8.self).split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
         guard let id = UInt32(text.trimmingCharacters(in: .whitespaces)) else {
             throw FileIssue("There's no \(group ? "group" : "user") named “\(name)” on \(endpoint.host).")
         }

@@ -197,6 +197,26 @@ enum LiveSSH {
     }
 }
 
+/// ChildProcess waits on its own child, so short commands end when they end, even in the app where GLib also
+/// handles SIGCHLD.
+enum ShortCommands {
+    static func reportStatusOutputAndTimeLimit() {
+        expect(ChildProcess.run(["/bin/sh", "-c", "exit 3"]).status == 3)
+        let echoed = ChildProcess.run(["/bin/cat"], input: Data("hello".utf8))
+        expect(echoed.status == 0 && echoed.output == Data("hello".utf8))
+        expect(ChildProcess.run(["/bin/sh", "-c", "echo out; echo err >&2"], errors: true).output == Data("out\nerr\n".utf8))
+        expect(ChildProcess.run(["/bin/sh", "-c", "echo err >&2"]).output.isEmpty)
+        let started = Date()
+        expect(ChildProcess.run(["/bin/sleep", "5"], timeout: 0.5).status == nil)
+        expect(Date().timeIntervalSince(started) < 2)
+        expect(ChildProcess.run(["/nonexistent/program"]).status == nil)
+        // Many in a row return as soon as each command ends, not at its time limit.
+        let quick = Date()
+        for _ in 0..<20 { expect(Host.run(["/bin/true"], timeout: 5).status == 0) }
+        expect(Date().timeIntervalSince(quick) < 5)
+    }
+}
+
 nonisolated(unsafe) var selfTestFailures = 0
 
 func expect(_ condition: @autoclosure () throws -> Bool, file: String = #fileID, line: Int = #line) {
@@ -229,6 +249,7 @@ enum SelfTest {
             ("iTerm2 presets", ThemesAndText.readsAnITermPresetAndRejectsDamage),
             ("text detection", ThemesAndText.textDetection),
             ("session names and redaction", ThemesAndText.sessionNamesAndRedaction),
+            ("short commands", ShortCommands.reportStatusOutputAndTimeLimit),
             ("live SSH and SFTP", LiveSSH.passwordLoginSharedConnectionAndSFTP),
         ]
         for (name, check) in checks {

@@ -266,7 +266,8 @@ final class ManageLoginsWindow: WindowObject {
         var controls = INITCOMMONCONTROLSEX(dwSize: DWORD(MemoryLayout<INITCOMMONCONTROLSEX>.size), dwICC: DWORD(ICC_LISTVIEW_CLASSES))
         InitCommonControlsEx(&controls)
         let dpi = owner.map { GetDpiForWindow($0) } ?? 96
-        var rect = RECT(left: 0, top: 0, right: scaled(760, dpi: dpi), bottom: scaled(440, dpi: dpi))
+        // Wide enough for the row of buttons, Close included (see minimumWidth).
+        var rect = RECT(left: 0, top: 0, right: scaled(Self.minimumWidth, dpi: dpi), bottom: scaled(440, dpi: dpi))
         let style = DWORD(WS_OVERLAPPEDWINDOW)
         AdjustWindowRectExForDpi(&rect, style, false, 0, dpi)
         var x = CW_USEDEFAULT, y = CW_USEDEFAULT
@@ -316,6 +317,10 @@ final class ManageLoginsWindow: WindowObject {
         SendMessageW(control, UINT(WM_SETFONT), WPARAM(UInt(bitPattern: Int(bitPattern: UnsafeRawPointer(font)))), 1)
         return control
     }
+
+    /// Margins, the 84 px buttons (Unlock included, shown while saved logins are locked) and the 220 px password
+    /// button 6 px apart, a gap, and Close.
+    private static let minimumWidth: Double = 12 + 6 * 84 + 220 + 7 * 6 + 12 + 84 + 12
 
     private func layout() {
         guard let hwnd else { return }
@@ -471,7 +476,7 @@ final class ManageLoginsWindow: WindowObject {
             return nil
         case WM_GETMINMAXINFO:
             if let info = UnsafeMutablePointer<MINMAXINFO>(bitPattern: UInt(lParam)) {
-                info.pointee.ptMinTrackSize = POINT(x: scaled(700, dpi: GetDpiForWindow(hwnd)), y: scaled(300, dpi: GetDpiForWindow(hwnd)))
+                info.pointee.ptMinTrackSize = POINT(x: scaled(Self.minimumWidth, dpi: GetDpiForWindow(hwnd)), y: scaled(300, dpi: GetDpiForWindow(hwnd)))
             }
             return 0
         case WM_DESTROY:

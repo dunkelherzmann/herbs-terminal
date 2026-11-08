@@ -35,26 +35,9 @@ enum Host {
     /// Runs `command` on the host and returns its exit status and output; nil status on a timeout.
     @discardableResult
     static func run(_ command: [String], input: Data? = nil, timeout: TimeInterval = 20) -> (status: Int32?, output: String) {
-        let process = process(command)
-        let stdin = Pipe(), stdout = Pipe()
-        process.standardInput = stdin
-        process.standardOutput = stdout
-        process.standardError = FileHandle.nullDevice
-        let done = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in done.signal() }
-        do { try process.run() } catch { return (nil, "") }
-        if let input { try? stdin.fileHandleForWriting.write(contentsOf: input) }
-        try? stdin.fileHandleForWriting.close()
-        // The reader hands its result over through a semaphore, so the output is read only after it's complete.
-        let output = OutputBox(), read = DispatchSemaphore(value: 0)
-        Thread { output.data = stdout.fileHandleForReading.readDataToEndOfFile(); read.signal() }.start()
-        guard done.wait(timeout: .now() + timeout) == .success else { process.terminate(); return (nil, "") }
-        // A program left running in the background can hold the output open after the command ends; don't wait forever.
-        guard read.wait(timeout: .now() + 2) == .success else { return (process.terminationStatus, "") }
-        return (process.terminationStatus, String(decoding: output.data, as: UTF8.self))
+        let result = ChildProcess.run(argv(command), input: input, timeout: timeout)
+        return (result.status, String(decoding: result.output, as: UTF8.self))
     }
-
-    private final class OutputBox: @unchecked Sendable { var data = Data() }
 
     /// The account's login shell, as the host's account database has it.
     static let loginShell: String = {
