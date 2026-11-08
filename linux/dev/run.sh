@@ -1,7 +1,14 @@
 #!/bin/sh
-# Runs the development build in the Linux VM, drawn through GTK's Broadway backend at http://<vm>:8085.
-BUILD=${BUILD:-/root/fbbuild}
-pkill -f gtk4-broadwayd 2>/dev/null; pkill -f swiftbuild/debug/HerbsTerminal 2>/dev/null; pkill -f 'bwrap --args 17' 2>/dev/null; rm -f /tmp/xdg/broadway*.socket; sleep 1
-exec flatpak build --filesystem=/src --filesystem=/root --filesystem=/tmp --share=network --env=PATH=/app/bin:/usr/bin \
-  --env=HOME=/root/home --env=XDG_RUNTIME_DIR=/tmp/xdg --env=SHELL=/bin/bash --env=HERBS_LOCAL_HOST=1 --env=HERBS_ICON_PATH=/src/linux/data/icons "$BUILD" \
-  sh -c "mkdir -p /tmp/xdg /root/home && (gtk4-broadwayd --port 8085 --address 0.0.0.0 :5 >/tmp/broadway.log 2>&1 &) && sleep 1 && GDK_BACKEND=broadway BROADWAY_DISPLAY=:5 dbus-run-session /root/swiftbuild/debug/HerbsTerminal $*"
+# Starts the development build on the Linux machine's desktop, as the user service herbs-terminal-dev (replacing a
+# running one), so it works the same from a terminal there and over SSH. Its output: journalctl --user -u herbs-terminal-dev
+# Usage: linux/dev/run.sh [app arguments]
+set -eu
+self="$(cd "$(dirname "$0")" && pwd)/run.sh"
+if [ -z "${HERBS_DEV_UNIT:-}" ]; then
+    . "$(dirname "$self")/env.sh"
+    [ -x "$SCRATCH/debug/HerbsTerminal" ] || { echo "No development build yet; run linux/dev/build.sh" >&2; exit 1; }
+    systemctl --user stop herbs-terminal-dev.service 2>/dev/null || true
+    exec systemd-run --user --collect --quiet --unit=herbs-terminal-dev --setenv=HERBS_DEV_UNIT=1 sh "$self" "$@"
+fi
+. "$(dirname "$self")/env.sh"
+in_sdk "$SCRATCH/debug/HerbsTerminal" "$@"
