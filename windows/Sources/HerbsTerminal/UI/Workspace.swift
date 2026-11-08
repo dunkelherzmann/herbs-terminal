@@ -1,3 +1,4 @@
+import CHerbUIA
 import Foundation
 import WinSDK
 
@@ -43,7 +44,7 @@ final class Workspace: WindowObject {
         observers.append(ThemeLibrary.shared.objectWillChange.observe { [weak self] in self?.applySettings() })
         newTab()
         sizeToGrid()
-        ShowWindow(hwnd, TestScript.active ? SW_SHOWNOACTIVATE : SW_SHOWDEFAULT)
+        ShowWindow(hwnd, TestScript.active || ParityScene.isActive ? SW_SHOWNOACTIVATE : SW_SHOWDEFAULT)
         if TestScript.active { SetTimer(hwnd, TestScript.timer, 1500, nil) }
         UpdateWindow(hwnd)
     }
@@ -59,7 +60,11 @@ final class Workspace: WindowObject {
     var tabNames: [String] { tabs.map(\.tabName) }
 
     func newTab() {
-        addPane()?.start()
+        if ParityScene.isActive {
+            addPane()?.start(commandLine: ParityScene.commandLine, directory: ParityScene.home, environment: ParityScene.shellEnvironment)
+        } else {
+            addPane()?.start()
+        }
     }
 
     /// A new, selected tab whose process the caller starts. It takes the lowest free number, as on the Mac.
@@ -548,8 +553,10 @@ final class Workspace: WindowObject {
         guard let hwnd else { return }
         var rect = RECT()
         GetClientRect(hwnd, &rect)
+        let state = state
         chrome.layout(width: rect.right, dpi: dpi, state: state)
         chrome.updateTooltips(owner: hwnd, state: state)
+        chrome.updateAccessibility(owner: hwnd, dpi: dpi, state: state)
         rect.top = chrome.height(dpi)
         for tab in tabs {
             tab.move(to: rect)
@@ -564,8 +571,10 @@ final class Workspace: WindowObject {
         withWide(title) { _ = SetWindowTextW(hwnd, $0) } // Taskbar and Alt+Tab still show it.
         var rect = RECT()
         GetClientRect(hwnd, &rect)
+        let state = state
         chrome.layout(width: rect.right, dpi: dpi, state: state)
         chrome.updateTooltips(owner: hwnd, state: state)
+        chrome.updateAccessibility(owner: hwnd, dpi: dpi, state: state)
         rect.bottom = chrome.height(dpi)
         InvalidateRect(hwnd, &rect, false)
     }
@@ -849,10 +858,18 @@ final class Workspace: WindowObject {
             screenshotCopied = false
             refreshChrome()
             return 0
+        case WM_GETOBJECT:
+            var result: Int = 0
+            return herb_uia_get_object(UnsafeMutableRawPointer(hwnd), UInt(wParam), Int(lParam), &result) != 0 ? LRESULT(result) : nil
+        case Int32(HERB_UIA_INVOKE_MESSAGE):
+            // A screen reader or the parity check pressed a toolbar, tab or window button.
+            if let item = chrome.item(forTag: Int(wParam)) { click(item, at: POINT()) }
+            return 0
         case WM_TIMER where wParam == TestScript.timer:
             if !TestScript.step(self) { KillTimer(hwnd, TestScript.timer) }
             return 0
         case WM_DESTROY:
+            herb_uia_window_destroyed(UnsafeMutableRawPointer(hwnd))
             chrome.release()
             self.hwnd = nil
             App.windowClosed(self)
