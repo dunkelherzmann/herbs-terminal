@@ -52,17 +52,15 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-08 18:42)
+## Feature test results (2026-11-08 18:51)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Broken (3)
+### Broken (1)
 
 A test ran and the feature didn't do what the Mac version does.
 
-- [ ] **S2** Once logged in, the explorer moves to the same host and account. (§4): Once logged in, the explorer moves to the same host and account: expected the explorer in herbs-test's home on the host (saw: 1 window(s), tabs ['Terminal 1', 'Terminal 2'], 1 pane(s), title 'herbs-test@192.168.1.241'…
-- [ ] **S4** Exit or Disconnect returns the tab, title and explorer to this computer. (§4): Disconnect returns the tab and title to this computer: expected the tab back on this computer (saw: 1 window(s), tabs ['Terminal 1', 'Terminal 2'], 1 pane(s), title 'herbs-test@192.168.1.241' '', dialogs [], last lines…
-- [ ] **E10** Host: move (undoable), copy on the host, delete after asking (whole folders). (§5): Host: new folder, rename and delete: no answer to explorer-go in 10 s (did the app quit?)
+- [ ] **S2** Once logged in, the explorer moves to the same host and account. (§4): Once logged in, the explorer moves to the same host and account: the title doesn't name herbs-test@192.168.1.241: 'herbs-test@herberts-zbook: ~'
 
 ### Missing (26)
 

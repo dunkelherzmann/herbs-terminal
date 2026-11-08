@@ -781,50 +781,6 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         return userAtHost + " — " + trimmed
     }
 
-    /// Shells set their executable's full path as the title; the tab shows just its name ("powershell").
-    static func tabTitle(_ title: String) -> String {
-        let trimmed = title.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return "Terminal" }
-        if trimmed.lowercased().hasSuffix(".exe"), trimmed.contains("\\") {
-            let name = trimmed.split(separator: "\\").last.map(String.init) ?? trimmed
-            return String(name.dropLast(4))
-        }
-        return trimmed
-    }
-
-    // MARK: Title and location
-
-    private func setLocation(_ folder: String?) {
-        guard let folder, folder != location else { return }
-        location = folder
-        onTitleChange?(self)
-    }
-
-    /// A local tab's title: the shell's title, and the program in the foreground beside it, as on the Mac.
-    private func composeLocalTitle() {
-        let next = foregroundProgram.map { baseTitle + " — " + $0 } ?? baseTitle
-        guard next != title else { return }
-        title = next
-        onTitleChange?(self)
-    }
-
-    /// What closing this tab would end, as the Mac's question lists it: the program in the foreground, or the
-    /// SSH session. Nil for a local shell with nothing running.
-    var runningProgram: String? {
-        if let remote, isConnected { return "ssh (\(remote.label))" }
-        refreshForegroundProgram()
-        return foregroundProgram.map { String($0.split(separator: " ").first ?? Substring($0)) }
-    }
-
-    private func refreshForegroundProgram() {
-        guard remote == nil, let session, !session.hasExited else { return }
-        let program = ShellLocation.foregroundChild(of: session.processID)
-            .flatMap(ShellLocation.commandLine(of:)).map(ShellLocation.titleText(commandLine:))
-        guard program != foregroundProgram else { return }
-        foregroundProgram = program?.isEmpty == true ? nil : program
-        composeLocalTitle()
-    }
-
     // MARK: TerminalDelegate
 
     nonisolated func send(source: Terminal, data: ArraySlice<UInt8>) {
@@ -833,11 +789,10 @@ final class TerminalPane: WindowObject, TerminalDelegate {
 
     nonisolated func setTerminalTitle(source: Terminal, title: String) {
         MainActor.assumeIsolated {
-            // An SSH tab keeps its user@host until the remote shell names itself; ssh.exe's own path isn't news.
             if let remote {
-                // An SSH tab keeps its user@host until the remote shell names itself; ssh.exe's own path isn't news.
-                let named = Self.tabTitle(title)
-                self.title = named == "Terminal" || title.lowercased().hasSuffix("ssh.exe") ? remote.label : named
+                // As on the Mac and Linux, an SSH tab is titled with the account it connected to, whatever the
+                // remote shell calls itself.
+                self.title = remote.label
             } else {
                 baseTitle = Self.localTitle(reported: title)
                 composeLocalTitle()

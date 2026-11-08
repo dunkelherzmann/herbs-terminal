@@ -108,8 +108,7 @@ enum TestBridge {
     /// Like `command`, without running it.
     private static func probe(_ name: String) throws -> String {
         let workspace = try workspace
-        // The toolbar's SSH button: connection details while connected, Connect via SSH otherwise.
-        if name == "connect-button" { workspace.connectButton(); return "ran" }
+        if name == "connect-button" { return "enabled" }
         if name.hasPrefix("explorer.") {
             guard let explorer = workspace.selected.explorer else { return "missing" }
             return explorer.bridgeProbe(String(name.dropFirst("explorer.".count)))
@@ -124,6 +123,8 @@ enum TestBridge {
     /// "missing" when the app has no such command, "disabled" when it's greyed out, else "ran".
     private static func command(_ name: String) throws -> String {
         let workspace = try workspace
+        // The toolbar's SSH button: connection details while connected, Connect via SSH otherwise.
+        if name == "connect-button" { workspace.connectButton(); return "ran" }
         if name.hasPrefix("explorer.") {
             guard let explorer = workspace.selected.explorer else { return "missing" }
             return explorer.bridgeDo(String(name.dropFirst("explorer.".count)))

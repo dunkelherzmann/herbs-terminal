@@ -3,19 +3,15 @@
 What the Linux version still needs before it can ship with as few bugs as possible: everything a feature test found broken or missing, and every feature no automatic test covers yet. Fix broken items first, one pull request each, and tick an item with its PR number once it is fixed and its test passes. `bugs.md` and `enhancements.md` stay the record of requests and releases.
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-08 18:46)
+## Feature test results (2026-11-08 18:51)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Broken (5)
+### Missing (1)
 
-A test ran and the feature didn't do what the Mac version does.
+The command isn't there, or it's greyed out.
 
-- [ ] **S2** Once logged in, the explorer moves to the same host and account. (§4): Once logged in, the explorer moves to the same host and account: expected a connection to herbs-test@192.168.1.241 (saw: {'account': 'herbs-test@192.168.1.241', 'state': 'connecting'}; 1 window(s), tabs ['Terminal 1'],…
-- [ ] **S4** Exit or Disconnect returns the tab, title and explorer to this computer. (§4): Disconnect returns the tab and title to this computer: expected a connection (saw: {'account': 'herbs-test@192.168.1.241', 'state': 'connecting'})
-- [ ] **S7** No command line, password or token on screen or in history; saved password through SSH_ASKPASS… (§4): No password on screen: expected a login to herbs-test@192.168.1.241 (saw: {'account': 'herbs-test@192.168.1.241', 'state': 'connecting'}; 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'Connecting to…
-- [ ] **S10** Connection details popover (account, host, port, route, remote home, time) with Disconnect and New… (§4): Connection details while connected: expected a connection (saw: {'account': 'herbs-test@192.168.1.241', 'state': 'connecting'})
-- [ ] **E10** Host: move (undoable), copy on the host, delete after asking (whole folders). (§5): Host: new folder, rename and delete: expected a connection (saw: {'account': 'herbs-test@192.168.1.241', 'state': 'connecting'})
+- [ ] **S10** Connection details popover (account, host, port, route, remote home, time) with Disconnect and New… (§4): Connection details while connected: no `connect-button` command
 
 ### Not checked automatically (91)
 
