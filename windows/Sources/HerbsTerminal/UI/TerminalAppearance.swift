@@ -17,7 +17,9 @@ struct FontSet {
     init() {}
 
     init(family: String, points: Double, dpi: UINT) {
-        let height = -Int32((points * Double(dpi) / 72).rounded())
+        // A point here is the Mac's point: one screen pixel at 100 % scaling (96 dpi). Windows' usual 72 per inch
+        // would draw 13 pt as 17 px, about a third bigger than the Mac.
+        let height = -Int32((points * Double(dpi) / 96).rounded())
         let face = Self.isInstalled(family) ? family : (Self.isInstalled(Self.stockFamily) ? Self.stockFamily : "Consolas")
         func make(_ weight: Int32, _ italic: Bool) -> HFONT? {
             withWide(face) {
