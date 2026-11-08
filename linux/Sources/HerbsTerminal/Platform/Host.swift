@@ -56,8 +56,13 @@ enum Host {
     }()
 
     /// How a program on the host runs this app's own executable in helper mode (ssh's askpass and Tailcat proxy).
+    /// `flatpak run` finds a per-user install under $HOME, which the shell (or the user) may have changed, so the
+    /// user's own Flatpak folder is named.
     static var helperCommand: [String] {
-        isFlatpak ? ["flatpak", "run", "--command=herbs-terminal", appID] : [Bundle.main.executablePath ?? CommandLine.arguments[0]]
+        guard isFlatpak else { return [Bundle.main.executablePath ?? CommandLine.arguments[0]] }
+        let userFlatpaks = ProcessInfo.processInfo.environment["FLATPAK_USER_DIR"]
+            ?? FileManager.default.homeDirectoryForCurrentUser.path + "/.local/share/flatpak"
+        return ["env", "FLATPAK_USER_DIR=" + userFlatpaks, "flatpak", "run", "--command=herbs-terminal", appID]
     }
 
     /// Where the sandbox sees a path of the host's own system folders. Home folders, removable media, /opt, /srv

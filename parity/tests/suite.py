@@ -178,6 +178,11 @@ def connection(c, s=None):
     return c.tab(s).get("connection", {})
 
 
+def expect_connected(c, account, s):
+    c.expect(connection(c, s).get("state") == "connected" and any(l.startswith(account["user"] + "@") for l in c.text(s).splitlines()),
+             f"expected a login to {account['label']} (saw: {connection(c, s)}; {summary(s)})")
+
+
 def connect_test_host(c, password=None):
     """Connects the selected tab (Windows: a new tab) to the test host, answering a first host-key question."""
     account = ssh_account()
@@ -558,7 +563,7 @@ def _(c):
 @test("S2", "Once logged in, the explorer moves to the same host and account")
 def _(c):
     account, s = connect_test_host(c)
-    c.expect(connection(c, s).get("state") == "connected", f"expected a connection to {account['label']} (saw: {connection(c, s)}; {summary(s)})")
+    expect_connected(c, account, s)
     c.expect(account["label"] in c.window(s)["title"], f"the title doesn't name {account['label']}: {c.window(s)['title']!r}")
     c.command("toggle-explorer", settle=2)
     c.until(lambda s: c.tab(s).get("explorer", {}).get("remote") and c.tab(s)["explorer"].get("path", "").rstrip("/") == f"/home/{account['user']}",
@@ -567,7 +572,7 @@ def _(c):
 @test("S4", "Disconnect returns the tab and title to this computer")
 def _(c):
     account, s = connect_test_host(c)
-    c.expect(connection(c, s).get("state") == "connected", f"expected a connection (saw: {connection(c, s)})")
+    expect_connected(c, account, s)
     c.command("disconnect", settle=2)
     c.until(lambda s: connection(c, s).get("state") in ("local", "failed") and account["label"] not in c.window(s)["title"],
             "expected the tab back on this computer", timeout=15)
@@ -583,13 +588,13 @@ def _(c):
 @test("S7", "No password on screen")
 def _(c):
     account, s = connect_test_host(c)
-    c.expect(connection(c, s).get("state") == "connected", f"expected a connection (saw: {connection(c, s)})")
+    expect_connected(c, account, s)
     c.expect(account["password"] not in c.text(s), "the password is on the screen")
 
 @test("S10", "Connection details while connected")
 def _(c):
     account, s = connect_test_host(c)
-    c.expect(connection(c, s).get("state") == "connected", f"expected a connection (saw: {connection(c, s)})")
+    expect_connected(c, account, s)
     c.command("connect-button", settle=1.5)
     c.until(lambda s: has_window(s, "Connection") or any(account["label"] in d["heading"] or "Connection" in d["heading"] for d in s.get("dialogs", [])),
             "expected the connection details")
@@ -676,7 +681,7 @@ manual("E9", "System file clipboard", "would use the system clipboard")
 @test("E10", "Host: new folder, rename and delete")
 def _(c):
     account, s = connect_test_host(c)
-    c.expect(connection(c, s).get("state") == "connected", f"expected a connection (saw: {connection(c, s)})")
+    expect_connected(c, account, s)
     c.command("toggle-explorer", settle=2)
     if c.bridge.call("explorer-go", path=f"/home/{account['user']}") == "unsupported":
         c.unverified("this platform's test bridge can't drive the explorer yet")
