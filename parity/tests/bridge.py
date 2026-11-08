@@ -23,7 +23,15 @@ class Bridge:
         temporary = os.path.join(self.folder, "request.tmp")
         with open(temporary, "w", encoding="utf-8") as f:
             json.dump(request, f)
-        os.replace(temporary, os.path.join(self.folder, "request.json"))
+        # On Windows the swap fails while the app has the previous request open; it lets go within moments.
+        for attempt in range(40):
+            try:
+                os.replace(temporary, os.path.join(self.folder, "request.json"))
+                break
+            except PermissionError:
+                if attempt == 39:
+                    raise
+                time.sleep(0.05)
         deadline = time.time() + timeout
         path = os.path.join(self.folder, "response.json")
         while time.time() < deadline:
