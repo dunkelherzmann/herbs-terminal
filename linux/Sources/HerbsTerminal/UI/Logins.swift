@@ -71,8 +71,6 @@ enum LoginVaultPrompts {
                           choices: [.init("cancel", "Cancel"), .init("remove", "Remove Password", .destructive)], cancel: "cancel") == "remove"
     }
 
-    /// Asks for the Administrator Password to unlock saved logins for this session.
-    @discardableResult
     /// The Lock / Unlock button in Tailcat Peers: one window for the Administrator Password that protects saved logins
     /// and Tailcat addresses. Locked, it asks for the password to unlock; unlocked, it locks (no password needed to
     /// make things safer). Either way it offers to change the Administrator Password. Without one, there is nothing
@@ -118,6 +116,8 @@ enum LoginVaultPrompts {
         }
     }
 
+    /// Asks for the Administrator Password to unlock saved logins for this session.
+    @discardableResult
     static func unlock(_ store: CredentialStore, parent: Widget?, cancelTitle: String = "Cancel", detail: String? = nil) async -> Bool {
         var message: String?
         while store.isLocked {
@@ -263,7 +263,7 @@ final class SSHConnectDialog {
         append(content, box(.horizontal, spacing: 8, [manage, spacer(), cancel, go]))
         gtk_window_set_default_widget(c(window.window), go)
         append(window.content, content)
-        after(milliseconds: 50) { [weak self] in self.map { gtk_widget_grab_focus($0.host) } }
+        after(milliseconds: 50) { [weak self] in if let self { gtk_widget_grab_focus(self.host) } }
     }
 
     /// The first time SSH is used, explain the Administrator Password; later, offer to unlock.

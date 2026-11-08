@@ -29,9 +29,9 @@ final class RemoteExplorerModel {
     /// Where account names are looked up for Get Info's owner and group.
     let accountsOn: PrivilegedAccess.Target
 
-    init(endpoint: RemoteEndpoint, queue: TransferQueue = .shared) {
+    init(endpoint: RemoteEndpoint, queue: TransferQueue? = nil) {
         self.endpoint = endpoint
-        self.queue = queue
+        self.queue = queue ?? .shared
         shared = nil
         accountsOn = .remote(endpoint)
         service = (try? SFTPClient(endpoint: endpoint)) ?? FallbackRemoteService()
@@ -39,9 +39,9 @@ final class RemoteExplorerModel {
     }
 
     /// An explorer over a root SFTP session started through sudo (see `PrivilegedAccess`).
-    init(administrator client: SFTPClient, endpoint: RemoteEndpoint, target: PrivilegedAccess.Target, queue: TransferQueue = .shared) {
+    init(administrator client: SFTPClient, endpoint: RemoteEndpoint, target: PrivilegedAccess.Target, queue: TransferQueue? = nil) {
         self.endpoint = endpoint
-        self.queue = queue
+        self.queue = queue ?? .shared
         accountsOn = target
         shared = client
         service = client

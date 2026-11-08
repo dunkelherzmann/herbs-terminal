@@ -40,7 +40,7 @@ enum TestBridge {
         }
         if let out = try? JSONSerialization.data(withJSONObject: response, options: [.sortedKeys]) {
             let temporary = folder + "/response.tmp"
-            FileManager.default.createFile(atPath: temporary, contents: out)
+            _ = FileManager.default.createFile(atPath: temporary, contents: out)
             _ = rename(temporary, folder + "/response.json")
         }
     }

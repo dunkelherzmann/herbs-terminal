@@ -20,7 +20,7 @@ enum CryptoCompatibility {
         expect(try vault.decrypt(sealed) == "correct horse")
         var tampered = sealed
         tampered.ciphertext[0] ^= 1
-        expectThrows { try vault.decrypt(tampered) }
+        expectThrows { _ = try vault.decrypt(tampered) }
     }
 
     @MainActor static func randomBytesAreFilled() throws {
@@ -140,7 +140,7 @@ enum ThemesAndText {
         """
         let theme = try TerminalTheme(data: Data(plist.utf8))
         expect(theme.colors["Background Color"]?.blue == 0.3)
-        expectThrows { try TerminalTheme(data: Data("<plist><dict><key>Background Color</key><string>x</string></dict></plist>".utf8)) }
+        expectThrows { _ = try TerminalTheme(data: Data("<plist><dict><key>Background Color</key><string>x</string></dict></plist>".utf8)) }
     }
 
     @MainActor static func textDetection() throws {
@@ -159,8 +159,8 @@ enum ThemesAndText {
 /// A real login: HERBS_TEST_SSH=user@host:port:password names a test account. The interactive ssh becomes the
 /// shared-connection master with the saved password from the broker, then SFTP lists and writes over it.
 enum LiveSSH {
-    nonisolated(unsafe) static let account = ProcessInfo.processInfo.environment["HERBS_TEST_SSH"]
-    nonisolated(unsafe) static let helper = ProcessInfo.processInfo.environment["HERBS_TEST_HELPER"]
+    static let account = ProcessInfo.processInfo.environment["HERBS_TEST_SSH"]
+    static let helper = ProcessInfo.processInfo.environment["HERBS_TEST_HELPER"]
 
     @MainActor static func passwordLoginSharedConnectionAndSFTP() throws {
         guard account != nil && helper != nil else { print("skipped: passwordLoginSharedConnectionAndSFTP"); return }

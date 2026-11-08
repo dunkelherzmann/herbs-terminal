@@ -72,7 +72,7 @@ enum ParityScene {
             if herb_widget_bounds(widget, &bounds) != 0 { entries.append(["identifier": identifier, "frame": bounds]) }
         }
         if let data = try? JSONSerialization.data(withJSONObject: entries, options: [.prettyPrinted, .sortedKeys]) {
-            FileManager.default.createFile(atPath: path, contents: data)
+            _ = FileManager.default.createFile(atPath: path, contents: data)
         }
     }
 

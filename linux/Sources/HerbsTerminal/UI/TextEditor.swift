@@ -133,7 +133,7 @@ final class TextEditor {
         }
     }
 
-    func focus() { idle { [weak self] in self.map { gtk_widget_grab_focus($0.textView) } } }
+    func focus() { idle { [weak self] in if let self { gtk_widget_grab_focus(self.textView) } } }
 
     func find() {
         setVisible(findBar, true)
