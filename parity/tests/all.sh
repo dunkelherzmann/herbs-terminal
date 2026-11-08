@@ -4,17 +4,22 @@
 #
 #   PARITY_LINUX_HOST=user@host PARITY_LINUX_KEY=~/.ssh/key PARITY_WINDOWS_HOST=ssh-alias \
 #   PARITY_WINDOWS_TREE=~/Projects/<windows worktree> parity/tests/all.sh [mac] [linux] [windows] [--only W1,T3] [--no-build]
+#       [--package]
+#
+# --package tests what ships on Windows: the single dist\HerbsTerminal.exe from build.ps1 -Package (not copied to
+# the desktop), instead of the development build.
 #
 # With no platform named it runs all three. Linux runs in a headless KWin session, Windows in the logged-in
 # desktop session (through a one-time scheduled task), the Mac in the background without taking focus.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
-platforms=(); only=""; build=true
+platforms=(); only=""; build=true; package=false
 while (($#)); do
     case "$1" in
         mac|linux|windows) platforms+=("$1") ;;
         --only) only="$2"; shift ;;
         --no-build) build=false ;;
+        --package) package=true ;;
         *) echo "unknown argument $1" >&2; exit 2 ;;
     esac
     shift
@@ -51,10 +56,11 @@ run_windows() {
     # A test copy left over from an interrupted run would lock the program file; only test copies are stopped.
     ssh -o BatchMode=yes "$host" "powershell -NoProfile -ExecutionPolicy Bypass -File $home/src/herbs-parity/parity/tests/windows-stop.ps1"
     if $build; then
-        ssh -o BatchMode=yes "$host" "powershell -NoProfile -ExecutionPolicy Bypass -File $home/src/herbs-parity/windows/dev/build.ps1" \
+        ssh -o BatchMode=yes "$host" "powershell -NoProfile -ExecutionPolicy Bypass -File $home/src/herbs-parity/windows/dev/build.ps1$($package && echo ' -Package -NoDesktop')" \
             >parity/results/windows-build.log 2>&1 || { echo "Windows: build failed; see parity/results/windows-build.log" >&2; return 1; }
     fi
-    ssh -o BatchMode=yes "$host" "powershell -NoProfile -ExecutionPolicy Bypass -File $home/src/herbs-parity/parity/tests/windows.ps1 ${only:+-Only $only}" >/dev/null
+    local exe=""; $package && exe=" -Exe $home/src/herbs-parity/dist/HerbsTerminal.exe"
+    ssh -o BatchMode=yes "$host" "powershell -NoProfile -ExecutionPolicy Bypass -File $home/src/herbs-parity/parity/tests/windows.ps1 ${only:+-Only $only}$exe" >/dev/null
     scp -q "$host:$home/src/herbs-parity/parity/results/windows.json" parity/results/windows.json
     scp -q "$host:$home/src/herbs-parity/parity/results/windows.log" parity/results/windows.log
     sed -i '' $'1s/^\xEF\xBB\xBF//' parity/results/windows.log; grep -avE '^(WORKS|UNVERIFIED|N/A) ' parity/results/windows.log

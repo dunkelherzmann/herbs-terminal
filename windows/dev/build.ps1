@@ -5,6 +5,7 @@
 #   windows\dev\build.ps1 -Run       build, then start the app
 #   windows\dev\build.ps1 -SelfTest  build, then run the headless self-test
 #   windows\dev\build.ps1 -Package   the single portable dist\HerbsTerminal.exe, plus a zip, copied to the desktop
+#                                    (-NoDesktop leaves the desktop alone, for test runs)
 #
 # A packaged build is one HerbsTerminal.exe that needs nothing installed. The app itself needs the Swift runtime,
 # Foundation and the Microsoft C++ runtime DLLs beside it, so the package first gathers exactly the DLLs it uses
@@ -23,7 +24,7 @@
 # Needs the Swift toolchain for Windows (6.x) and Visual Studio 2022 or its Build Tools with the C++ workload
 # (MSVC and a Windows SDK). The script finds both and sets up the MSVC environment itself, so it runs from any
 # PowerShell window.
-param([switch]$Release, [switch]$Run, [switch]$SelfTest, [switch]$Package)
+param([switch]$Release, [switch]$Run, [switch]$SelfTest, [switch]$Package, [switch]$NoDesktop)
 if ($Package) { $Release = $true }
 
 $ErrorActionPreference = 'Stop'
@@ -79,6 +80,7 @@ Set-Content -Encoding utf8 (Join-Path $windows 'Sources\HerbsTerminal\Version.sw
 
 $configuration = if ($Release) { 'release' } else { 'debug' }
 $scratch = '.build'
+
 Push-Location $windows
 try {
     $ErrorActionPreference = 'Continue'
@@ -215,7 +217,7 @@ END
     # A copy on the desktop, so the newest build is easy to find. It replaces the older copy and the shortcut
     # earlier builds left there; if the older copy is running, it's left alone with a warning.
     $desktop = [Environment]::GetFolderPath('Desktop')
-    if ($desktop) {
+    if ($desktop -and -not $NoDesktop) {
         $copy = Join-Path $desktop "Herb's Terminal.exe"
         try {
             Copy-Item -Force $single $copy
