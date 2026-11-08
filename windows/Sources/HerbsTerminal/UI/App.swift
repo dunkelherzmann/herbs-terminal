@@ -16,6 +16,7 @@ enum App {
         registerClass(ManageLoginsWindow.className, background: GetSysColorBrush(COLOR_WINDOW))
         registerClass(ExplorerPane.className, style: UINT(CS_DBLCLKS))
         registerClass(TextEditorPane.className)
+        registerClass(GetInfoWindow.className, background: GetSysColorBrush(COLOR_WINDOW))
         // The folder picker and other shell dialogs need COM on this thread.
         CoInitializeEx(nil, DWORD(COINIT_APARTMENTTHREADED.rawValue | COINIT_DISABLE_OLE1DDE.rawValue))
         registerClass(MainThread.className)

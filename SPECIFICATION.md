@@ -551,6 +551,7 @@ The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In 
 - **Creating and renaming:** New Folder and New File make a free "untitled folder" or "untitled file" and start renaming it in place; F2 renames. Names Windows can't use are refused with an explanation.
 - **Shortcuts:** as on Linux (Thunar's): Ctrl+C / X / V / A, Delete, Shift+Delete, BackSpace and Alt+← back, Alt+→ forward, Alt+↑ up, Alt+Home home, Ctrl+L location, F5 or Ctrl+R reload, Ctrl+H hidden files, F2 rename, Ctrl+Shift+N new folder, Alt+Return Properties.
 - **Properties** opens Windows' own Properties window; **Show in File Explorer** opens File Explorer with the item selected; **Copy Path** copies the full path.
+- **Get Info on hosts:** in a host's explorer, right-click items and choose **Get Info…** (Alt+Return). A window shows the name, location, kind, size, date modified and permissions (`ls -l` text and octal) for one item, or how many items for several. Below: Owner and Group fields (by name or number), Read, Write and Execute checkboxes for the owner, the group and others (Execute reads "Open" for a folder), Set user ID, Set group ID and Sticky, an Octal field kept in step with the checkboxes, and Apply to enclosed items when folders are selected. Apply (Return) changes only what was edited, on every selected item; Revert reloads the values; Close (Esc). Owner and group names are looked up on the host itself (`id`, `getent` or `dscl`); Windows' OpenSSH can't reuse the tab's connection, so the lookup signs in once more the way the explorer does. Apply to enclosed items works as in section 5: folders inside keep their search permission wherever they're readable, and links inside are left alone. Every control has a hover hint (for example Octal — "The same permissions as chmod takes them, e.g. 644 or 755."). On this PC, Alt+Return opens Windows' Properties instead, since Windows files have no Unix permissions.
 
 ### Appearance
 
@@ -559,7 +560,7 @@ The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In 
 
 ### Not yet on Windows
 
-Get Info and Administrator mode; Undo and Redo and bookmarks in the explorer; split panes; MultiExec and Run Command on Hosts; Find in Terminal; named profiles; session restore; following an `ssh` typed in a local tab; Tailcat peers; Paste Escaped Text. Their toolbar buttons and menu commands are shown dimmed.
+Administrator mode; Undo and Redo and bookmarks in the explorer; split panes; MultiExec and Run Command on Hosts; Find in Terminal; named profiles; session restore; following an `ssh` typed in a local tab; Tailcat peers; Paste Escaped Text. Their toolbar buttons and menu commands are shown dimmed.
 
 ## References
 

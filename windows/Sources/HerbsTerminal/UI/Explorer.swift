@@ -802,7 +802,14 @@ final class ExplorerPane: WindowObject {
         case .openInEditor:
             guard let remote else { return true }
             for entry in selection where !entry.isFolder { onOpenInEditor?(.remote(entry.path, session: remote)) }
-        case .openInTerminal, .openWith, .properties, .folderProperties, .showInFileExplorer:
+        case .properties:
+            // Get Info: permissions, owner and group, as on the Mac and Linux.
+            guard !selection.isEmpty, let remote else { return true }
+            GetInfoWindow.show(owner: GetAncestor(hwnd, UINT(GA_ROOT)), names: selection.map(\.name), in: folder, session: remote) { [weak self] in
+                guard let self, self.folder == folder else { return }
+                self.remoteNavigate(to: folder, record: false, select: Set(selection.map(\.name)))
+            }
+        case .openInTerminal, .openWith, .folderProperties, .showInFileExplorer:
             break // Not for host files.
         default:
             return false
@@ -848,6 +855,7 @@ final class ExplorerPane: WindowObject {
             item("Delete…\tDelete", .delete)
             divider()
             item("Download…", .download)
+            item("Get Info…\tAlt+Enter", .properties)
         } else {
             item("New Folder\tCtrl+Shift+N", .newFolder)
             item("New File", .newFile)
@@ -1066,7 +1074,7 @@ final class ExplorerPane: WindowObject {
         let commands: [String: Command] = [
             "cut": .cut, "copy": .copy, "paste": .paste, "delete": .delete, "deletePermanently": .deletePermanently,
             "newFolder": .newFolder, "newFile": .newFile, "showHidden": .showHidden, "reload": .reload, "selectAll": .selectAll,
-            "open": .open, "edit": .openInEditor,
+            "open": .open, "edit": .openInEditor, "info": .properties,
         ]
         guard let command = commands[name] else { return false }
         perform(command)

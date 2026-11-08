@@ -38,20 +38,49 @@ final class RemoteSession: @unchecked Sendable {
         error.message.hasPrefix("SFTP channel closed") || error.message.hasPrefix("The server stopped responding")
     }
 
-    private func connect() throws -> SFTPClient {
+    /// ssh's options for this host, and the relay's first input line: the password helper's pipe and a one-time
+    /// token, or "-" for keys only.
+    private func relaySetup() throws -> (arguments: [String], preamble: String) {
         guard SSH.executable != nil else {
             throw FileIssue("Windows' OpenSSH client isn't installed. Add it in Settings ▸ System ▸ Optional features ▸ OpenSSH Client.")
         }
         var arguments = ["-p", String(endpoint.port)] + SSH.keepAliveOptions
         arguments += ["-o", "ControlPath=none", "-o", "StrictHostKeyChecking=yes", "-o", "NumberOfPasswordPrompts=1"]
-        // The relay's first input line: the password helper's pipe and a one-time token, or "-" for keys only.
         var preamble = "-\n"
         if let password, !password.isEmpty, let broker = AskpassBroker.shared {
             preamble = "\(broker.pipeName) \(broker.issue(password, for: endpoint.passwordLogins))\n"
         } else {
             arguments += ["-o", "BatchMode=yes"] // Keys and ssh-agent only; nothing could answer a prompt.
         }
-        arguments += ["-T", "-s", "\(endpoint.username)@\(endpoint.host)", "sftp"]
+        return (arguments, preamble)
+    }
+
+    /// Runs one shell command on the host and returns what it printed. Windows' ssh can't reuse the tab's
+    /// connection, so this signs in once more, the same way as the SFTP channel. It ends after 20 seconds.
+    func execute(_ command: String) throws -> String {
+        let setup = try relaySetup()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: AskpassBroker.executablePath)
+        process.arguments = [SFTPRelay.flag] + setup.arguments + ["-T", "\(endpoint.username)@\(endpoint.host)", command]
+        let input = Pipe(), output = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        try? input.fileHandleForWriting.write(contentsOf: Data(setup.preamble.utf8))
+        try? input.fileHandleForWriting.close()
+        let watchdog = DispatchWorkItem { if process.isRunning { process.terminate() } }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 20, execute: watchdog)
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        watchdog.cancel()
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private func connect() throws -> SFTPClient {
+        let setup = try relaySetup()
+        let arguments = setup.arguments + ["-T", "-s", "\(endpoint.username)@\(endpoint.host)", "sftp"]
+        let preamble = setup.preamble
         do {
             return try SFTPClient(executable: AskpassBroker.executablePath, arguments: [SFTPRelay.flag] + arguments,
                                   preamble: Data(preamble.utf8))
