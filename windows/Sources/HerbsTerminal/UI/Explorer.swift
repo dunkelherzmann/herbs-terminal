@@ -1170,7 +1170,7 @@ final class ExplorerPane: WindowObject {
         let commands: [String: Command] = [
             "cut": .cut, "copy": .copy, "paste": .paste, "delete": .delete, "deletePermanently": .deletePermanently,
             "newFolder": .newFolder, "newFile": .newFile, "showHidden": .showHidden, "reload": .reload, "selectAll": .selectAll,
-            "open": .open, "edit": .openInEditor, "info": .properties,
+            "open": .open, "edit": .openInEditor, "info": .properties, "reveal": .showInFileExplorer, "openWith": .openWith,
         ]
         guard let command = commands[name] else { return false }
         perform(command)
@@ -1729,4 +1729,14 @@ final class Locked<Value>: @unchecked Sendable {
     init(_ value: Value) { stored = value }
     var value: Value { lock.withLock { stored } }
     func update(_ change: (inout Value) -> Void) { lock.withLock { change(&stored) } }
+}
+
+// MARK: Feature tests (TestBridge)
+
+extension ExplorerPane {
+    var bridgeState: [String: Any] {
+        ["shown": IsWindowVisible(hwnd), "path": folder, "items": rows.map { $0.isFolder ? $0.name + "/" : $0.name },
+         "selected": selectedEntries.map(\.name), "hidden": showHidden, "administrator": isAdministrator, "remote": remote != nil,
+         "canUndo": false, "canRedo": false]
+    }
 }

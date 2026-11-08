@@ -58,6 +58,8 @@ final class Workspace: WindowObject {
     private var editors: [TextEditorPane] { tabs.compactMap { $0 as? TextEditorPane } }
     var activeIndex: Int { active }
     var tabNames: [String] { tabs.map(\.tabName) }
+    /// The tabs in order, for the feature tests' bridge.
+    var allTabs: [WorkspaceTab] { tabs }
 
     func newTab() {
         if ParityScene.isActive {
@@ -584,7 +586,7 @@ final class Workspace: WindowObject {
         guard let hwnd, let pane = activePane else { return }
         if IsZoomed(hwnd) { ShowWindow(hwnd, SW_RESTORE) }
         let cell = pane.cellSize
-        let padding = TerminalPane.padding(hwnd)
+        let inset = TerminalPane.inset(hwnd)
         let profile = TerminalProfile.shared
         var window = RECT(), client = RECT()
         GetWindowRect(hwnd, &window)
@@ -592,8 +594,8 @@ final class Workspace: WindowObject {
         let frameWidth = (window.right - window.left) - client.right, frameHeight = (window.bottom - window.top) - client.bottom
         var work = RECT()
         SystemParametersInfoW(UINT(SPI_GETWORKAREA), 0, &work, 0)
-        let width = min(Int32(profile.windowColumns) * cell.width + 2 * padding + frameWidth, work.right - work.left)
-        let height = min(Int32(profile.windowRows) * cell.height + 2 * padding + chrome.height(dpi) + frameHeight, work.bottom - work.top)
+        let width = min(Int32(profile.windowColumns) * cell.width + inset.left + inset.right + frameWidth, work.right - work.left)
+        let height = min(Int32(profile.windowRows) * cell.height + inset.top + inset.bottom + chrome.height(dpi) + frameHeight, work.bottom - work.top)
         SetWindowPos(hwnd, nil, 0, 0, width, height, UINT(SWP_NOMOVE | SWP_NOZORDER))
     }
 

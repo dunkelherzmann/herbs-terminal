@@ -58,10 +58,16 @@ Get-Content (Join-Path $windows 'shared.txt') | Where-Object { $_ -and -not $_.S
 }
 
 # The version, from git like the other builds: VERSION's major.minor plus commits since VERSION last changed.
-$base = (Get-Content (Join-Path $repo 'VERSION') -Raw).Trim()
-$since = git -C $repo log -1 --format=%H -- VERSION
-$patch = if ($since) { git -C $repo rev-list --count "$since..HEAD" } else { 0 }
-Set-Content -Encoding utf8 (Join-Path $windows 'Sources\HerbsTerminal\Version.swift') "let appVersion = `"$base.$patch`""
+# A copy without git history (sent to a test machine) takes the version from HERBS_VERSION instead.
+if ($env:HERBS_VERSION) {
+    $version = $env:HERBS_VERSION
+} else {
+    $base = (Get-Content (Join-Path $repo 'VERSION') -Raw).Trim()
+    $since = git -C $repo log -1 --format=%H -- VERSION
+    $patch = if ($since) { git -C $repo rev-list --count "$since..HEAD" } else { 0 }
+    $version = "$base.$patch"
+}
+Set-Content -Encoding utf8 (Join-Path $windows 'Sources\HerbsTerminal\Version.swift') "let appVersion = `"$version`""
 
 $configuration = if ($Release) { 'release' } else { 'debug' }
 $scratch = '.build'

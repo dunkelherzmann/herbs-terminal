@@ -5,6 +5,8 @@ import WinSDK
 @MainActor
 enum App {
     private static var workspaces: [Workspace] = []
+    /// The open main windows, for the feature tests' bridge.
+    static var allWorkspaces: [Workspace] { workspaces }
 
     static func run() {
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
@@ -23,6 +25,7 @@ enum App {
         MainThread.start()
         DarkMenus.apply(dark: appIsDark)
         newWindow()
+        TestBridge.start()
 
         var message = MSG()
         while GetMessageW(&message, nil, 0, 0) {
