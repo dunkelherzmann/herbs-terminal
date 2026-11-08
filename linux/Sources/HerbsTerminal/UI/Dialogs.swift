@@ -25,6 +25,11 @@ enum Dialogs {
     /// Asks a question; returns the chosen id. `cancel` is what Esc and closing answer. `defaultID` is what Return
     /// chooses; destructive questions keep Cancel as the default. `collect` runs as soon as a button is chosen,
     /// while the dialog still exists: read fields in `extra` there, because they're gone once this returns.
+    /// Feature tests (TestBridge): the alerts on screen, so a test can read, fill and answer them.
+    struct OpenDialog { let heading: String; let alert: UnsafeMutablePointer<AdwAlertDialog>; let responses: [String]; let fields: [Widget] }
+    static var open: [Int: OpenDialog] = [:]
+    private static var pendingFields: [Widget] = []
+
     static func ask(_ parent: Widget?, _ heading: String, _ body: String = "", choices: [Choice], defaultID: String? = nil,
                     cancel: String, extra: Widget? = nil, collect: (() -> Void)? = nil) async -> String {
         let dialog = adw_alert_dialog_new(heading, body.isEmpty ? nil : body)!
@@ -40,8 +45,12 @@ enum Dialogs {
         adw_alert_dialog_set_close_response(alert, cancel)
         adw_alert_dialog_set_default_response(alert, defaultID ?? cancel)
         if let extra { adw_alert_dialog_set_extra_child(alert, extra) }
+        let key = Int(bitPattern: UInt(bitPattern: raw(dialog)))
+        if TestBridge.isActive { open[key] = OpenDialog(heading: heading, alert: alert, responses: choices.map(\.id), fields: pendingFields) }
+        pendingFields = []
         return await withCheckedContinuation { continuation in
             herb_alert_choose(c(dialog), anchor(parent), responseTrampoline, Unmanaged.passRetained(ResponseBox { response in
+                open[key] = nil
                 collect?()
                 continuation.resume(returning: response)
             }).toOpaque())
@@ -91,6 +100,7 @@ enum Dialogs {
             }
         }
         var values: [String] = []
+        pendingFields = entries
         let answer = await ask(parent, heading, body, choices: [Choice("cancel", "Cancel"), Choice("ok", ok, okStyle)],
                                defaultID: "ok", cancel: "cancel", extra: list, collect: { values = entries.map { text(of: $0) } })
         guard answer == "ok" else { return nil }

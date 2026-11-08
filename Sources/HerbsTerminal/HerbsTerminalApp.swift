@@ -60,6 +60,7 @@ final class LaunchDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         // A parity check runs while the user works: its window opens without taking focus.
         if !ParityScene.isActive { NSApp.activate(ignoringOtherApps: true) }
+        TestBridge.start()
     }
 
     /// Ask once for every window before quitting, as Terminal does.

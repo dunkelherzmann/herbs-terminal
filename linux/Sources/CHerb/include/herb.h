@@ -90,6 +90,7 @@ PangoAttrList *herb_attrs(int weight, double points);
 /// AdwAlertDialog responses come back as a string id.
 typedef void (*HerbResponse)(void *data, const char *response);
 void herb_alert_choose(AdwAlertDialog *dialog, GtkWidget *parent, HerbResponse done, void *data);
+void herb_alert_respond(AdwAlertDialog *dialog, const char *response);
 
 /// GtkFileDialog: open (files and/or folders), select folder, save. Paths come back newline-separated, or NULL.
 void herb_file_open(GtkWindow *parent, const char *title, const char *accept, const char *initial_folder,

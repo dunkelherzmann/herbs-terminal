@@ -1,0 +1,759 @@
+"""The feature tests: one or more checks per feature in parity/features.md, the same on every platform.
+
+Each test gets a fresh app (`Context`) and ends in one outcome:
+  works      every expectation held;
+  broken     the feature is there but an expectation failed (the detail says what was seen);
+  missing    the platform has no such command, or it's greyed out where the Mac's isn't;
+  unverified the feature can't be checked automatically yet (the reason says why), so a person must try it.
+Tests registered with `manual` don't start the app.
+"""
+import time
+
+TESTS = {}      # feature id -> list of (title, function or reason)
+
+
+class Outcome(Exception):
+    def __init__(self, status, detail=""):
+        super().__init__(detail)
+        self.status, self.detail = status, detail
+
+
+def test(fid, title):
+    def register(function):
+        TESTS.setdefault(fid, []).append((title, function))
+        return function
+    return register
+
+
+def manual(fid, title, reason):
+    TESTS.setdefault(fid, []).append((title, reason))
+
+
+class Context:
+    def __init__(self, app):
+        self.app, self.bridge, self.platform = app, app.bridge, app.platform
+        self.notes = []
+
+    # State
+    def state(self):
+        return self.bridge.call("state")
+
+    def window(self, state=None):
+        windows = (state or self.state())["windows"]
+        if not windows:
+            raise Outcome("broken", "no window is open")
+        return windows[-1]
+
+    def tabs(self, state=None):
+        return self.window(state)["tabs"]
+
+    def tab(self, state=None):
+        return next(t for t in self.tabs(state) if t["selected"])
+
+    def panes(self, state=None):
+        return self.tab(state)["panes"]
+
+    def pane(self, state=None):
+        panes = self.panes(state)
+        return next((p for p in panes if p["focused"]), panes[0] if panes else None)
+
+    def text(self, state=None):
+        pane = self.pane(state)
+        return pane["text"] if pane else ""
+
+    # Acting
+    def command(self, name, settle=0.8):
+        result = self.bridge.call("command", name=name)
+        if result == "unsupported":
+            raise Outcome("unverified", f"this platform's test bridge can't run `{name}` yet")
+        if result == "missing":
+            raise Outcome("missing", f"no `{name}` command")
+        if result == "disabled":
+            raise Outcome("missing", f"`{name}` is greyed out")
+        time.sleep(settle)
+
+    def probe(self, *names, enabled=True):
+        for name in names:
+            result = self.bridge.call("probe", name=name)
+            if result == "unsupported":
+                raise Outcome("unverified", f"this platform's test bridge can't reach `{name}` yet")
+            if result == "missing" or (enabled and result == "disabled"):
+                raise Outcome("missing", f"`{name}` is {'not there' if result == 'missing' else 'greyed out'}")
+
+    def type(self, text, settle=0.6):
+        self.bridge.call("type", text=text)
+        time.sleep(settle)
+
+    def run(self, posix, cmd=None, settle=1.0):
+        line = posix if self.app.shell == "posix" else (cmd if cmd is not None else posix)
+        self.type(line + self.app.enter, settle)
+
+    def say(self, word, settle=1.0):
+        """Prints `word` without it appearing in the typed line, so finding it proves the shell ran it."""
+        posix = f'echo {word[:2]}""{word[2:]}'
+        cmd = f"echo {word[:2]}^{word[2:]}"
+        self.run(posix, cmd, settle)
+        return word
+
+    def cd_root(self):
+        self.run("cd /", "cd \\")
+
+    def pwd(self):
+        self.run("pwd", "cd")
+
+    def answer(self, response, fields=None, heading=None):
+        self.bridge.call("answer", response=response, fields=fields or [], heading=heading)
+        time.sleep(0.8)
+
+    def until(self, check, what, timeout=6):
+        """Polls the state until `check(state)` is true; otherwise the feature is broken."""
+        deadline, state = time.time() + timeout, None
+        while time.time() < deadline:
+            state = self.state()
+            try:
+                if check(state):
+                    return state
+            except (KeyError, IndexError, StopIteration, TypeError):
+                pass
+            time.sleep(0.25)
+        raise Outcome("broken", f"{what} (saw: {summary(state)})")
+
+    def expect(self, condition, what):
+        if not condition:
+            raise Outcome("broken", what)
+
+    def unverified(self, reason):
+        raise Outcome("unverified", reason)
+
+    def only(self, *platforms, reason="not part of this platform's design"):
+        if self.platform not in platforms:
+            raise Outcome("n/a", reason)
+
+
+def summary(state):
+    if not state:
+        return "nothing"
+    try:
+        w = state["windows"][-1]
+        tab = next(t for t in w["tabs"] if t["selected"])
+        pane = next((p for p in tab["panes"] if p["focused"]), (tab["panes"] or [None])[0])
+        tail = (pane or {}).get("text", "").strip().splitlines()[-3:]
+        return (f"{len(state['windows'])} window(s), tabs {[t['name'] for t in w['tabs']]}, "
+                f"{len(tab['panes'])} pane(s), title {w.get('title')!r} {w.get('subtitle')!r}, "
+                f"dialogs {[d['heading'] for d in state.get('dialogs', [])]}, last lines {tail}")
+    except Exception:
+        return str(state)[:300]
+
+
+def has_dialog(state, words=""):
+    return any(words.lower() in d["heading"].lower() for d in state.get("dialogs", []))
+
+
+def has_window(state, title):
+    return any(title.lower() in (t or "").lower() for t in state.get("toplevels", []))
+
+
+NEEDS_SSH = "needs an SSH test host (not set up yet)"
+NEEDS_GUI = "needs pointer or keyboard input the test bridge doesn't reach yet"
+
+# ---------------------------------------------------------------- W: Window and toolbar
+
+@test("W1", "New Tab adds a tab named Terminal 2")
+def _(c):
+    c.command("new-tab")
+    c.until(lambda s: [t["name"] for t in c.tabs(s)] == ["Terminal 1", "Terminal 2"] and c.tab(s)["name"] == "Terminal 2",
+            "expected tabs Terminal 1 and Terminal 2, with the new one selected")
+
+manual("W2", "Connection details while connected", NEEDS_SSH)
+
+@test("W3", "The title follows the folder and the program")
+def _(c):
+    c.cd_root()
+    c.until(lambda s: c.window(s)["subtitle"] in ("/", "C:\\", "\\"), "expected the location / in the title")
+    c.run("sleep 4", "ping -n 5 127.0.0.1 >nul", settle=1.5)
+    c.until(lambda s: "sleep" in (c.window(s)["title"] + c.window(s)["subtitle"]) or "ping" in (c.window(s)["title"] + c.window(s)["subtitle"]),
+            "expected the running program in the title")
+
+@test("W4", "Secrets in a command line are hidden in the title")
+def _(c):
+    c.run("sh -c 'sleep 4' x --password=hunter2 API_TOKEN=s3cr3t", "ping -n 5 127.0.0.1 --password=hunter2 >nul", settle=1.5)
+    s = c.state()
+    seen = c.window(s)["title"] + " " + c.window(s)["subtitle"]
+    c.expect("hunter2" not in seen and "s3cr3t" not in seen, f"the title shows a secret: {seen!r}")
+    c.expect("sleep" in seen or "ping" in seen, f"the program isn't in the title, so hiding wasn't shown: {seen!r}")
+
+@test("W5", "Restore Default Size and Make Current Size the Default")
+def _(c):
+    c.probe("restore-size", "default-size")
+    c.command("restore-size", settle=1.5)
+    c.until(lambda s: (c.pane(s)["columns"], c.pane(s)["rows"]) == (100, 30), "expected 100 × 30 after Restore Default Size")
+
+@test("W6", "Export Session")
+def _(c):
+    c.probe("export-session")
+    c.unverified("the command is there; saving goes through the system's save dialog, which the bridge can't fill")
+
+@test("W7", "Take Screenshot copies the window")
+def _(c):
+    c.probe("take-screenshot")
+    if c.platform == "mac":
+        c.unverified("not run on the Mac: it would replace what's on your clipboard")
+    c.command("take-screenshot", settle=1.5)
+    has = c.app.clipboard_has_image()
+    if has is None:
+        c.unverified("the command ran; this platform's clipboard can't be read by the runner")
+    c.expect(has, "no picture on the clipboard after Take Screenshot")
+
+@test("W8", "Show File Explorer / Show Terminal")
+def _(c):
+    c.command("toggle-explorer")
+    c.until(lambda s: c.tab(s)["layout"] == "explorer", "expected the explorer to show")
+    c.command("toggle-explorer")
+    c.until(lambda s: c.tab(s)["layout"] == "terminal", "expected the terminal back")
+
+@test("W9", "MultiExec button")
+def _(c):
+    c.command("multiexec")
+    c.until(lambda s: c.window(s)["multiExec"], "expected MultiExec on")
+
+@test("W10", "Tailcat Peers")
+def _(c):
+    c.command("tailcat", settle=1.5)
+    c.until(lambda s: has_window(s, "Tailcat"), "expected the Tailcat Peers window")
+
+@test("W11", "Search")
+def _(c):
+    c.probe("find")
+    c.unverified("the command is there; whether the search field opens isn't reported by the bridge yet")
+
+@test("W12", "Main Menu: New Tab, New Window, Connect via SSH")
+def _(c):
+    c.probe("new-tab", "new-window", "connect")
+
+@test("W13", "Find in Terminal")
+def _(c):
+    c.probe("find-in-terminal")
+    c.unverified("the command is there; the search bar isn't reported by the bridge yet")
+
+@test("W14", "Zoom: Bigger, Smaller, Default")
+def _(c):
+    base = c.pane()["fontSize"]
+    c.command("zoom-in")
+    c.until(lambda s: c.pane(s)["fontSize"] == base + 1, f"expected {base + 1} pt after Bigger")
+    c.command("zoom-out"); c.command("zoom-out")
+    c.until(lambda s: c.pane(s)["fontSize"] == base - 1, f"expected {base - 1} pt after Smaller twice")
+    c.command("zoom-reset")
+    c.until(lambda s: c.pane(s)["fontSize"] == base, f"expected {base} pt after Default")
+
+@test("W15", "Appearance: color scheme, presets, import, Restore Defaults")
+def _(c):
+    c.probe("color-scheme", "color-preset", "import-preset", "restore-theming")
+
+@test("W16", "Full Screen, Settings and About")
+def _(c):
+    c.probe("fullscreen", "settings", "about")
+    before = len(c.state()["toplevels"])
+    c.command("settings", settle=1.5)
+    c.until(lambda s: len(s["toplevels"]) > before, "expected the Settings window to open")
+
+manual("W17", "Hover hints", "covered by parity/check.sh (hover texts through the accessibility tree)")
+
+@test("W18", "New Window")
+def _(c):
+    c.command("new-window", settle=2)
+    c.until(lambda s: len(s["windows"]) == 2, "expected a second window")
+
+# ---------------------------------------------------------------- T: Tabs
+
+@test("T1", "Each tab keeps its own shell and scrollback")
+def _(c):
+    mark = c.say("TABONE")
+    c.until(lambda s: mark in c.text(s), "expected the first tab to print its marker")
+    c.command("new-tab", settle=1.5)
+    c.until(lambda s: c.tab(s)["name"] == "Terminal 2" and mark not in c.text(s), "expected the new tab without the first tab's text")
+    c.command("tab-1")
+    c.until(lambda s: mark in c.text(s), "expected the first tab's text back after switching")
+
+@test("T2", "New tabs take the lowest free number")
+def _(c):
+    c.command("new-tab"); c.command("new-tab")
+    c.command("tab-2"); c.command("close-tab", settle=1.2)
+    c.until(lambda s: [t["name"] for t in c.tabs(s)] == ["Terminal 1", "Terminal 3"], "expected Terminal 1 and 3 after closing 2")
+    c.command("new-tab")
+    c.until(lambda s: "Terminal 2" in [t["name"] for t in c.tabs(s)], "expected the new tab to be Terminal 2")
+
+@test("T3", "Rename Tab")
+def _(c):
+    c.command("rename-tab", settle=1.2)
+    s = c.until(lambda s: s.get("dialogs"), "expected the Rename dialog")
+    responses = s["dialogs"][0]["responses"]
+    ok = next((r for r in responses if r not in ("cancel", "Cancel")), None)
+    c.answer(ok, ["Renamed"])
+    c.until(lambda s: c.tab(s)["name"] == "Renamed", "expected the tab to be called Renamed")
+
+@test("T4", "Move Tab Left / Right")
+def _(c):
+    c.command("new-tab")
+    c.command("move-tab-left")
+    c.until(lambda s: [t["name"] for t in c.tabs(s)] == ["Terminal 2", "Terminal 1"], "expected Terminal 2 first after Move Tab Left")
+    c.command("move-tab-right")
+    c.until(lambda s: [t["name"] for t in c.tabs(s)] == ["Terminal 1", "Terminal 2"], "expected the order back after Move Tab Right")
+
+@test("T5", "Show Tab 1–8 and Last Tab")
+def _(c):
+    c.command("new-tab"); c.command("new-tab")
+    c.command("tab-1")
+    c.until(lambda s: c.tab(s)["name"] == "Terminal 1", "expected Terminal 1 selected")
+    c.command("tab-9")
+    c.until(lambda s: c.tab(s)["name"] == "Terminal 3", "expected the last tab selected")
+
+@test("T6", "Previous / Next Tab")
+def _(c):
+    c.command("new-tab")
+    c.command("previous-tab")
+    c.until(lambda s: c.tab(s)["name"] == "Terminal 1", "expected Terminal 1 after Previous Tab")
+    c.command("next-tab")
+    c.until(lambda s: c.tab(s)["name"] == "Terminal 2", "expected Terminal 2 after Next Tab")
+
+@test("T7", "Close Tab")
+def _(c):
+    c.command("new-tab")
+    c.command("close-tab", settle=1.2)
+    c.until(lambda s: len(c.tabs(s)) == 1, "expected one tab left")
+
+@test("T8", "exit closes the pane, then the tab")
+def _(c):
+    c.command("split-vertical", settle=1.5)
+    c.run("exit", settle=1.5)
+    c.until(lambda s: len(c.panes(s)) == 1, "expected the pane to close")
+    c.command("new-tab", settle=1.5)
+    c.run("exit", settle=1.5)
+    c.until(lambda s: len(c.tabs(s)) == 1, "expected the tab to close")
+
+@test("T9", "Asks before closing a tab with a running program")
+def _(c):
+    c.command("new-tab", settle=1.5)
+    c.run("sleep 30", "ping -n 31 127.0.0.1 >nul", settle=1.5)
+    c.command("close-tab", settle=1.5)
+    s = c.until(lambda s: s.get("dialogs") or len(c.tabs(s)) == 1, "expected a question or a closed tab")
+    c.expect(s.get("dialogs"), "the tab closed without asking")
+    c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() == "cancel"))
+    c.until(lambda s: len(c.tabs(s)) == 2, "expected the tab to stay after Cancel")
+
+@test("T10", "New tabs open in the current tab's folder")
+def _(c):
+    c.cd_root()
+    c.command("new-tab", settle=1.5)
+    c.pwd()
+    c.until(lambda s: any(l.strip() in ("/", "C:\\") for l in c.text(s).splitlines()), "expected the new tab to start in /")
+
+manual("T11", "Session restore", "the test scene never saves or restores a session")
+
+# ---------------------------------------------------------------- P: Split panes
+
+@test("P1", "Split Vertically and Horizontally")
+def _(c):
+    c.command("split-vertical", settle=1.2); c.command("split-horizontal", settle=1.2)
+    c.until(lambda s: len(c.panes(s)) == 3, "expected three panes")
+
+@test("P2", "A new pane starts in the current pane's folder")
+def _(c):
+    c.cd_root()
+    c.command("split-vertical", settle=1.5)
+    c.pwd()
+    c.until(lambda s: any(l.strip() in ("/", "C:\\") for l in c.text(s).splitlines()), "expected the new pane in /")
+
+@test("P3", "Close Pane")
+def _(c):
+    c.command("split-vertical", settle=1.2)
+    c.command("close-pane", settle=1.2)
+    c.until(lambda s: len(c.panes(s)) == 1, "expected one pane after Close Pane")
+
+@test("P4", "Select Next / Previous Pane")
+def _(c):
+    c.command("split-vertical", settle=1.2)
+    focused = c.pane()["number"]
+    c.command("next-pane")
+    c.until(lambda s: c.pane(s)["number"] != focused, "expected the focus to move")
+    c.command("previous-pane")
+    c.until(lambda s: c.pane(s)["number"] == focused, "expected the focus back")
+
+manual("P5", "Focused pane outline", "visual: shown in the window's picture, not reported by the bridge")
+manual("P6", "The first pane owns the SSH connection", NEEDS_SSH)
+
+# ---------------------------------------------------------------- B: Terminal behavior
+
+for fid, what in (("B1", "Copy, Paste, Paste Escaped Text, Select All, Find"), ("B2", "Clear and Reset"),
+                  ("B3", "Splits, Close Pane, New Tab, Show File Explorer"), ("B4", "Connect / Disconnect, zoom, Settings")):
+    manual(fid, f"Right-click menu: {what}", "the right-click menu needs a pointer click the bridge doesn't make yet")
+manual("B5", "Dropping files types their paths", NEEDS_GUI)
+manual("B6", "Bell", "sound and flash can't be observed by the bridge")
+manual("B7", "Size badge while resizing", "needs a window resize by the pointer")
+
+@test("B8", "Find in Terminal")
+def _(c):
+    c.probe("find-in-terminal")
+    c.unverified("the command is there; the search bar and its matches aren't reported by the bridge yet")
+
+@test("B9", "Copy, Paste and Paste Escaped Text")
+def _(c):
+    c.probe("copy", "paste", "paste-escaped", "select-all")
+    c.unverified("the commands are there; not run, since they'd use the system clipboard")
+
+@test("B10", "Clear to Start and Clear Scrollback")
+def _(c):
+    mark = c.say("CLEARME")
+    c.until(lambda s: mark in c.text(s), "expected the marker to print")
+    c.command("clear-to-start", settle=1.2)
+    c.until(lambda s: mark not in c.text(s), "expected Clear to Start to remove the marker")
+    c.run("seq 1 300 | sed 's/^/L/'", "for /l %i in (1,1,300) do @echo L%i", settle=2)
+    c.until(lambda s: "L150" in c.text(s), "expected 300 lines of output")
+    c.command("clear-scrollback", settle=1.2)
+    c.until(lambda s: "L5\n" not in c.text(s) and "L150" not in c.text(s), "expected Clear Scrollback to drop the old lines")
+
+@test("B11", "Reset and Hard Reset keep the shell working")
+def _(c):
+    c.command("reset"); c.command("hard-reset")
+    mark = c.say("ALIVE")
+    c.until(lambda s: mark in c.text(s), "expected the shell to answer after Reset and Hard Reset")
+
+@test("B12", "Zoom is saved in the profile and Default clears it")
+def _(c):
+    base = c.pane()["fontSize"]
+    c.command("zoom-in")
+    c.command("new-tab", settle=1.5)
+    c.until(lambda s: c.pane(s)["fontSize"] == base + 1, "expected a new tab to keep the zoom")
+    c.command("zoom-reset")
+    c.until(lambda s: c.pane(s)["fontSize"] == base, "expected Default to clear the zoom")
+
+@test("B13", "Secure Keyboard Entry")
+def _(c):
+    c.only("mac", reason="exempt on Linux and Windows (SPECIFICATION.md §11)")
+    c.probe("secure-keyboard-entry")
+
+manual("B14", "Colors, styles, wide characters, mouse reporting", "visual: needs the window's picture compared with the Mac's")
+
+# ---------------------------------------------------------------- M: Menus
+
+MENU = {"M1": ("new-tab", "export-session", "take-screenshot", "new-tab-profile", "use-profile"),
+        "M2": ("split-vertical", "split-horizontal", "close-pane", "next-pane", "previous-pane"),
+        "M3": ("multiexec", "run-on-hosts"),
+        "M4": ("connect", "disconnect"),
+        "M5": ("previous-tab", "next-tab", "rename-tab", "move-tab-left", "move-tab-right"),
+        "M6": ("reset", "hard-reset"), "M7": ("clear-to-start", "clear-scrollback"),
+        "M8": ("zoom-in", "zoom-out", "zoom-reset"), "M9": tuple(f"tab-{n}" for n in range(1, 10))}
+for fid, names in MENU.items():
+    def menu_test(c, names=names):
+        c.command("new-tab", settle=1.0)   # two tabs, so tab commands are available
+        for name in names:
+            c.probe(name, enabled=name not in ("disconnect", "move-tab-right"))
+    test(fid, "Menu commands: " + ", ".join(names))(menu_test)
+
+# ---------------------------------------------------------------- R: Profiles, appearance, Settings
+
+@test("R1", "Named profiles")
+def _(c):
+    c.expect(c.state().get("profiles"), "no profiles")
+    c.probe("new-tab-profile", "use-profile")
+
+@test("R2", "A profile's startup command runs when a tab opens")
+def _(c):
+    word = "STARTED" + "OK"
+    c.bridge.call("profile-set", key="startupCommand", value=f"echo {word[:3]}\"\"{word[3:]}" if c.app.shell == "posix" else f"echo {word[:3]}^{word[3:]}")
+    c.command("new-tab", settle=2)
+    c.until(lambda s: word in c.text(s), "expected the startup command's output in the new tab", timeout=8)
+
+@test("R3", "Default look: 13 pt, 100 × 30")
+def _(c):
+    p = c.pane()
+    c.expect(p["fontSize"] == 13, f"text is {p['fontSize']} pt")
+    c.expect((p["columns"], p["rows"]) == (100, 30), f"the terminal is {p['columns']} × {p['rows']}")
+
+@test("R4", "Color presets")
+def _(c):
+    names = c.state().get("presets", [])
+    want = ["Solarized Dark", "Solarized Light", "Tango Dark", "Tango Light", "Gruvbox Dark", "Nord"]
+    c.expect(all(n in names for n in want), f"presets are {names}")
+
+manual("R5", "iTerm2 preset import", "needs the system's open dialog")
+
+@test("R6", "Restore Defaults asks first")
+def _(c):
+    c.command("restore-theming", settle=1.2)
+    s = c.until(lambda s: s.get("dialogs"), "expected Restore Defaults to ask first")
+    c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() == "cancel"))
+
+for fid, what in (("R7", "Profiles"), ("R8", "Text"), ("R9", "Terminal"), ("R10", "Window"), ("R11", "Colors")):
+    def settings_test(c, what=what):
+        before = len(c.state()["toplevels"])
+        c.command("settings", settle=1.5)
+        c.until(lambda s: len(s["toplevels"]) > before, "expected the Settings window to open")
+        c.unverified(f"Settings opens; its {what} page isn't read by the bridge yet")
+    test(fid, f"Settings ▸ {what}")(settings_test)
+manual("R12", "Light and dark for the whole app", "visual: needs pictures in light and dark mode")
+
+# ---------------------------------------------------------------- S: SSH
+
+@test("S1", "Connect via SSH dialog")
+def _(c):
+    c.command("connect", settle=1.5)
+    c.until(lambda s: has_window(s, "Connect") or has_dialog(s, "Administrator") or s.get("dialogs"), "expected the Connect via SSH dialog")
+for fid in ("S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10"):
+    manual(fid, "SSH", NEEDS_SSH)
+
+# ---------------------------------------------------------------- E: File explorer (in the scene's own folder only)
+
+def explorer_at_home(c, files=True):
+    if files:
+        c.run("mkdir -p sub && printf 'hello\\n' > note.txt", "mkdir sub & echo hello> note.txt", settle=1.5)
+    c.command("toggle-explorer", settle=1.2)
+    if c.bridge.call("explorer-go", path=c.app.home) == "unsupported":
+        c.unverified("this platform's test bridge can't drive the explorer yet")
+    s = c.until(lambda s: c.tab(s).get("explorer", {}).get("path", "").rstrip("/\\").lower() == c.app.home.rstrip("/\\").lower(),
+                "expected the explorer in the scene's folder")
+    return s
+
+def items(c, s=None):
+    return c.tab(s).get("explorer", {}).get("items", [])
+
+def safe(c):
+    """Never change files outside the scene's folder."""
+    path = c.tab().get("explorer", {}).get("path", "")
+    if not path.lower().startswith(c.app.home.lower()):
+        raise Outcome("error", f"refused: the explorer is at {path}, outside the scene's folder")
+
+manual("E1", "Places", "checked in the accessibility tree by parity/check.sh; the bridge doesn't report places")
+manual("E2", "Bookmarks", NEEDS_GUI)
+
+@test("E3", "Navigate: go into a folder and back")
+def _(c):
+    explorer_at_home(c)
+    c.until(lambda s: "sub/" in items(c, s) or "sub" in items(c, s), "expected the folder sub in the list")
+    c.bridge.call("explorer-go", path=c.app.home.rstrip("/\\") + ("/sub" if c.platform != "windows" else "\\sub"))
+    c.until(lambda s: c.tab(s)["explorer"]["path"].rstrip("/\\").endswith("sub"), "expected to be in sub")
+    c.unverified("going into a folder works; Back, Forward, Up and Home are buttons the bridge doesn't press yet")
+
+manual("E4", "Path segments and editable location", NEEDS_GUI)
+
+@test("E5", "Open a text file from the explorer")
+def _(c):
+    explorer_at_home(c)
+    c.until(lambda s: "note.txt" in items(c, s), "expected note.txt in the list")
+    c.bridge.call("explorer-select", names=["note.txt"])
+    c.command("explorer.open", settle=2)
+    c.until(lambda s: c.tab(s)["kind"] == "editor", "expected note.txt to open in the text editor")
+
+@test("E6", "File Actions commands")
+def _(c):
+    explorer_at_home(c, files=False)
+    c.probe("explorer.cut", "explorer.copy", "explorer.delete", enabled=False)
+    c.probe("explorer.paste", "explorer.select-all", "explorer.new-folder", "explorer.new-file", "explorer.undo", "explorer.redo",
+            "explorer.find", "explorer.upload", "explorer.download", enabled=False)
+
+@test("E7", "Copy and paste here gives a 'copy' name")
+def _(c):
+    explorer_at_home(c)
+    c.until(lambda s: "note.txt" in items(c, s), "expected note.txt in the list")
+    safe(c)
+    c.bridge.call("explorer-select", names=["note.txt"])
+    c.command("explorer.copy"); c.command("explorer.paste", settle=2)
+    c.until(lambda s: any(i.startswith("note copy") for i in items(c, s)), "expected a 'note copy.txt'")
+
+@test("E8", "Undo and Redo a move to Trash")
+def _(c):
+    explorer_at_home(c)
+    c.until(lambda s: "note.txt" in items(c, s), "expected note.txt in the list")
+    safe(c)
+    c.bridge.call("explorer-select", names=["note.txt"])
+    c.command("explorer.delete", settle=2)
+    s = c.state()
+    if s.get("dialogs"):
+        c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() not in ("cancel",)))
+    c.until(lambda s: "note.txt" not in items(c, s), "expected note.txt to go to the Trash")
+    c.command("explorer.undo", settle=2)
+    c.until(lambda s: "note.txt" in items(c, s), "expected Undo to bring note.txt back")
+    c.command("explorer.redo", settle=2)
+    c.until(lambda s: "note.txt" not in items(c, s), "expected Redo to move it again")
+
+manual("E9", "System file clipboard", "would use the system clipboard")
+manual("E10", "Host file operations", NEEDS_SSH)
+manual("E11", "Pasting between this computer and a host", NEEDS_SSH)
+
+@test("E12", "A folder can't be pasted into itself")
+def _(c):
+    explorer_at_home(c)
+    c.until(lambda s: "sub/" in items(c, s) or "sub" in items(c, s), "expected the folder sub")
+    safe(c)
+    c.bridge.call("explorer-select", names=["sub"])
+    c.command("explorer.copy")
+    c.bridge.call("explorer-go", path=c.app.home.rstrip("/\\") + ("/sub" if c.platform != "windows" else "\\sub"))
+    time.sleep(1)
+    c.command("explorer.paste", settle=2)
+    s = c.state()
+    c.expect(not any(i.startswith("sub") for i in items(c, s)), f"the folder was pasted into itself: {items(c, s)}")
+    for d in s.get("dialogs", []):
+        c.answer(d["responses"][0])
+
+@test("E13", "New Folder and Rename")
+def _(c):
+    explorer_at_home(c, files=False)
+    safe(c)
+    c.command("explorer.new-folder", settle=1.2)
+    s = c.until(lambda s: s.get("dialogs"), "expected the New Folder dialog")
+    ok = next(r for r in s["dialogs"][0]["responses"] if r.lower() != "cancel")
+    c.answer(ok, ["made-by-test"])
+    c.until(lambda s: any(i.rstrip("/\\") == "made-by-test" for i in items(c, s)), "expected the new folder")
+    c.bridge.call("explorer-select", names=["made-by-test"])
+    c.command("explorer.rename", settle=1.2)
+    s = c.until(lambda s: s.get("dialogs"), "expected the Rename dialog")
+    c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() != "cancel"), ["renamed-by-test"])
+    c.until(lambda s: any(i.rstrip("/\\") == "renamed-by-test" for i in items(c, s)), "expected the folder renamed")
+
+@test("E14", "Find files")
+def _(c):
+    explorer_at_home(c, files=False)
+    c.probe("explorer.find")
+    c.unverified("the command is there; the filter field isn't driven by the bridge yet")
+
+@test("E15", "Open in Text Editor, Open with Default App, Show in the file manager")
+def _(c):
+    explorer_at_home(c)
+    c.until(lambda s: "note.txt" in items(c, s), "expected note.txt")
+    c.bridge.call("explorer-select", names=["note.txt"])
+    c.probe("explorer.edit", "explorer.open-default", "explorer.reveal")
+
+manual("E16", "Open with Administrator Mode", "needs a sudo password (not automated)")
+
+# ---------------------------------------------------------------- X, D, G, A
+
+for fid in ("X1", "X2", "X3", "X4", "X6", "X7"):
+    manual(fid, "Transfers", NEEDS_SSH)
+manual("X5", "Local copies in the background", "needs a large folder and timing; not automated yet")
+
+@test("D1", "Text files open as a tab")
+def _(c):
+    explorer_at_home(c)
+    c.until(lambda s: "note.txt" in items(c, s), "expected note.txt")
+    c.bridge.call("explorer-select", names=["note.txt"])
+    c.command("explorer.edit", settle=2)
+    c.until(lambda s: c.tab(s)["kind"] == "editor" and "hello" in c.tab(s)["editor"]["text"], "expected note.txt in an editor tab")
+
+@test("D2", "New File opens in the editor")
+def _(c):
+    explorer_at_home(c, files=False)
+    safe(c)
+    c.command("explorer.new-file", settle=1.2)
+    s = c.until(lambda s: s.get("dialogs"), "expected the New File dialog")
+    c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() != "cancel"), ["fresh.txt"])
+    c.until(lambda s: c.tab(s)["kind"] == "editor", "expected the new file in the editor")
+
+for fid, what in (("D3", "Find and undo"), ("D4", "Wrap Lines"), ("D5", "Status line"), ("D6", "Save"),
+                  ("D7", "Unsaved-changes question"), ("D8", "Changed on disk"), ("D9", "Encodings kept"), ("D10", "Size and binary limits")):
+    manual(fid, f"Text editor: {what}", "the bridge can't type into the editor or read its status yet")
+for fid in ("G1", "G2", "G3", "G5", "G6"):
+    manual(fid, "Get Info", "the Get Info window isn't driven by the bridge yet")
+manual("G4", "Hidden and Locked", "Mac only")
+for fid in ("A1", "A2", "A3", "A4", "A5"):
+    manual(fid, "Administrator mode", "needs a sudo password (not automated)")
+
+# ---------------------------------------------------------------- L: Saved logins
+
+for fid in ("L1", "L2", "L3", "L4"):
+    manual(fid, "Login vault", "covered by the unit and self tests of the shared vault code")
+
+@test("L5", "First use explains the Administrator Password")
+def _(c):
+    c.command("connect", settle=2)
+    c.until(lambda s: has_dialog(s, "Administrator") or has_window(s, "Administrator"), "expected the Administrator Password explanation")
+for fid in ("L6", "L7", "L8", "L9", "L10", "L11"):
+    manual(fid, "Manage Logins", "the Manage Logins window isn't driven by the bridge yet")
+
+# ---------------------------------------------------------------- U: MultiExec and Run Command on Hosts
+
+def multiexec_with(c, panes=3):
+    for _ in range(panes - 1):
+        c.command("split-vertical", settle=1.2)
+    c.command("multiexec", settle=1.2)
+    c.until(lambda s: c.window(s)["multiExec"], "expected MultiExec on")
+
+@test("U1", "Every terminal joins the grid, included")
+def _(c):
+    multiexec_with(c)
+    c.until(lambda s: c.window(s)["excluded"] == [] and len(c.panes(s)) == 3, "expected three included terminals")
+
+@test("U2", "Typing reaches every included terminal once; an excluded one is left out")
+def _(c):
+    multiexec_with(c)
+    mark = c.say("ALLOFUS", settle=2)
+    s = c.until(lambda s: all(mark in p["text"] for p in c.panes(s)), "expected the line in every terminal")
+    counts = [p["text"].count(mark) for p in c.panes(s)]
+    c.expect(all(n == 1 for n in counts), f"expected each terminal to run it once, saw {counts}")
+    typing = c.pane()["number"]
+    other = next(p["number"] for p in c.panes() if p["number"] != typing)
+    c.bridge.call("include", pane=other, on=False)
+    c.until(lambda s: c.window(s)["excluded"] == [other], f"expected terminal {other} left out")
+    only = c.say("SOMEOFUS", settle=2)
+    s = c.until(lambda s: only in c.pane(s)["text"], "expected the line in the typing terminal")
+    seen = {p["number"]: only in p["text"] for p in c.panes(s)}
+    want = {n: n != other for n in seen}
+    c.expect(seen == want, f"expected every terminal but {other} to get it, saw {seen}")
+
+@test("U3", "Leave MultiExec")
+def _(c):
+    multiexec_with(c, 2)
+    c.command("multiexec")
+    c.until(lambda s: not c.window(s)["multiExec"], "expected MultiExec off")
+
+@test("U4", "Close All")
+def _(c):
+    multiexec_with(c, 2)
+    c.probe("close-all")
+
+@test("U5", "Text the app types isn't broadcast")
+def _(c):
+    multiexec_with(c, 2)
+    c.command("clear-to-start", settle=1)
+    c.bridge.call("profile-set", key="startupCommand", value="echo QUIET" + ("\"\"" if c.app.shell == "posix" else "^") + "ONE")
+    c.command("split-vertical", settle=2.5)
+    s = c.state()
+    counts = [p["text"].count("QUIETONE") for p in c.panes(s)]
+    c.expect(counts[-1] >= 1 and sum(counts[:-1]) == 0, f"expected the new pane's startup command in that pane only, saw {counts}")
+
+@test("U5", "Connecting in a new tab while MultiExec is on types only into that tab")
+def _(c):
+    multiexec_with(c, 2)
+    before = [p["text"] for p in c.panes()]
+    c.command("new-tab", settle=1.5)
+    # A port nothing listens on: the login fails fast, but the launcher line is typed into the new tab all the same.
+    c.bridge.call("connect", host="127.0.0.1", port=1, user="nobody", password="")
+    time.sleep(4)
+    c.expect(c.app.alive(), "the app crashed while connecting")
+    c.command("tab-1", settle=1)
+    after = [p["text"] for p in c.panes()]
+    leaked = [i + 1 for i, (a, b) in enumerate(zip(before, after)) if "herbs" in b[len(a):] or "nobody@" in b[len(a):]]
+    c.expect(not leaked, f"the login was typed into MultiExec terminal(s) {leaked} too")
+
+@test("U6", "Run Command on Hosts window")
+def _(c):
+    c.command("run-on-hosts", settle=1.5)
+    c.until(lambda s: has_window(s, "Run Command") or has_window(s, "Hosts"), "expected the Run Command on Hosts window")
+manual("U7", "Run Command results", NEEDS_SSH)
+
+# ---------------------------------------------------------------- C, Y, Z
+
+@test("C1", "Tailcat Peers: add a peer")
+def _(c):
+    c.command("tailcat", settle=1.5)
+    c.until(lambda s: has_window(s, "Tailcat"), "expected the Tailcat Peers window")
+    c.unverified("the window opens; adding a peer needs its form, which the bridge doesn't fill yet")
+for fid in ("C2", "C3", "C4", "C5", "C6"):
+    manual(fid, "Tailcat", "needs a second machine running tailcat")
+manual("C7", "Unlock / Lock", "the Tailcat window isn't driven by the bridge yet")
+manual("Y1", "Names and hints for screen readers", "covered by parity/check.sh and a screen-reader pass")
+manual("Y2", "States announced", "needs a screen reader")
+manual("Y3", "Password field labels", "covered by the accessibility tree; not automated here")
+manual("Y4", "Reduce Motion", "visual")
+manual("Y5", "Shared identifiers", "covered by parity/check.sh")
+for fid in ("Z1", "Z2", "Z3", "Z4"):
+    manual(fid, "Safety", "needs damaged files or a dropped connection (fault injection, not automated yet)")
+manual("Z5", "Self-contained", "checked by each platform's packaging script")
