@@ -66,6 +66,7 @@ func setDarkTitleBar(_ hwnd: HWND, _ dark: Bool) {
 }
 
 /// Windows objects (panes, the main window) store a pointer to their Swift object in GWLP_USERDATA.
+@MainActor
 protocol WindowObject: AnyObject {
     func handle(_ hwnd: HWND, _ message: UINT, _ wParam: WPARAM, _ lParam: LPARAM) -> LRESULT?
 }
@@ -77,8 +78,11 @@ let windowProcedure: WNDPROC = { hwnd, message, wParam, lParam in
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, LONG_PTR(Int(bitPattern: create.pointee.lpCreateParams)))
     }
     if let raw = UnsafeRawPointer(bitPattern: Int(GetWindowLongPtrW(hwnd, GWLP_USERDATA))) {
-        let object = Unmanaged<AnyObject>.fromOpaque(raw).takeUnretainedValue() as! WindowObject
-        if let result = object.handle(hwnd, message, wParam, lParam) { return result }
+        // Window procedures run on the thread that created the window: the main thread.
+        let result = MainActor.assumeIsolated {
+            (Unmanaged<AnyObject>.fromOpaque(raw).takeUnretainedValue() as! WindowObject).handle(hwnd, message, wParam, lParam)
+        }
+        if let result { return result }
     }
     return DefWindowProcW(hwnd, message, wParam, lParam)
 }
@@ -101,7 +105,7 @@ func registerClass(_ name: String, background: HBRUSH? = nil, style: UINT = UINT
 }
 
 /// Creates a window whose messages go to `object`. The object must outlive the window.
-@discardableResult
+@MainActor @discardableResult
 func createWindow(_ object: WindowObject, className: String, title: String = "", style: DWORD, exStyle: DWORD = 0,
                   x: Int32 = CW_USEDEFAULT, y: Int32 = CW_USEDEFAULT, width: Int32 = CW_USEDEFAULT, height: Int32 = CW_USEDEFAULT,
                   parent: HWND? = nil) -> HWND? {

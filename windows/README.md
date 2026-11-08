@@ -31,7 +31,7 @@ The app is `windows\.build\out\Products\Debug-windows-x86_64\HerbsTerminal.exe` 
 - Mouse selection (double-click selects a word), copy and paste as in Windows Terminal: Ctrl+C copies when text is selected, Ctrl+V pastes, right-click copies or pastes; bracketed paste
 - Block, underline and bar cursors from the profile, blinking or steady
 - Light and dark mode follow Windows, title bar included; per-monitor DPI
-- Profiles, themes and window size from the same `settings.json` model as the Linux version
+- Settings (Ctrl+, or the window menu): font and size, cursor shape and blinking, color theme with `.itermcolors` import, light/dark/system appearance, the shell for new tabs (PowerShell 7, Windows PowerShell, Command Prompt, WSL, Git Bash or any command line), scrollback length, new window size, and confirm-before-closing. Changes apply to open terminals at once and are saved in `%LOCALAPPDATA%\HerbsTerminal\settings.json`, the same model as the Linux version
 - Login vault (AES-256-GCM, PBKDF2-SHA256) on Windows CNG, verified against the NIST and RFC test vectors
 
 ## Shortcuts
@@ -45,6 +45,7 @@ The app is `windows\.build\out\Products\Debug-windows-x86_64\HerbsTerminal.exe` 
 | Ctrl+Shift+Tab, Ctrl+Page Up | Previous tab |
 | Alt+1–8, Alt+9 | Tab 1–8, last tab |
 | Ctrl+= / Ctrl+- / Ctrl+0 | Zoom in, out, reset |
+| Ctrl+, | Settings |
 | Ctrl+Shift+C, Ctrl+Shift+V | Copy, paste |
 | Shift+Page Up / Down, Ctrl+Shift+Home / End | Scroll back |
 
@@ -58,11 +59,11 @@ Scripted runs drive the app from the command line instead of simulated keystroke
 HerbsTerminal.exe --type "Get-ChildItem\r" --type "\t" --type "ver\r" --capture shot.bmp
 ```
 
-Each `--type` goes straight into the active terminal 1.5 s apart (`\r` is Enter, `\e` Escape, a lone `\t` opens a new tab); `--capture` saves the window as a BMP and quits. The window opens without taking focus.
+Each `--type` goes straight into the active terminal 1.5 s apart (`\r` is Enter, `\e` Escape, a lone `\t` opens a new tab, a lone `\s` opens Settings); `--capture` saves the window as a BMP (and Settings, if open, beside it) and quits. The window opens without taking focus.
 
 ## Roadmap
 
-1. Settings window (fonts, themes, cursor, window size, shell choice) and the Main Menu
+1. Main Menu, named profiles (Settings edits the default profile today), dark-mode Settings
 2. SSH: Connect via SSH, Manage Logins with the vault, saved hosts (Windows OpenSSH has no `ControlMaster`, so the explorer opens its own SFTP session)
 3. File explorer: local files, then remote over SFTP, with the transfer queue and the text editor
 4. Split panes, MultiExec, session restore, Export Session

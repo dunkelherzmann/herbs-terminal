@@ -97,7 +97,8 @@ struct Colors {
     var selectedText: COLORREF?
     var palette: [COLORREF]
 
-    init(theme: TerminalTheme? = nil, dark: Bool = systemPrefersDark) {
+    @MainActor init(theme: TerminalTheme? = nil, dark isDark: Bool? = nil) {
+        let dark = isDark ?? appIsDark
         let colors = theme?.colors ?? TerminalTheme.basic(dark: dark)
         let fallback = TerminalTheme.basic(dark: dark)
         func pick(_ key: String) -> COLORREF? { (colors[key] ?? fallback[key])?.colorRef }

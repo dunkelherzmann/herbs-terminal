@@ -6,12 +6,14 @@ import WinSDK
 final class Workspace: WindowObject {
     static let className = "HerbsTerminalWindow"
     private static let aboutCommand: UINT_PTR = 0x1000
+    private static let settingsCommand: UINT_PTR = 0x1010
 
     private(set) var hwnd: HWND?
     private var tabs: [TerminalPane] = []
     private var active = 0
     private var hover: Hit = .none
     private var trackingMouse = false
+    private var observers: [ObservationToken] = []
 
     private enum Hit: Equatable {
         case none, tab(Int), close(Int), newTab
@@ -21,11 +23,15 @@ final class Workspace: WindowObject {
         hwnd = createWindow(self, className: Self.className, title: "Herb's Terminal",
                             style: DWORD(WS_OVERLAPPEDWINDOW) | DWORD(WS_CLIPCHILDREN))
         guard let hwnd else { return }
-        setDarkTitleBar(hwnd, systemPrefersDark)
+        setDarkTitleBar(hwnd, appIsDark)
         if let menu = GetSystemMenu(hwnd, false) {
             AppendMenuW(menu, UINT(MF_SEPARATOR), 0, nil)
+            withWide("Settings…\tCtrl+,") { _ = AppendMenuW(menu, UINT(MF_STRING), Self.settingsCommand, $0) }
             withWide("About Herb's Terminal") { _ = AppendMenuW(menu, UINT(MF_STRING), Self.aboutCommand, $0) }
         }
+        // Settings changes reach open terminals at once.
+        observers.append(TerminalProfile.shared.objectWillChange.observe { [weak self] in self?.applySettings() })
+        observers.append(ThemeLibrary.shared.objectWillChange.observe { [weak self] in self?.applySettings() })
         newTab()
         sizeToGrid()
         ShowWindow(hwnd, TestScript.active ? SW_SHOWNOACTIVATE : SW_SHOWDEFAULT)
@@ -133,8 +139,17 @@ final class Workspace: WindowObject {
         if let hwnd { InvalidateRect(hwnd, nil, false) }
     }
 
-    private func showSettings() {
-        messageBox(hwnd, "Settings aren't in the Windows version yet. Your preferences are in\n\(AppFolders.support().appendingPathComponent("settings.json").path)")
+    func showSettings() {
+        SettingsWindow.show(owner: hwnd)
+    }
+
+    /// Re-reads the profile into every terminal, and the light/dark choice into the window frame.
+    private func applySettings() {
+        guard let hwnd else { return }
+        setDarkTitleBar(hwnd, appIsDark)
+        let settings = TerminalProfile.shared.settings(for: nil)
+        for pane in tabs { pane.apply(settings) }
+        InvalidateRect(hwnd, nil, false)
     }
 
     // MARK: Layout
@@ -219,7 +234,7 @@ final class Workspace: WindowObject {
     private func paintStrip(_ dc: HDC?) {
         let strip = stripRect
         let terminalBackground = activePane?.background ?? colorRef(30, 30, 30)
-        let dark = systemPrefersDark
+        let dark = appIsDark
         let chrome = blend(terminalBackground, dark ? colorRef(0, 0, 0) : colorRef(255, 255, 255), dark ? 0.35 : 0.5)
         let text = dark ? colorRef(230, 230, 230) : colorRef(30, 30, 30)
         let dimText = blend(text, chrome, 0.4)
@@ -320,6 +335,10 @@ final class Workspace: WindowObject {
             InvalidateRect(hwnd, &strip, false)
             return 0
         case WM_SYSCOMMAND:
+            if wParam & 0xFFF0 == Self.settingsCommand {
+                showSettings()
+                return 0
+            }
             if wParam & 0xFFF0 == Self.aboutCommand {
                 messageBox(hwnd, "Herb's Terminal \(appVersion)\nA terminal for administrators.\n\nCopyright © 2026 Herbert Cisneros. MIT License.")
                 return 0
@@ -336,10 +355,7 @@ final class Workspace: WindowObject {
             return 0
         case WM_SETTINGCHANGE:
             // Light/dark mode switched in Windows Settings.
-            setDarkTitleBar(hwnd, systemPrefersDark)
-            let settings = TerminalProfile.shared.settings(for: nil)
-            for pane in tabs { pane.apply(settings) }
-            InvalidateRect(hwnd, nil, false)
+            applySettings()
             return nil
         case WM_GETMINMAXINFO:
             if let info = UnsafeMutablePointer<MINMAXINFO>(bitPattern: UInt(lParam)) {
