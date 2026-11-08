@@ -1,0 +1,9 @@
+# Sources the Windows version shares with the Mac and Linux versions, relative to the repository root.
+# dev\build.ps1 copies them into Sources\HerbsTerminal\Shared before every build.
+Sources/HerbsTerminal/CredentialStore.swift
+Sources/HerbsTerminal/CryptoVault.swift
+Sources/HerbsTerminal/SSHLogin.swift
+Sources/HerbsTerminal/SFTPClient.swift
+Sources/HerbsTerminal/TransferQueue.swift
+linux/Sources/HerbsTerminal/Core/Profiles.swift
+linux/Sources/HerbsTerminal/Platform/Observation.swift

@@ -98,6 +98,14 @@ It records the version from git (the build itself sees the sources without git h
 
 The Flatpak asks for broad access, as terminals do: it runs your shell and `ssh` on the host (`flatpak-spawn`), and the explorer reaches all your folders.
 
+## Windows (early)
+
+A native Win32 version is under way in [`windows/`](windows/README.md). The toolbar and Main Menu, tabs, a full-color terminal, Settings, and SSH with saved logins work today; the explorer comes next. It's self-contained: unzip `Herbs-Terminal-<version>-windows-x86_64.zip` anywhere and open `HerbsTerminal.exe`, with nothing to install. Build that folder and zip into `dist\` with the Swift toolchain for Windows and Visual Studio Build Tools:
+
+```powershell
+windows\dev\build.ps1 -Package
+```
+
 ## Built with
 
 Built with **Swift 6** and Swift Package Manager: on macOS with **SwiftUI + AppKit** and [SwiftTerm 1.20](https://github.com/migueldeicaza/SwiftTerm), on Linux with **GTK 4**, **libadwaita**, [VTE](https://gitlab.gnome.org/GNOME/vte) and GtkSourceView. Both share the SSH, SFTP and login-vault code.
@@ -112,6 +120,7 @@ Tests/
   HerbsTerminalTests/  unit and integration tests
 linux/                 the Linux version: Swift package, Flatpak manifest, desktop file, icons
   Sources/HerbsTerminal/Shared/   links to the macOS sources both versions share
+windows/               the Windows version (early): Swift package, Win32 UI, ConPTY
 Assets/                app icon source files
 Vendor/tailcat/        bundled tailcat binary + license
 script/                build, signing, icon generation, and test scripts

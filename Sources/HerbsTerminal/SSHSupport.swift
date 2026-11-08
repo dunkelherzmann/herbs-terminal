@@ -220,7 +220,7 @@ final class AskpassBroker: @unchecked Sendable {
         let prompt = (lines.count > 1 ? lines[1] : "").lowercased()
         let secret: String? = lock.withLock {
             guard let grant = secrets[token] else { return nil }
-            if let logins = grant.logins, !logins.contains(where: { prompt.contains($0 + "'s password") }) { return nil }
+            if let logins = grant.logins, !logins.contains(where: { Self.isPasswordPrompt(prompt, for: $0) }) { return nil }
             secrets.removeValue(forKey: token)
             return grant.secret
         }
@@ -228,6 +228,13 @@ final class AskpassBroker: @unchecked Sendable {
             let reply = Array((secret + "\n").utf8)
             _ = reply.withUnsafeBufferPointer { write(client, $0.baseAddress, $0.count) }
         }
+    }
+
+    /// Whether `prompt` asks for `login`'s password. ssh words it "user@host's password:" for password
+    /// authentication and "(user@host) Password:" for keyboard-interactive, which most PAM servers use.
+    static func isPasswordPrompt(_ prompt: String, for login: String) -> Bool {
+        let prompt = prompt.lowercased(), login = login.lowercased()
+        return prompt.contains(login + "'s password") || prompt.contains("(" + login + ") password")
     }
 
     /// The helper side: exchanges `token` for its secret, or nil if it was used up, expired, or meant for

@@ -74,6 +74,7 @@ final class App {
         let workspace = Workspace()
         workspace.present()
         if let path = ParityScene.capturePath { workspace.saveParityCapture(to: path) }
+        TestBridge.start()
     }
 
     func newWindow() { Workspace().present() }

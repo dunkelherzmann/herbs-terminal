@@ -51,10 +51,18 @@ final class LocalShell: ObservableObject, Identifiable {
         guard !started else { return }
         started = true
         if ParityScene.isActive {
+            // The scene's shell, starting in the scene's home unless this pane was given a folder.
+            let directory = startDirectory == FileManager.default.homeDirectoryForCurrentUser.path ? ParityScene.home.path : startDirectory
             view.startProcess(executable: "/bin/sh", args: [], environment: ParityScene.shellEnvironment().map { "\($0.key)=\($0.value)" },
-                              execName: "sh", currentDirectory: ParityScene.home.path)
-            return
+                              execName: "sh", currentDirectory: directory)
+        } else {
+            startLoginShell()
         }
+        let command = settings.startupCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !command.isEmpty { view.sendQuietly( command + "\n") }
+    }
+
+    private func startLoginShell() {
         let shell = getpwuid(getuid()).map { String(cString: $0.pointee.pw_shell) } ?? "/bin/zsh"
         var environment = ProcessInfo.processInfo.environment
         environment["TERM"] = "xterm-256color"
@@ -68,8 +76,6 @@ final class LocalShell: ObservableObject, Identifiable {
         }
         view.startProcess(executable: shell, args: arguments, environment: environment.map { "\($0.key)=\($0.value)" },
                           execName: execName, currentDirectory: startDirectory)
-        let command = settings.startupCommand.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !command.isEmpty { view.sendQuietly( command + "\n") }
     }
 
     /// The shell's current folder, read from the process itself (shells rarely report it to the terminal).

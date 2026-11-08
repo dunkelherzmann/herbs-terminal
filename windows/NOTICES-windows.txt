@@ -1,0 +1,21 @@
+Herb's Terminal for Windows
+Copyright (c) 2026 Herbert Cisneros. MIT License; see LICENSE.txt.
+
+This folder also contains third-party components, each under its own license:
+
+- SwiftTerm 1.20 (compiled into HerbsTerminal.exe)
+  Copyright (c) Miguel de Icaza and contributors. MIT License.
+  https://github.com/migueldeicaza/SwiftTerm
+
+- The Swift runtime and Foundation libraries (swiftCore.dll, Foundation*.dll, swiftDispatch.dll, dispatch.dll,
+  BlocksRuntime.dll and the other swift*.dll files)
+  Copyright (c) Apple Inc. and the Swift project authors.
+  Apache License 2.0 with Runtime Library Exception. https://swift.org/LICENSE.txt
+
+- ICU (_FoundationICU.dll)
+  Copyright (c) Unicode, Inc. Unicode License V3. https://www.unicode.org/license.txt
+
+- Microsoft Visual C++ runtime (vcruntime140*.dll, msvcp140*.dll), when present
+  Copyright (c) Microsoft Corporation. Redistributed under the Visual Studio redistribution terms.
+
+Windows' own components (OpenSSH, winsqlite3, CNG) are part of Windows and are not included here.

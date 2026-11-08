@@ -344,3 +344,8 @@ struct EditorPane: NSViewRepresentable {
         DispatchQueue.main.async { model.applyWrap() }
     }
 }
+
+extension TextEditorModel {
+    /// Feature tests: the text being edited.
+    var bridgeText: String { textView.string }
+}

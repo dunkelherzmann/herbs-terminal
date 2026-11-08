@@ -1,6 +1,6 @@
 # Herb's Terminal
 
-Herb's Terminal is a terminal for administrators. It is native on Macs with Apple silicon and on Linux, as a Flatpak, and manages local files and remote Linux, macOS and Windows machines over SSH. Sections 1–10 describe the Mac app; section 11 lists what is different on Linux.
+Herb's Terminal is a terminal for administrators. It is native on Macs with Apple silicon, on Linux, as a Flatpak, and on Windows, and manages local files and remote Linux, macOS and Windows machines over SSH. Sections 1–10 describe the Mac app; section 11 lists what is different on Linux, and section 12 what is different on Windows.
 
 Each tab pairs a shell with a file explorer. When the shell connects to another machine, the explorer follows it to the same host and account. Connect once, and the shell, files, transfers, text editing and permissions are all in that one tab.
 
@@ -403,6 +403,14 @@ Tailcat connects machines that can't reach each other by IP. Herb's Terminal run
 
 The check reads each version's controls through the accessibility API (macOS accessibility, AT-SPI, UI Automation), compares them by identifier (kind, label, hover text, value, enabled state, size, order, alignment, window size), scores the two pictures, and records the results as Craft Anything evidence in `dist/parity/report.html`.
 
+### Feature tests
+
+`parity/features.md` lists every feature of the Mac version with an id. The feature tests in `parity/tests` check each one on the Mac, Linux and Windows, and record whether it works, is broken, is missing, or still needs a person (with the reason).
+
+- **One suite for all three:** `parity/tests/suite.py` holds the tests; `run.py` runs them on one platform, starting a fresh parity copy of the app for every test. `all.sh` builds and runs all three platforms at once (Linux in a headless KWin session, Windows in the PC's desktop session, the Mac in the background without taking focus). `report.py` then writes `parity/feature-check.md` and the generated part of each version's `pending.md` (`pending.md` for the Mac, `linux/pending.md`, `windows/pending.md`).
+- **The test bridge:** a parity copy started with `--test-bridge` reads requests from `request.json` in its private folder and answers in `response.json`. It reports the app's state (windows, tabs, panes and their text, the explorer, MultiExec, open dialogs and windows) and runs the same commands the menus and buttons run, types into the focused terminal the way the keyboard does, picks explorer items, and fills in and answers dialogs. The user's own app never listens, and tests never use the user's settings, files or clipboard.
+- **Limits:** features that need an SSH host, sudo, a second machine, pointer gestures or the system's file dialogs are listed as not checked, with the reason, until the bridge or a test machine covers them.
+
 ## 10. Security summary
 
 - **Secrets stay hidden:** passwords and Tailcat addresses never appear in command lines, on screen, in history or in logs.
@@ -427,6 +435,7 @@ The Linux version is the same app on GTK 4, libadwaita and VTE, packaged as the 
 - **Flatpak:** `linux/org.herbsterminal.app.yml` builds on the GNOME 49 runtime with Flathub's Swift 6 SDK extension. It builds VTE 0.82 and bundles Tailscale's official `tailcat` Linux release. The Swift runtime is linked in statically.
 - **Building:** on a Linux machine, `script/build_flatpak.sh [--install]` writes `linux/version.txt` (`script/version.sh`), builds the manifest with flatpak-builder from Flathub (`org.flatpak.Builder`, which installs the SDK and extension it needs) and writes `dist/Herbs-Terminal-<version>-linux-<arch>.flatpak` for that machine's architecture; `--install` installs the bundle for the user, unless the app is running. Each architecture's bundle is built on a machine of that architecture. Another computer starts a build over SSH: `ssh <linux-machine> 'cd herbs-terminal && git pull --ff-only && script/build_flatpak.sh --install'`.
 - **Development builds** (`linux/dev`, on the Linux machine): `build.sh` makes a debug build with the Swift SDK extension inside a Flatpak SDK folder holding the manifest's other modules (`linux/build/sdk`, made on first use); `run.sh` starts it on the desktop as the user service `herbs-terminal-dev`, with the app's permissions and its own settings folder (`linux/.build/dev-home`); `restart.sh` does both; `check.sh` builds and runs the checks.
+- **A development machine:** `linux/dev/setup-ubuntu.sh --mac user@host` sets up Ubuntu 24.04 LTS for building and testing: the Flatpak SDK and builder, the feature-test tools, SSH both ways with the Mac, the projects, and Claude Code Remote Control as a user service. Sign-ins happen in that machine's browser; no tokens are copied.
 - **Checks:** a debug build run with `--self-test` checks the compatibility modules against standard vectors, the vault, the password helper, the host bridge, the Trash and file operations, iTerm2 presets, and, with a test account in `HERBS_TEST_SSH`, a real password login, shared connection and SFTP round trip.
 
 ### The host
@@ -496,6 +505,73 @@ The explorer follows Thunar: Ctrl+C / X / V / A / Z, Ctrl+Shift+Z to redo, Delet
 
 - Secure Keyboard Entry: the Wayland desktop already keeps other apps from reading what you type.
 - Option as Meta: Alt always acts as Meta, as in Linux terminals.
+
+## 12. Windows
+
+The Windows version is the same app as a native Win32 program, with SwiftTerm's terminal engine, Windows' pseudo console (ConPTY) and GDI drawing. It runs on Windows 10 (1809 or later) and Windows 11. Sections 2–10 apply where this section doesn't say otherwise; "Not yet on Windows" lists what it doesn't have.
+
+### Build and packaging
+
+- **Source:** `windows/`, a Swift package built with the Swift toolchain for Windows and Visual Studio's C++ build tools: `windows\dev\build.ps1` (`-Run`, `-SelfTest`, `-Package`). The login-vault code is the Mac app's own, copied in at build time from the list in `windows/shared.txt`. Small modules named `Darwin`, `CryptoKit`, `CommonCrypto` and `SQLite3` give it the same names on Windows (the Universal C runtime, AES-GCM and PBKDF2 on Windows CNG, and the system's `winsqlite3`), so a vault from a Mac opens unchanged.
+- **Package:** `-Package` builds `dist\HerbsTerminal-windows`, `HerbsTerminal.exe` with exactly the DLLs it uses beside it (the Swift runtime, Foundation and the Microsoft C++ runtime), and `dist\Herbs-Terminal-<version>-windows-x86_64.zip`. Nothing needs installing: unzip it anywhere and open the .exe. The build stops if the app would need anything that is neither part of Windows nor in the folder.
+- **Checks:** `HerbsTerminal.exe --self-test` checks the compatibility modules against standard vectors, the vault, ssh command lines, the password helper's pipe, and how dropped paths are quoted. A scripted mode (`--type`, `--drop`, `--ssh`, `--capture` and others, listed in `windows/README.md`) drives the window without touching the desktop and saves pictures of it.
+
+### Shells and SSH
+
+- **Tabs** run PowerShell 7 when it's installed, otherwise Windows PowerShell. Settings ▸ Shell can choose Command Prompt, WSL, Git Bash or any command line instead.
+- **Connect via SSH** opens the login in a new tab running Windows' own OpenSSH client (`System32\OpenSSH\ssh.exe`), with the keepalive of section 4: a host that goes away ends the session within about 15 seconds. A session that ends with an error keeps its tab open with the reason; Return connects again. `exit` closes the tab.
+- **Saved passwords:** ssh runs the app's own executable as `SSH_ASKPASS`, which trades the one-time token of section 4 for the password over a named pipe that only this Windows account and SYSTEM may open, and that refuses remote clients. Both the `user@host's password:` and `(user@host) Password:` prompts are answered; every other question (a new host key, a one-time code, a retry) is asked in the terminal.
+- **The connected tab** shows its `user@host` as its title, and the SSH button is highlighted; it opens the connection details with New Connection, Close and Disconnect.
+
+### Window and toolbar
+
+- The toolbar replaces the title bar and is laid out as on Linux: the Main Menu, New Tab and Connect via SSH on the left; the title in the middle; Export Session, Take Screenshot, Show File Explorer, MultiExec, Tailcat Peers and Search on the right, then minimize, maximize and close. Maximize shows Windows 11's snap layouts. Drag an empty part of the toolbar to move the window, and double-click it to maximize.
+- The tab strip sits under the toolbar: click to switch, double-click to rename, drag to reorder, middle-click to close, right-click for Rename, Move Left, Move Right and Close.
+- The Main Menu matches Linux's, Shell submenu included. Menus and hover hints follow the app's light or dark appearance, and colors use the Windows accent color.
+- Toolbar buttons never take the keyboard focus from the terminal. Hover hints appear after about half a second with the Mac's wording.
+
+### Shortcuts
+
+The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In the terminal, Ctrl+C copies when text is selected (otherwise it interrupts the program), Ctrl+V pastes, and right-click copies a selection or pastes, as in Windows Terminal.
+
+### Terminal
+
+- **Dropping files:** files and folders dropped from File Explorer are typed as paths followed by a space, quoted for the tab's shell: single quotes (with `''` inside) for PowerShell, double quotes for Command Prompt, POSIX quoting of the `/mnt/c/…` form for WSL, and POSIX quoting for Git Bash and SSH tabs. Paths without spaces or special characters aren't quoted.
+- **Take Screenshot** copies a picture of the whole window to the clipboard; the button shows a check mark for a moment to confirm it.
+- **Export Session** saves the terminal's text, scrollback included, as a text file with Windows line endings.
+
+### Files
+
+- **The explorer** shows this PC's files in a local tab and the host's files in an SSH tab: the toolbar's folder button or Ctrl+Shift+X switches between the tab's shell and its explorer, which keeps its folder while hidden.
+- **Hosts:** Windows' OpenSSH can't share the terminal's connection, so the explorer signs in to the tab's host over its own SFTP channel, with the tab's saved password through the password helper (section 4) or with SSH keys and `ssh-agent`. ssh is started by a small relay (the app itself) that receives the one-time token on its input, so the token never appears in a command line or in the app's environment. The channel only accepts a host key the terminal already accepted, and it signs in again once if the connection drops. Places are Home and File System; folders and links to folders open, text files open in the text editor, and for other files the status line explains that Download copies them to this PC. Copy and Paste duplicate items on the host with free " copy" names, Cut and Paste move them, Delete removes items (folders with everything in them) after asking, with Cancel as the default, and New Folder, New File and Rename work as on this PC. Listings and changes run in the background with "Loading…" or "Working…" in the status line.
+- **Transfers:** File Actions (and the list's menu) in a host's explorer offer Upload Files… (Windows' Open dialog, several files at once), Upload Folder… (the folder picker) and Download… for the selection (the folder picker chooses where on this PC). Files and folders dropped from File Explorer onto a host's explorer are uploaded; dropped onto this PC's explorer they're copied. The clipboard works across: files copied on this PC (in File Explorer or the app's explorer) and pasted into a host's folder are uploaded, and host items copied in a host's explorer and pasted into this PC's explorer are downloaded; copying host items also puts their paths on the clipboard as text, so copying anything else afterwards replaces them. Folders go with everything in them, and nothing is overwritten: an item whose name is taken arrives as "name copy". Uploads are written under an unguessable temporary name and renamed into place when complete, downloads likewise on this PC, so a cancelled or failed transfer leaves nothing half-written. Transfers run on a second channel to the host, so browsing stays responsive.
+- **The transfer strip** appears under the file list while there are transfers: a "Transfers" heading with Clear Finished, and the latest four transfers, each with an arrow (up for uploads, down for downloads), its name, then a progress bar with the bytes so far, "Done", "Cancelled" or the error in red. Cancel (✕) stops a running transfer and discards the partial copy; Retry runs a failed or cancelled one again. Hover hints: Clear Finished — "Remove completed, failed and cancelled transfers from this list."; Cancel — "Stop this transfer and discard the partial copy."; Retry — "Run this transfer again from the start." The location bar's buttons and the places have hover hints too (for example Back — "Back (Alt+←) Go to the folder you were in before.").
+- **Places:** Home and the Windows user folders that exist (Desktop, Documents, Downloads, Music, Pictures, Videos), then every drive with its label.
+- **Location bar:** back, forward, up and home, an editable location (Ctrl+L) that accepts `~`, relative paths, `.` and `..`, and File Actions (Cut, Copy, Paste, Move to Recycle Bin, Select All, New Folder, New File, Show Hidden Files, Reload). The mouse's back and forward buttons work too.
+- **The list:** name, date modified, type and size, with Windows' own icons and type names; folders first, then names in File Explorer's order (`file2` before `file10`). Click a heading to sort by it. Hidden items (Windows' hidden attribute, or a name starting with `.`) show only with Show Hidden Files, faded; the status line counts them.
+- **Opening:** double-click or Return opens a folder, a text file in the text editor, or any other file in its usual app (Windows asks which app when there's none). Right-click files for **Open in Text Editor** and **Open With…**, or a folder for **Open in New Terminal Tab**, which starts a shell there.
+- **Text editor:** text files open as a tab beside the current one, named after the file (with • while there are unsaved changes); the toolbar shows the file's name and its path or `user@host:path`. Opening a file that's already open selects its tab. "Text" is decided as on Linux: known text extensions (including Windows' own, such as `.ps1`, `.bat`, `.reg` and `.inf`), and files with no extension or an unfamiliar one whose first bytes look like text; on a host, files that aren't known binary types are tried and refused if they turn out binary. New File opens the new file in the editor once its name is chosen (on a host, straight away).
+  - **Editing:** the terminal's font (at least 12 points), undo and redo (Ctrl+Z, Ctrl+Y), and Find (Ctrl+F): a bar at the top with the search text, Previous (Shift+Return), Next (Return) and Done (Esc); it finds as you type, ignores case and wraps around. Wrap Lines in the bottom bar is remembered. The status line shows line and column, the line count, the encoding and the line endings.
+  - **Saving:** Ctrl+S or Save (dimmed while there's nothing to save). Files keep their encoding (UTF-8, UTF-16 in its own byte order, or Latin-1) and line endings (CRLF, LF or CR). On this PC the file is written beside the original and swapped in with Windows' ReplaceFile, so it keeps its attributes and permissions; on a host it's written in full under a temporary name and renamed into place, keeping its permissions. Links are edited at their target. If the file changed elsewhere since it was opened, saving asks first (Cancel is the default).
+  - **Closing:** a tab, the window or the app with unsaved changes asks "Do you want to save the changes?" with Don't Save, Cancel and Save (the default).
+  - **Limits:** files larger than 20 MB, and files that look binary, aren't opened; a message explains why.
+  - Hover hints: Wrap Lines — "Wrap long lines at the edge instead of scrolling sideways."; Save — "Save (Ctrl+S) Write your changes to the file."; and Find's Previous, Next and Done with their keys.
+- **Changing files** goes through the Windows shell, with its progress window for long jobs: copy, move and rename; Delete moves to the Recycle Bin, and Shift+Delete deletes permanently after asking (Cancel is the default). Pasting where a name is taken gets Windows' "name - Copy" name instead of overwriting, and a folder can't be pasted into itself.
+- **Clipboard:** Copy and Cut put files on the clipboard as File Explorer does, so they paste in File Explorer, and files copied there paste here.
+- **Creating and renaming:** New Folder and New File make a free "untitled folder" or "untitled file" and start renaming it in place; F2 renames. Names Windows can't use are refused with an explanation.
+- **Shortcuts:** as on Linux (Thunar's): Ctrl+C / X / V / A, Delete, Shift+Delete, BackSpace and Alt+← back, Alt+→ forward, Alt+↑ up, Alt+Home home, Ctrl+L location, F5 or Ctrl+R reload, Ctrl+H hidden files, F2 rename, Ctrl+Shift+N new folder, Alt+Return Properties.
+- **Properties** opens Windows' own Properties window; **Show in File Explorer** opens File Explorer with the item selected; **Copy Path** copies the full path.
+- **Get Info on hosts:** in a host's explorer, right-click items and choose **Get Info…** (Alt+Return). A window shows the name, location, kind, size, date modified and permissions (`ls -l` text and octal) for one item, or how many items for several. Below: Owner and Group fields (by name or number), Read, Write and Execute checkboxes for the owner, the group and others (Execute reads "Open" for a folder), Set user ID, Set group ID and Sticky, an Octal field kept in step with the checkboxes, and Apply to enclosed items when folders are selected. Apply (Return) changes only what was edited, on every selected item; Revert reloads the values; Close (Esc). Owner and group names are looked up on the host itself (`id`, `getent` or `dscl`); Windows' OpenSSH can't reuse the tab's connection, so the lookup signs in once more the way the explorer does. Apply to enclosed items works as in section 5: folders inside keep their search permission wherever they're readable, and links inside are left alone. Every control has a hover hint (for example Octal — "The same permissions as chmod takes them, e.g. 644 or 755."). On this PC, Alt+Return opens Windows' Properties instead, since Windows files have no Unix permissions.
+- **Administrator mode on hosts:** the lock beside File Actions in a host's explorer (hover: "Administrator Mode — Work as root with sudo on this host: open and change any file. Asks for the sudo password."). It works as in section 5, with one difference: Windows' OpenSSH can't share the tab's connection, so the root channel signs in once more the way the explorer does, then starts the host's own `sftp-server` under `sudo`. The sudo password is asked for in a dialog, checked on its own first (a wrong one is refused with an explanation), and then reaches `sudo -S` once on standard input after the password helper's token line; it's never stored or put in a command line. Accounts with password-free sudo aren't asked. While it's on, every explorer action runs as root (browsing, creating, renaming, copy and move, deleting with section 5's root-only rule, transfers, the text editor, whose tab shows "(root)" in its location, and Get Info), a red bar across the explorer says "Administrator mode: changes are made as root on <host>." with a Leave button, and the lock turns red and reads Leave Administrator Mode. Leaving goes back to the tab's own login in the same folder; it also ends when the tab's SSH session ends. On this PC there is no Administrator mode: run the app as administrator from Windows instead.
+
+### Appearance
+
+- The stock face is Cascadia Mono 11 pt (Consolas where it isn't installed); Settings lists the installed monospaced fonts.
+- The color scheme (System, Light, Dark) follows Windows' app mode, title bar included.
+
+### Not yet on Windows
+
+Undo and Redo and bookmarks in the explorer; split panes; MultiExec and Run Command on Hosts; Find in Terminal; named profiles; session restore; following an `ssh` typed in a local tab; Tailcat peers; Paste Escaped Text. Their toolbar buttons and menu commands are shown dimmed.
 
 ## References
 

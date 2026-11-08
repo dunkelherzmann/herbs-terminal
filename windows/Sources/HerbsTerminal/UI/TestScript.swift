@@ -1,0 +1,190 @@
+import Foundation
+import WinSDK
+
+/// Scripted runs for checking the app without touching the desktop:
+///
+///   HerbsTerminal.exe --type "dir\r" --type "exit\r" --capture C:\shot.bmp
+///
+/// Steps run 1.5 s apart, in order:
+/// - `--type TEXT` sends TEXT straight to the active terminal (`\r` is Enter, `\e` Escape). Special values:
+///   `\t` opens a new tab, `\s` Settings, `\k` Connect via SSH, `\l` Manage Logins, and `\f` followed by
+///   `value|value|…#button` fills the open dialog's fields and presses that button (by position).
+/// - `--drop "path|path"` drops those files on the active terminal, as File Explorer would.
+/// - A lone `\x` switches the active tab to its file explorer (or back); `--explore PATH` opens a folder in it,
+///   `--select "a|b"` selects items by name, and `--explorer-do NAME` runs an explorer command
+///   (copy, cut, paste, newFolder, newFile, delete, deletePermanently, showHidden, reload, selectAll, up, back, edit).
+/// - With a text editor tab active, `--type` types into it, and `--editor-do NAME` runs save, wrap, find=TEXT,
+///   next, previous, done or end.
+/// - `--explorer-do info` opens Get Info for a host's selected items; `--info-do NAME` then runs owner=NAME,
+///   group=NAME, octal=DIGITS, recursive, apply, revert or close in it.
+/// - `--ssh user@host:port` opens an SSH tab directly; `--ssh-password` before it gives the password.
+/// - `--capture FILE` saves the main window (and any open Settings, Manage Logins or dialog beside it) as BMPs
+///   and quits.
+/// The window opens without taking focus, and nothing is typed into other windows.
+@MainActor
+enum TestScript {
+    static let timer: UINT_PTR = 0x7E57
+    private static var steps: [Step] = parse(CommandLine.arguments)
+    static var active: Bool { !steps.isEmpty }
+
+    private enum Step {
+        case infoDo(String), editorDo(String), type(String), newTab, settings, connect, logins, menu, menuCommand(UINT), drop([String]), explorer, explore(String), select([String]), explorerDo(String), form([String], Int), ssh(SSHLogin), capture(String)
+    }
+
+    private static func parse(_ arguments: [String]) -> [Step] {
+        var steps: [Step] = [], capture: String?, password = ""
+        var index = 1
+        while index < arguments.count - 1 {
+            let value = arguments[index + 1]
+            switch arguments[index] {
+            case "--type":
+                switch value {
+                case "\\t": steps.append(.newTab)
+                case "\\s": steps.append(.settings)
+                case "\\k": steps.append(.connect)
+                case "\\l": steps.append(.logins)
+                case "\\m": steps.append(.menu)
+                case "\\x": steps.append(.explorer)
+                default:
+                    if value.hasPrefix("\\c"), let id = UINT(value.dropFirst(2)) {
+                        steps.append(.menuCommand(id))
+                    } else if value.hasPrefix("\\f") {
+                        let body = String(value.dropFirst(2))
+                        let parts = body.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
+                        let fields = parts[0].split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+                        steps.append(.form(fields, parts.count > 1 ? Int(parts[1]) ?? 0 : 0))
+                    } else {
+                        steps.append(.type(value.replacingOccurrences(of: "\\r", with: "\r").replacingOccurrences(of: "\\e", with: "\u{1b}")))
+                    }
+                }
+            case "--drop": steps.append(.drop(value.split(separator: "|").map(String.init)))
+            case "--explore": steps.append(.explore(value))
+            case "--select": steps.append(.select(value.split(separator: "|").map(String.init)))
+            case "--explorer-do": steps.append(.explorerDo(value))
+            case "--editor-do": steps.append(.editorDo(value))
+            case "--info-do": steps.append(.infoDo(value))
+            case "--ssh-password": password = value
+            case "--ssh":
+                let target = value.split(separator: "@", maxSplits: 1).map(String.init)
+                let hostPort = (target.last ?? "").split(separator: ":").map(String.init)
+                steps.append(.ssh(SSHLogin(host: hostPort.first ?? "", port: hostPort.count > 1 ? Int(hostPort[1]) ?? 22 : 22,
+                                           username: target.count > 1 ? target[0] : "", password: password)))
+            case "--capture": capture = value
+            default: index -= 1
+            }
+            index += 2
+        }
+        if let capture { steps.append(.capture(capture)) }
+        return steps
+    }
+
+    /// Runs the next step; false when there are none left. A step that opens a modal dialog returns only when the
+    /// dialog closes, so later steps run from inside the dialog's own message loop.
+    static func step(_ workspace: Workspace) -> Bool {
+        guard !steps.isEmpty else { return false }
+        switch steps.removeFirst() {
+        case .type(let text):
+            if let editor = workspace.activeEditor { editor.type(text) } else { workspace.activePane?.send(text) }
+        case .editorDo(let name): workspace.activeEditor?.perform(named: name)
+        case .infoDo(let name): GetInfoWindow.current?.perform(named: name)
+        case .newTab: workspace.newTab()
+        case .settings: workspace.showSettings()
+        case .connect: workspace.showConnect()
+        case .logins: workspace.showLogins()
+        case .menu: workspace.openMainMenu()
+        case .menuCommand(let id): workspace.perform(id)
+        case .drop(let paths): drop(paths, on: workspace.activePane?.hwnd)
+        case .explorer: workspace.toggleExplorer()
+        case .explore(let path): workspace.activePane?.explorer?.navigate(to: path)
+        case .select(let names): workspace.activePane?.explorer?.select(names: names)
+        case .explorerDo(let name): workspace.activePane?.explorer?.perform(named: name)
+        case .form(let values, let button): FormDialog.current?.scripted(values: values, button: button)
+        case .ssh(let login): workspace.connectSSH(login)
+        case .capture(let path):
+            let base = (path as NSString).deletingPathExtension
+            if let hwnd = workspace.hwnd { capture(hwnd, to: path) }
+            if let settings = SettingsWindow.openWindow { capture(settings, to: base + "-settings.bmp") }
+            if let logins = ManageLoginsWindow.openWindow { capture(logins, to: base + "-logins.bmp") }
+            if let dialog = FormDialog.current?.window { capture(dialog, to: base + "-dialog.bmp") }
+            if let info = GetInfoWindow.current?.window { capture(info, to: base + "-info.bmp") }
+            // An open popup menu (class #32768) is captured from the screen, since it doesn't draw for PrintWindow.
+            if let menu = withWide("#32768", { FindWindowW($0, nil) }), IsWindowVisible(menu) {
+                captureScreen(of: menu, to: base + "-menu.bmp")
+                EndMenu()
+            }
+            PostQuitMessage(0)
+        }
+        return !steps.isEmpty
+    }
+
+    /// Sends the pane the same WM_DROPFILES message a drop from File Explorer does: a DROPFILES block in global
+    /// memory, which the pane's DragFinish frees.
+    private static func drop(_ paths: [String], on pane: HWND?) {
+        guard let pane else { return }
+        let list: [UInt16] = paths.flatMap { Array($0.utf16) + [0] } + [0]
+        let headerSize = MemoryLayout<DROPFILES>.size
+        guard let memory = GlobalAlloc(UINT(GMEM_MOVEABLE | GMEM_ZEROINIT), SIZE_T(headerSize + list.count * 2)),
+              let locked = GlobalLock(memory) else { return }
+        var header = DROPFILES()
+        header.pFiles = DWORD(headerSize)
+        header.fWide = true
+        withUnsafeBytes(of: &header) { locked.copyMemory(from: $0.baseAddress!, byteCount: headerSize) }
+        list.withUnsafeBytes { (locked + headerSize).copyMemory(from: $0.baseAddress!, byteCount: $0.count) }
+        GlobalUnlock(memory)
+        SendMessageW(pane, UINT(WM_DROPFILES), WPARAM(UInt(bitPattern: Int(bitPattern: memory))), 0)
+    }
+
+    private static func captureScreen(of window: HWND, to path: String) {
+        var rect = RECT()
+        GetWindowRect(window, &rect)
+        let width = rect.right - rect.left, height = rect.bottom - rect.top
+        let screen = GetDC(nil)
+        let dc = CreateCompatibleDC(screen)
+        let bitmap = CreateCompatibleBitmap(screen, width, height)
+        let old = SelectObject(dc, bitmap)
+        BitBlt(dc, 0, 0, width, height, screen, rect.left, rect.top, DWORD(SRCCOPY))
+        SelectObject(dc, old)
+        save(bitmap, dc: screen, width: width, height: height, to: path)
+        DeleteObject(bitmap)
+        DeleteDC(dc)
+        ReleaseDC(nil, screen)
+    }
+
+    /// Saves the window as a 32-bit BMP, drawn by PrintWindow (works while the window is behind others).
+    private static func capture(_ hwnd: HWND, to path: String) {
+        var rect = RECT()
+        GetWindowRect(hwnd, &rect)
+        let width = rect.right - rect.left, height = rect.bottom - rect.top
+        let screen = GetDC(nil)
+        let dc = CreateCompatibleDC(screen)
+        let bitmap = CreateCompatibleBitmap(screen, width, height)
+        let old = SelectObject(dc, bitmap)
+        PrintWindow(hwnd, dc, 2) // PW_RENDERFULLCONTENT
+        SelectObject(dc, old)
+        save(bitmap, dc: dc, width: width, height: height, to: path)
+        DeleteObject(bitmap)
+        DeleteDC(dc)
+        ReleaseDC(nil, screen)
+    }
+
+    private static func save(_ bitmap: HBITMAP?, dc: HDC?, width: Int32, height: Int32, to path: String) {
+        var info = BITMAPINFO()
+        info.bmiHeader.biSize = DWORD(MemoryLayout<BITMAPINFOHEADER>.size)
+        info.bmiHeader.biWidth = width
+        info.bmiHeader.biHeight = -height
+        info.bmiHeader.biPlanes = 1
+        info.bmiHeader.biBitCount = 32
+        info.bmiHeader.biCompression = DWORD(BI_RGB)
+        var pixels = [UInt8](repeating: 0, count: Int(width * height * 4))
+        GetDIBits(dc, bitmap, 0, UINT(height), &pixels, &info, UINT(DIB_RGB_COLORS))
+        // A plain 32-bit BMP: 14-byte file header, 40-byte info header, then top-down rows.
+        var file = Data()
+        func le<T: FixedWidthInteger>(_ value: T) { withUnsafeBytes(of: value.littleEndian) { file.append(contentsOf: $0) } }
+        file.append(contentsOf: [0x42, 0x4D])
+        le(UInt32(54 + pixels.count)); le(UInt32(0)); le(UInt32(54))
+        le(UInt32(40)); le(Int32(width)); le(Int32(-height)); le(UInt16(1)); le(UInt16(32))
+        le(UInt32(0)); le(UInt32(pixels.count)); le(Int32(2835)); le(Int32(2835)); le(UInt32(0)); le(UInt32(0))
+        file.append(contentsOf: pixels)
+        try? file.write(to: URL(fileURLWithPath: path))
+    }
+}
