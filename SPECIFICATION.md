@@ -403,6 +403,14 @@ Tailcat connects machines that can't reach each other by IP. Herb's Terminal run
 
 The check reads each version's controls through the accessibility API (macOS accessibility, AT-SPI, UI Automation), compares them by identifier (kind, label, hover text, value, enabled state, size, order, alignment, window size), scores the two pictures, and records the results as Craft Anything evidence in `dist/parity/report.html`.
 
+### Feature tests
+
+`parity/features.md` lists every feature of the Mac version with an id. The feature tests in `parity/tests` check each one on the Mac, Linux and Windows, and record whether it works, is broken, is missing, or still needs a person (with the reason).
+
+- **One suite for all three:** `parity/tests/suite.py` holds the tests; `run.py` runs them on one platform, starting a fresh parity copy of the app for every test. `all.sh` builds and runs all three platforms at once (Linux in a headless KWin session, Windows in the PC's desktop session, the Mac in the background without taking focus). `report.py` then writes `parity/feature-check.md` and the generated part of each version's `pending.md` (`pending.md` for the Mac, `linux/pending.md`, `windows/pending.md`).
+- **The test bridge:** a parity copy started with `--test-bridge` reads requests from `request.json` in its private folder and answers in `response.json`. It reports the app's state (windows, tabs, panes and their text, the explorer, MultiExec, open dialogs and windows) and runs the same commands the menus and buttons run, types into the focused terminal the way the keyboard does, picks explorer items, and fills in and answers dialogs. The user's own app never listens, and tests never use the user's settings, files or clipboard.
+- **Limits:** features that need an SSH host, sudo, a second machine, pointer gestures or the system's file dialogs are listed as not checked, with the reason, until the bridge or a test machine covers them.
+
 ## 10. Security summary
 
 - **Secrets stay hidden:** passwords and Tailcat addresses never appear in command lines, on screen, in history or in logs.
@@ -426,6 +434,7 @@ The Linux version is the same app on GTK 4, libadwaita and VTE, packaged as the 
 - **Source:** `linux/`, a Swift package. The SSH, SFTP, login-vault and shell-integration code is the Mac app's own: `linux/Sources/HerbsTerminal/Shared` links to it. Small modules named `Darwin`, `CryptoKit` and `CommonCrypto` give that code the same names on Linux (Glibc, and AES-GCM and PBKDF2 on OpenSSL), so a vault from a Mac opens unchanged.
 - **Flatpak:** `linux/org.herbsterminal.app.yml` builds on the GNOME 49 runtime with Flathub's Swift 6 SDK extension. It builds VTE 0.82 and bundles Tailscale's official `tailcat` Linux release. The Swift runtime is linked in statically.
 - **Building:** `flatpak-builder` on Linux, or `script/build_flatpak.sh` on a Mac, which builds `dist/Herbs-Terminal-<version>-linux-<arch>.flatpak` for aarch64 and x86_64 in a Linux VM run by Apple's `container`.
+- **A development machine:** `linux/dev/setup-ubuntu.sh --mac user@host` sets up Ubuntu 24.04 LTS for building and testing: the Flatpak SDK and builder, the feature-test tools, SSH both ways with the Mac, the projects, and Claude Code Remote Control as a user service. Sign-ins happen in that machine's browser; no tokens are copied.
 - **Checks:** a debug build run with `--self-test` checks the compatibility modules against standard vectors, the vault, the password helper, the host bridge, the Trash and file operations, iTerm2 presets, and, with a test account in `HERBS_TEST_SSH`, a real password login, shared connection and SFTP round trip.
 
 ### The host

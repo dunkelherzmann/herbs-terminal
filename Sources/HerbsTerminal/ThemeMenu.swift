@@ -30,7 +30,12 @@ struct ThemeMenu: View {
     }
 
     /// Restores the theming of this tab's profile, its ⌘+ / ⌘− zoom included, and the app appearance.
-    private func restoreDefaults() {
+    private func restoreDefaults() { Self.restoreDefaults(profileID) }
+
+    /// Restore Defaults, after asking; the Main Menu item and the feature tests run this.
+    @MainActor
+    static func restoreDefaults(_ profileID: UUID?) {
+        let profiles = TerminalProfile.shared
         let alert = NSAlert()
         alert.messageText = "Restore theming defaults for “\(profiles.name(of: profileID))”?"
         alert.informativeText = "Font, size and zoom, cursor, color theme, transparency and appearance go back to the stock Terminal Basic look. Imported presets are kept."
@@ -38,7 +43,7 @@ struct ThemeMenu: View {
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         profiles.update(profileID) { $0.restoreTheming() }
-        appearance = "System"
+        UserDefaults.standard.set("System", forKey: "appearance")
     }
 
     @MainActor

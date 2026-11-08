@@ -409,7 +409,7 @@ final class Workspace: ObservableObject {
                 NSMenuItem.separator(),
                 ActionMenuItem("Bigger", key: "+") { self.zoom(1) },
                 ActionMenuItem("Smaller", key: "-") { self.zoom(-1) },
-                ActionMenuItem("Settings…", key: ",") { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) },
+                ActionMenuItem("Settings…", key: ",") { SettingsOpener.open() },
             ]
             return items
         }
@@ -790,6 +790,7 @@ private struct ActiveWorkspace: View {
     @ObservedObject var state: WindowState
     @ObservedObject var legend: SessionLegend
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @AppStorage("appearance") private var appearance = "System"
 
     var body: some View {
@@ -893,7 +894,11 @@ private struct ActiveWorkspace: View {
         }
         .focusedSceneValue(\.workspace, workspace)
         // Each extra window from the last session opens its own workspace, which takes the next saved window.
-        .onAppear { if SessionRestore.hasPending { openWindow(id: "session") } }
+        .onAppear {
+            if SessionRestore.hasPending { openWindow(id: "session") }
+            if TestBridge.isActive { TestBridge.openWindow = { openWindow(id: "session") } }
+            SettingsOpener.action = { openSettings() }
+        }
         .background(WindowAccessor { window in
             workspace.window = window
             workspace.selected.shell.settings.applyTransparency(to: window)
@@ -1231,5 +1236,16 @@ private struct MultiExecCaption: View {
         let panes = tab.shells
         guard panes.count > 1, let index = panes.firstIndex(where: { $0 === shell }) else { return base }
         return "\(base) (pane \(index + 1))"
+    }
+}
+
+/// Opens the Settings window from AppKit code (the terminal's right-click menu). SwiftUI's `openSettings` action
+/// works only from a view, so the window's view hands it over; macOS no longer answers `showSettingsWindow:`.
+@MainActor
+enum SettingsOpener {
+    static var action: (() -> Void)?
+    static func open() {
+        NSApp.activate(ignoringOtherApps: !ParityScene.isActive)
+        action?()
     }
 }

@@ -1141,3 +1141,35 @@ enum AdministratorMode {
         host.rebuild()
     }
 }
+
+// MARK: Feature tests (TestBridge)
+
+extension ExplorerHost {
+    var bridgeState: [String: Any] { current?.bridgeState ?? ["shown": false] }
+    func bridgeGo(_ path: String) -> Bool { current?.bridgeGo(path) ?? false }
+    func bridgeSelect(_ names: [String]) -> [String] { current?.bridgeSelect(names) ?? [] }
+    func bridgeDo(_ action: String) -> String { current?.bridgeDo(action) ?? "missing" }
+    func bridgeProbe(_ action: String) -> String { current?.bridgeProbe(action) ?? "missing" }
+}
+
+extension ExplorerView {
+    var bridgeState: [String: Any] {
+        ["shown": gtk_widget_get_mapped(view) != 0, "path": path, "items": visible.map { $0.isFolder ? $0.name + "/" : $0.name },
+         "selected": selectedNames, "hidden": showHidden, "administrator": isAdministrator, "remote": remoteModel != nil,
+         "bookmarked": bookmarks.contains(path),
+         "canUndo": actions["undo"] != nil && g_action_group_get_action_enabled(group, "undo") != 0,
+         "canRedo": actions["redo"] != nil && g_action_group_get_action_enabled(group, "redo") != 0]
+    }
+    func bridgeGo(_ target: String) -> Bool { visit(target); return true }
+    func bridgeSelect(_ names: [String]) -> [String] { select(Set(names)); return selectedNames }
+    func bridgeProbe(_ action: String) -> String {
+        guard g_action_group_has_action(group, action) != 0 else { return "missing" }
+        return g_action_group_get_action_enabled(group, action) != 0 ? "enabled" : "disabled"
+    }
+    func bridgeDo(_ action: String) -> String {
+        guard g_action_group_has_action(group, action) != 0 else { return "missing" }
+        guard g_action_group_get_action_enabled(group, action) != 0 else { return "disabled" }
+        g_action_group_activate_action(group, action, nil)
+        return "ran"
+    }
+}

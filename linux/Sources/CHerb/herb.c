@@ -144,6 +144,12 @@ void herb_vte_spawn(VteTerminal *terminal, const char *directory, char **argv, c
                              -1, NULL, herb_spawned, spawn);
 }
 
+// Feature tests: answers an alert as if that button had been clicked.
+void herb_alert_respond(AdwAlertDialog *dialog, const char *response) {
+    g_signal_emit_by_name(dialog, "response", response);
+    adw_dialog_force_close(ADW_DIALOG(dialog));
+}
+
 // MARK: Lazy file clipboard
 
 #define HERB_TYPE_LAZY_PROVIDER (herb_lazy_provider_get_type())

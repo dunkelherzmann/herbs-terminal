@@ -223,3 +223,14 @@ final class TextEditor {
         setLabel(status, "Line \(line), Column \(column) · \(lines) line\(lines == 1 ? "" : "s") · \(TextCodec.name(of: encoding)) · \(endings)")
     }
 }
+
+extension TextEditor {
+    /// Feature tests: the text being edited.
+    var bridgeText: String {
+        var start = GtkTextIter(), end = GtkTextIter()
+        gtk_text_buffer_get_bounds(c(buffer), &start, &end)
+        guard let text = gtk_text_buffer_get_text(c(buffer), &start, &end, 1) else { return "" }
+        defer { g_free(text) }
+        return String(cString: text)
+    }
+}

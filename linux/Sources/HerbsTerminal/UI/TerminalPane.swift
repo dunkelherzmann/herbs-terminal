@@ -52,6 +52,12 @@ final class TerminalPane {
     var onResize: (() -> Void)?
     /// MultiExec: receives what the user types or pastes here, to send on to the other included terminals.
     var broadcast: ((String) -> Void)?
+    /// True while the app itself writes to the shell: VTE reports that text through "commit" too, and it must not
+    /// be forwarded to the other MultiExec terminals (forwarding it back and forth would never end).
+    private var appTyping = false
+    /// Text the app types before the shell has started waits here: VTE drops input until the child is attached.
+    private var shellReady = false
+    private var pendingInput: [String] = []
     /// The workspace part of the right-click menu.
     var extraMenu: ((MenuBuilder) -> Void)?
 
@@ -163,7 +169,7 @@ final class TerminalPane {
         var login = !scene
         if scene {
             Host.run(["mkdir", "-p", ParityScene.home], timeout: 5)
-            startDirectory = ParityScene.home
+            if startDirectory == FileManager.default.homeDirectoryForCurrentUser.path { startDirectory = ParityScene.home }
             // flatpak-spawn doesn't hand PS1 to the host shell, so the scene's shell sets it itself.
             arguments = ["-c", "PS1='\(ParityScene.prompt)'; export PS1; exec /bin/sh -i"]
         } else if let integrated = ShellIntegration.launch(shell: shell, environment: base) {
@@ -206,6 +212,10 @@ final class TerminalPane {
                 self.feed("\r\nHerb's Terminal couldn't start the shell: \(error)\r\n")
             } else {
                 self.spawnPid = pid
+                self.shellReady = true
+                let pending = self.pendingInput
+                self.pendingInput = []
+                pending.forEach(self.sendQuietly)
             }
         }).toOpaque()
         args.withUnsafeMutableBufferPointer { argPointer in
@@ -243,12 +253,32 @@ final class TerminalPane {
 
     /// Text the app types on its own (the ssh launcher, a startup command, Clear's redraw) is for this tab only.
     func sendQuietly(_ text: String) {
+        guard shellReady else { pendingInput.append(text); return }
+        appTyping = true
+        defer { appTyping = false }
         vte_terminal_feed_child(c(terminal), text, -1)
+    }
+
+    /// Feature tests: text arrives as if typed on the keyboard (VTE reports it through "commit", like a key press).
+    func typeAsKeyboard(_ text: String) { vte_terminal_feed_child(c(terminal), text, -1) }
+
+    /// Feature tests: what the terminal shows, scrollback included, as plain text.
+    var screenText: String {
+        // The rows the terminal holds, scrollback included, are the range of its vertical adjustment.
+        // A hard reset can leave the adjustment behind the cursor, so the cursor's row bounds the range too.
+        let adjustment = gtk_scrollable_get_vadjustment(c(terminal))
+        var column = 0, row = 0
+        vte_terminal_get_cursor_position(c(terminal), &column, &row)
+        let last = max(Int(gtk_adjustment_get_upper(adjustment)), row + 1)
+        let first = max(min(Int(gtk_adjustment_get_lower(adjustment)), row), last - 2000)
+        guard let text = vte_terminal_get_text_range_format(c(terminal), VTE_FORMAT_TEXT, first, 0, last, 0, nil) else { return "" }
+        defer { g_free(text) }
+        return String(cString: text)
     }
 
     /// User input from elsewhere (a drop, a paste): this shell, and the other MultiExec terminals.
     func sendAsUser(_ text: String) {
-        vte_terminal_feed_child(c(terminal), text, -1)
+        sendQuietly(text)
         broadcast?(text)
     }
 
@@ -364,7 +394,8 @@ final class TerminalPane {
     /// Terminal's Clear to Start: drops the scrollback and the screen. The shell is asked to redraw its prompt only
     /// when it is in the foreground, so full-screen programs aren't sent a stray Ctrl-L.
     func clearToStart() {
-        feed("\u{1B}[3J\u{1B}[2J\u{1B}[H")
+        // VTE moves an erased screen into the scrollback, so the screen goes first and the scrollback after it.
+        feed("\u{1B}[2J\u{1B}[3J\u{1B}[H")
         if shellIsForeground { sendQuietly("\u{0C}") }
     }
 
@@ -384,7 +415,9 @@ final class TerminalPane {
     func paste() {
         herb_clipboard_read_text(c(clipboard()), receivedTrampoline, stringBox { [weak self] text in
             guard let self, let text else { return }
+            self.appTyping = true
             vte_terminal_paste_text(c(self.terminal), text)
+            self.appTyping = false
             self.broadcast?(text)
         })
     }
@@ -463,7 +496,7 @@ final class TerminalPane {
 
     private func configureEvents() {
         on(terminal, "commit") { [weak self] args in
-            guard let self, let text = args.string(1) else { return }
+            guard let self, !self.appTyping, let text = args.string(1) else { return }
             self.broadcast?(text)
         }
         on(terminal, "window-title-changed") { [weak self] _ in
