@@ -10,6 +10,8 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     private static let blinkTimer: UINT_PTR = 1
     /// Waits a moment after the process ends, so its last words reach the screen before the tab reacts.
     private static let endedTimer: UINT_PTR = 2
+    /// Looks for the program running in the foreground, for the title.
+    private static let programTimer: UINT_PTR = 3
 
     private(set) var hwnd: HWND?
     let terminal: Terminal
@@ -31,6 +33,18 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     private var selecting = false
 
     var title = TerminalPane.userAtHost
+    /// The title the shell gave itself, shown before the program in the foreground.
+    private var baseTitle = TerminalPane.userAtHost
+    /// The program running in the foreground of a local tab, with its arguments (secrets hidden).
+    private var foregroundProgram: String?
+    /// The shell's current folder as it last reported it, shown beside the title.
+    private(set) var location: String?
+    /// The folder beside the title: the shell's current folder, with the home folder as "~".
+    var subtitle: String {
+        guard let location else { return "" }
+        if remote != nil { return location }
+        return ShellLocation.display(location, home: ParityScene.isActive ? ParityScene.home : (ProcessInfo.processInfo.environment["USERPROFILE"] ?? ""))
+    }
     /// The tab's number ("Terminal 2"), the lowest free one when it opened.
     var number = 1
     /// A name from Rename Tab; nil shows "Terminal <number>".
@@ -44,6 +58,13 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         options.scrollback = settings.scrollbackLines
         terminal = Terminal(delegate: TerminalDelegateProxy.shared, options: options)
         TerminalDelegateProxy.shared.panes[ObjectIdentifier(terminal)] = self
+        // The shell's folder, reported at each prompt (see ShellLocation).
+        terminal.registerOscHandler(code: 9) { [weak self] payload in
+            MainActor.assumeIsolated { self?.setLocation(ShellLocation.folder(osc9: String(decoding: payload, as: UTF8.self))) }
+        }
+        terminal.registerOscHandler(code: 7) { [weak self] payload in
+            MainActor.assumeIsolated { self?.setLocation(ShellLocation.folder(osc7: String(decoding: payload, as: UTF8.self))) }
+        }
         hwnd = createWindow(self, className: Self.className, style: DWORD(WS_CHILD | WS_CLIPSIBLINGS), parent: parent)
         // Files and folders dropped from File Explorer are typed as paths, as on the Mac and Linux.
         if let hwnd { DragAcceptFiles(hwnd, true) }
@@ -68,9 +89,13 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         guard let hwnd, session == nil else { return }
         self.commandLine = commandLine
         let start = directory ?? ProcessInfo.processInfo.environment["USERPROFILE"]
+        // A local shell reports its folder at every prompt; until it does, the title shows where it started.
+        let launch = remote == nil ? ShellLocation.integrate(commandLine: commandLine, environment: environment) : (commandLine: commandLine, environment: environment)
+        if remote == nil { location = start }
         do {
-            session = try PseudoConsole(commandLine: commandLine, directory: start, extraEnvironment: environment,
+            session = try PseudoConsole(commandLine: launch.commandLine, directory: start, extraEnvironment: launch.environment,
                                         columns: terminal.cols, rows: terminal.rows, window: hwnd)
+            if remote == nil { SetTimer(hwnd, Self.programTimer, 1000, nil) }
         } catch {
             terminal.feed(text: "\u{1b}[31m\(error.localizedDescription)\u{1b}[0m\r\n")
             invalidate()
@@ -285,6 +310,9 @@ final class TerminalPane: WindowObject, TerminalDelegate {
             KillTimer(hwnd, Self.endedTimer)
             drainOutput()
             processEnded()
+            return 0
+        case WM_TIMER where wParam == Self.programTimer:
+            refreshForegroundProgram()
             return 0
         case WM_TIMER:
             cursorBlinkOn.toggle()
@@ -737,13 +765,9 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     }()
 
     static func localTitle(reported: String) -> String {
-        let trimmed = reported.trimmingCharacters(in: .whitespaces)
-        let parts = trimmed.components(separatedBy: " - ")
-        // While a command runs, Command Prompt shows "<title> - <command line>": keep the program's name only.
-        if parts.count > 1, let program = parts[1].split(separator: " ").first {
-            let name = program.split(separator: "\\").last.map(String.init) ?? String(program)
-            return userAtHost + " — " + (name.lowercased().hasSuffix(".exe") ? String(name.dropLast(4)) : name)
-        }
+        // While a command runs, Command Prompt shows "<title> - <command line>"; the program in the foreground
+        // is read from the process list instead (see refreshForegroundProgram), so only the title part counts.
+        let trimmed = (reported.components(separatedBy: " - ").first ?? reported).trimmingCharacters(in: .whitespaces)
         let isShellPath = trimmed.lowercased().hasSuffix(".exe") && trimmed.contains("\\")
         if trimmed.isEmpty || isShellPath || trimmed == userAtHost { return userAtHost }
         return userAtHost + " — " + trimmed
@@ -760,6 +784,31 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         return trimmed
     }
 
+    // MARK: Title and location
+
+    private func setLocation(_ folder: String?) {
+        guard let folder, folder != location else { return }
+        location = folder
+        onTitleChange?(self)
+    }
+
+    /// A local tab's title: the shell's title, and the program in the foreground beside it, as on the Mac.
+    private func composeLocalTitle() {
+        let next = foregroundProgram.map { baseTitle + " — " + $0 } ?? baseTitle
+        guard next != title else { return }
+        title = next
+        onTitleChange?(self)
+    }
+
+    private func refreshForegroundProgram() {
+        guard remote == nil, let session, !session.hasExited else { return }
+        let program = ShellLocation.foregroundChild(of: session.processID)
+            .flatMap(ShellLocation.commandLine(of:)).map(ShellLocation.titleText(commandLine:))
+        guard program != foregroundProgram else { return }
+        foregroundProgram = program?.isEmpty == true ? nil : program
+        composeLocalTitle()
+    }
+
     // MARK: TerminalDelegate
 
     nonisolated func send(source: Terminal, data: ArraySlice<UInt8>) {
@@ -774,7 +823,9 @@ final class TerminalPane: WindowObject, TerminalDelegate {
                 let named = Self.tabTitle(title)
                 self.title = named == "Terminal" || title.lowercased().hasSuffix("ssh.exe") ? remote.label : named
             } else {
-                self.title = Self.localTitle(reported: title)
+                baseTitle = Self.localTitle(reported: title)
+                composeLocalTitle()
+                return
             }
             onTitleChange?(self)
         }

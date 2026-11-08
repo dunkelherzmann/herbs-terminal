@@ -215,7 +215,9 @@ final class WindowChrome {
                 if pressed == item { background = isActive ? blend(colors.background, colors.accent, 0.3) : colors.glyphPressed }
                 else if hover == item { background = isActive ? blend(colors.background, colors.accent, 0.24) : colors.glyphHover }
             }
-            roundRect(dc, rect, radius: s(5), color: background)
+            // As on the Mac, the Main Menu is a plain glyph; it shows a background only while hovered or pressed.
+            let plain = item == .menu && hover != item && pressed != item
+            if !plain { roundRect(dc, rect, radius: s(5), color: background) }
             let foreground = unavailable ? blend(textColor, colors.background, 0.72) : (isActive ? colors.accentText : textColor)
             draw(dc, glyph, rect, font: fonts.glyph, color: foreground, flags: DT_CENTER)
         }
@@ -295,7 +297,7 @@ final class WindowChrome {
             if let label = state.connected {
                 return "Connected to \(label)\nShow connection details, disconnect, or open a new connection (Ctrl+Shift+K)."
             }
-            return "Connect via SSH (Ctrl+Shift+K)\nOpen a remote shell with a saved or new login."
+            return "Connect via SSH (Ctrl+Shift+K)\nOpen a remote shell with a saved or new login; the explorer follows that host."
         case .export: return "Export Session (Ctrl+Shift+S)\nSave everything in this terminal, scrollback included, to a text file."
         case .screenshot:
             if state.screenshotCopied { return "Screenshot copied\nPaste it anywhere with Ctrl+V." }

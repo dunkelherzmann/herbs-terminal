@@ -522,12 +522,13 @@ The Windows version is the same app as a native Win32 program, with SwiftTerm's 
 - **Connect via SSH** opens the login in a new tab running Windows' own OpenSSH client (`System32\OpenSSH\ssh.exe`), with the keepalive of section 4: a host that goes away ends the session within about 15 seconds. A session that ends with an error keeps its tab open with the reason; Return connects again. `exit` closes the tab.
 - **Saved passwords:** ssh runs the app's own executable as `SSH_ASKPASS`, which trades the one-time token of section 4 for the password over a named pipe that only this Windows account and SYSTEM may open, and that refuses remote clients. Both the `user@host's password:` and `(user@host) Password:` prompts are answered; every other question (a new host key, a one-time code, a retry) is asked in the terminal.
 - **The connected tab** shows its `user@host` as its title, and the SSH button is highlighted; it opens the connection details with New Connection, Close and Disconnect.
+- **The title** of a local tab is `user@host`, with the program running in the foreground and its arguments beside it (for example `user@host — ping -n 5 example.com`), passwords and tokens hidden as in section 2; the program is the shell's newest child process. The shell's current folder shows beside the title, with the home folder as `~`. Command Prompt and PowerShell report their folder at every prompt, as Windows Terminal reads it (`ESC ] 9 ; 9 ; "<path>" ESC \`): the app adds that to Command Prompt's `PROMPT` and wraps PowerShell's prompt function after the user's profile has run. Shells that send `ESC ] 7 ; file://…` (WSL, Git Bash) are followed too.
 
 ### Window and toolbar
 
 - The toolbar replaces the title bar and is laid out as on Linux: the Main Menu, New Tab and Connect via SSH on the left; the title in the middle; Export Session, Take Screenshot, Show File Explorer, MultiExec, Tailcat Peers and Search on the right, then minimize, maximize and close. Maximize shows Windows 11's snap layouts. Drag an empty part of the toolbar to move the window, and double-click it to maximize.
 - The tab strip sits under the toolbar: click to switch, double-click to rename, drag to reorder, middle-click to close, right-click for Rename, Move Left, Move Right and Close.
-- The Main Menu matches Linux's, Shell submenu included. Menus and hover hints follow the app's light or dark appearance, and colors use the Windows accent color.
+- The Main Menu is a plain glyph, as on the Mac, with a background only while hovered or pressed. It matches Linux's, Shell submenu included. Menus and hover hints follow the app's light or dark appearance, and colors use the Windows accent color.
 - Toolbar buttons never take the keyboard focus from the terminal. Hover hints appear after about half a second with the Mac's wording.
 
 ### Shortcuts

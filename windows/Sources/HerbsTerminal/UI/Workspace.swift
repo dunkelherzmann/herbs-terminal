@@ -529,6 +529,7 @@ final class Workspace: WindowObject {
         state.active = active
         if let pane = activePane {
             state.title = pane.title
+            state.subtitle = pane.subtitle
             state.connected = pane.isConnected ? pane.remote?.label : nil
             state.explorerShowing = pane.showingExplorer
             state.explorerAvailable = true
