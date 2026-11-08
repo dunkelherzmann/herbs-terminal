@@ -50,8 +50,8 @@ enum DialogTheme {
         var children: [HWND] = []
         withUnsafeMutablePointer(to: &children) { pointer in
             _ = EnumChildWindows(hwnd, { child, parameter in
-                guard let child, let parameter else { return true }
-                parameter.assumingMemoryBound(to: [HWND].self).pointee.append(child)
+                guard let child, let list = UnsafeMutableRawPointer(bitPattern: Int(parameter)) else { return true }
+                list.assumingMemoryBound(to: [HWND].self).pointee.append(child)
                 return true
             }, LPARAM(Int(bitPattern: UnsafeMutableRawPointer(pointer))))
         }
