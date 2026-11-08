@@ -170,8 +170,8 @@ struct GapClosingTests {
         library.update(id) { $0.zoom += 3; $0.theme = "Nord"; $0.backgroundOpacity = 0.5; $0.fontFamily = "Menlo"; $0.optionAsMeta = true }
         let reopened = TerminalProfile(defaults: defaults)
         #expect(reopened.settings(for: id).zoom == 3)
-        #expect(reopened.settings(for: id).effectiveSize == 14)
-        #expect(reopened.settings(for: id).font.pointSize == 14)
+        #expect(reopened.settings(for: id).effectiveSize == 16)   // 13 pt + 3
+        #expect(reopened.settings(for: id).font.pointSize == 16)
         reopened.update(id) { $0.zoom += 100 }
         #expect(reopened.settings(for: id).effectiveSize == 72)
         reopened.update(id) { $0.restoreTheming() }

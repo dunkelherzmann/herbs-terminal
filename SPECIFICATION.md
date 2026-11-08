@@ -124,7 +124,7 @@ These follow macOS Terminal:
   - keyboard: whether Option acts as the Meta key;
   - scrollback length and the bell;
   - a command to run when a tab opens, and a start folder.
-- **Default look:** the macOS Terminal **Basic** profile, in SF Mono Terminal 11 pt with Terminal's light and dark colors and ANSI palette.
+- **Default look:** the macOS Terminal **Basic** profile, in SF Mono Terminal 13 pt with Terminal's light and dark colors and ANSI palette.
 
 ### Color presets
 
@@ -146,7 +146,7 @@ These follow macOS Terminal:
   - restoring windows and tabs at launch;
   - asking before closing.
 - **Window:**
-  - the size of new windows in **columns × rows**, the same numbers the resize badge shows (default 120 × 32);
+  - the size of new windows in **columns × rows**, the same numbers the resize badge shows (default 100 × 30, in every version);
   - showing the size badge while resizing;
   - Apply to Open Windows, Use Front Window's Size, and Reset.
   - Windows are sized against the terminal's real grid, so they open at exactly the size set, within the screen and the window's minimum size.
@@ -478,7 +478,7 @@ The explorer follows Thunar: Ctrl+C / X / V / A / Z, Ctrl+Shift+Z to redo, Delet
 
 ### Appearance
 
-- The stock face is Adwaita Mono 11 pt; the Basic look keeps macOS Terminal's colors and ANSI palette.
+- The stock face is Adwaita Mono 13 pt; the Basic look keeps macOS Terminal's colors and ANSI palette.
 - Settings lists the installed monospaced fonts. Background opacity works as on the Mac; GTK has no blur behind windows, so there is no Blur setting.
 - The color scheme (System, Light, Dark) follows the desktop through libadwaita.
 

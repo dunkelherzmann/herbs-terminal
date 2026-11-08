@@ -12,8 +12,8 @@ enum CursorShape: String, CaseIterable, Identifiable, Codable {
 struct ProfileSettings: Codable, Equatable {
     /// Empty means the stock Terminal Basic face (SF Mono Terminal).
     var fontFamily = ""
-    /// The Basic profile's 11 pt; `TerminalTypeface.regular` reads the same from Terminal's own profile.
-    var fontSize: Double = 11
+    /// 13 pt in every version (Terminal's Basic profile uses 11; `TerminalTypeface.regular` gives only the face).
+    var fontSize: Double = 13
     /// Points added by Bigger / Smaller (⌘+ / ⌘−); Default (⌘0) sets it back to 0.
     var zoom: Double = 0
     var cursor: CursorShape = .block
@@ -100,7 +100,7 @@ final class TerminalProfile: ObservableObject {
     static let shared = TerminalProfile()
     static let sizeRange = ProfileSettings.sizeRange
     /// New windows' terminal size, in columns × rows, as the resize badge shows it.
-    static let defaultGrid = (columns: 120, rows: 32)
+    static let defaultGrid = (columns: 100, rows: 30)
     /// What a one-tab window adds around the terminal grid (toolbar, scroller), until a real window is measured.
     static let estimatedChrome = CGSize(width: 16, height: 32)
     static let gridRange = (columns: 20...1000, rows: 5...500)

@@ -73,7 +73,7 @@ enum TerminalBell: String, CaseIterable, Codable {
 struct ProfileSettings: Codable, Equatable {
     /// Empty means the stock face, the monospaced font that matches the macOS Terminal Basic look.
     var fontFamily = ""
-    var fontSize: Double = 11
+    var fontSize: Double = 13
     /// Points added by Bigger / Smaller; Default sets it back to 0.
     var zoom: Double = 0
     var cursor: CursorShape = .block
@@ -93,7 +93,7 @@ struct ProfileSettings: Codable, Equatable {
 
     var effectiveSize: Double { min(Self.sizeRange.upperBound, max(Self.sizeRange.lowerBound, fontSize + zoom)) }
     var family: String { fontFamily.isEmpty ? Self.stockFamily : fontFamily }
-    /// A Pango font description such as "Adwaita Mono 11".
+    /// A Pango font description such as "Adwaita Mono 13".
     var fontDescription: String { "\(family) \(effectiveSize.formatted())" }
 
     func normalized() -> ProfileSettings {
@@ -132,7 +132,7 @@ struct NamedProfile: Codable, Equatable {
 @MainActor
 final class TerminalProfile: ObservableObject {
     static let shared = TerminalProfile()
-    static let defaultGrid = (columns: 120, rows: 32)
+    static let defaultGrid = (columns: 100, rows: 30)
     static let gridRange = (columns: 20...1000, rows: 5...500)
 
     private let store: Preferences
