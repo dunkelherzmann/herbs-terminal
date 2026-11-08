@@ -154,6 +154,17 @@ final class WindowChrome {
         self.rects = rects
     }
 
+    /// Where the title and the location beside it are drawn, inside the title's rectangle.
+    func titleParts(dpi: UINT, state: State) -> (title: RECT, subtitle: RECT?)? {
+        guard let rect = rects[.title], rect.right > rect.left else { return nil }
+        ensureFonts(dpi)
+        var titleRect = rect
+        if !state.subtitle.isEmpty { titleRect.right = min(rect.right, rect.left + measure(state.title, fonts.title)) }
+        let gap = scaled(5, dpi: dpi)
+        guard !state.subtitle.isEmpty, titleRect.right + gap < rect.right else { return (titleRect, nil) }
+        return (titleRect, RECT(left: titleRect.right + gap, top: rect.top + scaled(1, dpi: dpi), right: rect.right, bottom: rect.bottom))
+    }
+
     func item(at point: POINT) -> Item? {
         func inside(_ r: RECT) -> Bool { point.x >= r.left && point.x < r.right && point.y >= r.top && point.y < r.bottom }
         // Close buttons sit inside their chips, so they're checked first.
@@ -210,13 +221,9 @@ final class WindowChrome {
         }
 
         // Title and location.
-        if let rect = rects[.title], rect.right > rect.left {
-            let titleWidth = measure(state.title, fonts.title)
-            var titleRect = rect
-            if !state.subtitle.isEmpty { titleRect.right = min(rect.right, rect.left + titleWidth) }
-            draw(dc, state.title, titleRect, font: fonts.title, color: textColor, flags: DT_LEFT | DT_END_ELLIPSIS)
-            if !state.subtitle.isEmpty, titleRect.right + s(5) < rect.right {
-                let subtitleRect = RECT(left: titleRect.right + s(5), top: rect.top + s(1), right: rect.right, bottom: rect.bottom)
+        if let parts = titleParts(dpi: dpi, state: state) {
+            draw(dc, state.title, parts.title, font: fonts.title, color: textColor, flags: DT_LEFT | DT_END_ELLIPSIS)
+            if let subtitleRect = parts.subtitle {
                 draw(dc, state.subtitle, subtitleRect, font: fonts.subtitle, color: blend(textColor, colors.background, 0.4),
                      flags: DT_LEFT | DT_END_ELLIPSIS)
             }
@@ -357,7 +364,7 @@ final class WindowChrome {
         }
     }
 
-    private static func toolID(_ item: Item) -> UINT_PTR {
+    static func toolID(_ item: Item) -> UINT_PTR {
         switch item {
         case .menu: 1
         case .newTab: 2
