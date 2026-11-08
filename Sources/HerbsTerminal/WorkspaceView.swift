@@ -453,6 +453,9 @@ final class Workspace: ObservableObject {
         tab.focusedShell = pane
         updateBroadcast()
         tab.objectWillChange.send()
+        // The MultiExec grid draws every tab's panes and watches the workspace, not the tab: without this it
+        // wouldn't show the new pane, and a pane's shell starts only once its view is made.
+        objectWillChange.send()
     }
 
     /// Closes one pane; the last pane closes the tab instead.

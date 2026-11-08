@@ -45,7 +45,12 @@ enum TestBridge {
         if let out = try? JSONSerialization.data(withJSONObject: response, options: [.sortedKeys]) {
             let temporary = folder + "/response.tmp", final = folder + "/response.json"
             _ = FileManager.default.createFile(atPath: temporary, contents: out)
-            _ = withWide(temporary) { from in withWide(final) { to in MoveFileExW(from, to, DWORD(MOVEFILE_REPLACE_EXISTING)) } }
+            // The runner reads response.json every 50 ms, and Windows refuses to replace a file someone has open:
+            // try again for up to two seconds, or the answer is lost and the runner thinks the app quit.
+            for _ in 0..<100 {
+                if withWide(temporary, { from in withWide(final) { to in MoveFileExW(from, to, DWORD(MOVEFILE_REPLACE_EXISTING)) } }) { break }
+                Sleep(20)
+            }
         }
     }
 
