@@ -93,8 +93,9 @@ struct ProfileSettings: Codable, Equatable {
 
     var effectiveSize: Double { min(Self.sizeRange.upperBound, max(Self.sizeRange.lowerBound, fontSize + zoom)) }
     var family: String { fontFamily.isEmpty ? Self.stockFamily : fontFamily }
-    /// A Pango font description such as "Adwaita Mono 13".
-    var fontDescription: String { "\(family) \(effectiveSize.formatted())" }
+    /// A Pango font description such as "Adwaita Mono 13px". The size is in screen pixels (before scaling), like
+    /// the Mac's points: a plain "13" would be 13/72 inch, which Pango draws about a third bigger.
+    var fontDescription: String { "\(family) \(effectiveSize.formatted())px" }
 
     func normalized() -> ProfileSettings {
         var copy = self

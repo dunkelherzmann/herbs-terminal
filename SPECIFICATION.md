@@ -479,6 +479,7 @@ The explorer follows Thunar: Ctrl+C / X / V / A / Z, Ctrl+Shift+Z to redo, Delet
 ### Appearance
 
 - The stock face is Adwaita Mono 13 pt; the Basic look keeps macOS Terminal's colors and ANSI palette.
+- Font sizes use the Mac's points in every version: one point is one screen pixel before display scaling (Pango gets `13px`; Windows uses `points × dpi / 96`), so the same size gives the same window on every platform.
 - Settings lists the installed monospaced fonts. Background opacity works as on the Mac; GTK has no blur behind windows, so there is no Blur setting.
 - The color scheme (System, Light, Dark) follows the desktop through libadwaita.
 
