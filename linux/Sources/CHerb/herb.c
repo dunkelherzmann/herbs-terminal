@@ -600,7 +600,7 @@ void herb_launch_uri(GtkWindow *parent, const char *uri) {
 /* Take Screenshot: a window (header bar included) drawn at the screen's scale, onto the clipboard as an image.
    FALSE when there is nothing to draw. The window's background is drawn, then its content (the header bar and
    everything below it) as its parent draws it: a widget paintable comes back empty after its first picture. */
-gboolean herb_copy_widget_image(GtkWidget *widget) {
+static GdkTexture *herb_widget_texture(GtkWidget *widget) {
     GtkWidget *target = widget;
     if (ADW_IS_APPLICATION_WINDOW(widget)) target = adw_application_window_get_content(ADW_APPLICATION_WINDOW(widget));
     else if (ADW_IS_WINDOW(widget)) target = adw_window_get_content(ADW_WINDOW(widget));
@@ -608,7 +608,7 @@ gboolean herb_copy_widget_image(GtkWidget *widget) {
     GtkNative *native = gtk_widget_get_native(widget);
     graphene_rect_t area;
     if (parent == NULL || native == NULL || !gtk_widget_get_mapped(target)
-        || !gtk_widget_compute_bounds(target, parent, &area) || area.size.width < 1 || area.size.height < 1) return FALSE;
+        || !gtk_widget_compute_bounds(target, parent, &area) || area.size.width < 1 || area.size.height < 1) return NULL;
     float scale = (float)gdk_surface_get_scale(gtk_native_get_surface(native));
     GtkSnapshot *snapshot = gtk_snapshot_new();
     gtk_snapshot_scale(snapshot, scale, scale);
@@ -620,7 +620,7 @@ gboolean herb_copy_widget_image(GtkWidget *widget) {
     gtk_snapshot_translate(snapshot, &GRAPHENE_POINT_INIT(-area.origin.x, -area.origin.y));
     gtk_widget_snapshot_child(parent, target, snapshot);
     GskRenderNode *node = gtk_snapshot_free_to_node(snapshot);
-    if (node == NULL) return FALSE;
+    if (node == NULL) return NULL;
     graphene_rect_t bounds = GRAPHENE_RECT_INIT(0, 0, ceilf(area.size.width * scale), ceilf(area.size.height * scale));
     GdkTexture *texture = gsk_renderer_render_texture(gtk_native_get_renderer(native), node, &bounds);
     if (texture == NULL) {
@@ -633,8 +633,31 @@ gboolean herb_copy_widget_image(GtkWidget *widget) {
         g_object_unref(software);
     }
     gsk_render_node_unref(node);
+    return texture;
+}
+
+gboolean herb_copy_widget_image(GtkWidget *widget) {
+    GdkTexture *texture = herb_widget_texture(widget);
     if (texture == NULL) return FALSE;
     gdk_clipboard_set_texture(gtk_widget_get_clipboard(widget), texture);
     g_object_unref(texture);
     return TRUE;
+}
+
+/* A widget's bounds in its window's coordinates (parity checks): x, y, width, height. FALSE when not shown. */
+gboolean herb_widget_bounds(GtkWidget *widget, double *out) {
+    GtkRoot *root = gtk_widget_get_root(widget);
+    graphene_rect_t bounds;
+    if (root == NULL || !gtk_widget_get_mapped(widget) || !gtk_widget_compute_bounds(widget, GTK_WIDGET(root), &bounds)) return FALSE;
+    out[0] = bounds.origin.x; out[1] = bounds.origin.y; out[2] = bounds.size.width; out[3] = bounds.size.height;
+    return TRUE;
+}
+
+/* The same picture as Take Screenshot, saved as a PNG file (parity checks). */
+gboolean herb_save_widget_image(GtkWidget *widget, const char *path) {
+    GdkTexture *texture = herb_widget_texture(widget);
+    if (texture == NULL) return FALSE;
+    gboolean saved = gdk_texture_save_to_png(texture, path);
+    g_object_unref(texture);
+    return saved;
 }

@@ -8,6 +8,7 @@ import Glibc
 enum AppMain {
     static func main() {
         if let status = HelperMode.run() { exit(status) }
+        ParityScene.prepare()
         #if DEBUG
         if CommandLine.arguments.contains("--self-test") { exit(MainActor.assumeIsolated { SelfTest.run() }) }
         #endif
@@ -32,7 +33,9 @@ final class App {
     func release(_ object: AnyObject) { retained[ObjectIdentifier(object)] = nil }
 
     func run() -> Int32 {
-        let app = adw_application_new(Host.appID, G_APPLICATION_DEFAULT_FLAGS)!
+        // A parity scene is its own instance, so it never hands over to (or opens a window in) the user's app.
+        let app = ParityScene.isActive ? adw_application_new(ParityScene.applicationID, G_APPLICATION_NON_UNIQUE)!
+                                       : adw_application_new(Host.appID, G_APPLICATION_DEFAULT_FLAGS)!
         application = c(app)
         on(app, "startup") { [weak self] _ in self?.startup() }
         on(app, "activate") { [weak self] _ in self?.activate() }
@@ -52,7 +55,7 @@ final class App {
             Workspace.all.forEach { $0.allPanes.forEach { $0.applyColors() } }
         }
         installActions()
-        pendingWindows = TerminalProfile.shared.restoreSession ? SavedSession.read().filter { !$0.tabs.isEmpty } : []
+        pendingWindows = !ParityScene.isActive && TerminalProfile.shared.restoreSession ? SavedSession.read().filter { !$0.tabs.isEmpty } : []
     }
 
     private var activated = false
@@ -68,7 +71,9 @@ final class App {
             return
         }
         activated = true
-        Workspace().present()
+        let workspace = Workspace()
+        workspace.present()
+        if let path = ParityScene.capturePath { workspace.saveParityCapture(to: path) }
     }
 
     func newWindow() { Workspace().present() }

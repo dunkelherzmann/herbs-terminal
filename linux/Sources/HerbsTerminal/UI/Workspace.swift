@@ -731,6 +731,7 @@ final class Workspace {
 
     /// Each window's tabs with their folder, panes, explorer folder and name.
     static func saveSession() {
+        guard !ParityScene.isActive else { return }
         guard TerminalProfile.shared.restoreSession else { SavedSession.clear(); return }
         SavedSession.write(registry.map { workspace in
             // Editor tabs aren't reopened; the files stay where they were saved.
@@ -841,6 +842,18 @@ final class Workspace {
             toolbar.confirm("Screenshot copied\nPaste it anywhere with Ctrl+V.")
         } else {
             gtk_widget_error_bell(window)
+        }
+    }
+
+    /// Parity checks: once the scene has settled, the same picture as Take Screenshot goes to a PNG file.
+    func saveParityCapture(to path: String) {
+        let seconds = Double(ProcessInfo.processInfo.environment["PARITY_SETTLE_SECS"] ?? "") ?? 4
+        FileHandle.standardError.write(Data("parity: capture in \(seconds) s to \(path)\n".utf8))
+        _ = after(milliseconds: UInt32(seconds * 1000)) { [weak self] in
+            guard let self else { FileHandle.standardError.write(Data("parity: window gone before capture\n".utf8)); return }
+            ParityScene.writeIdentifiers(to: path + ".ids.json")
+            let saved = herb_save_widget_image(self.window, path) != 0
+            FileHandle.standardError.write(Data((saved ? "parity: saved \(path)\n" : "parity: capture failed\n").utf8))
         }
     }
 

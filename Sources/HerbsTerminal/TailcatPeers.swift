@@ -58,8 +58,7 @@ final class TailcatPeerStore: ObservableObject {
 
     init(file: URL? = nil, secrets: CredentialStore? = CredentialStore.shared) {
         self.secrets = secrets
-        self.file = file ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("HerbsTerminal/tailcat-peers.json")
+        self.file = file ?? AppFolders.support().appendingPathComponent("tailcat-peers.json")
         if let data = try? Data(contentsOf: self.file) {
             if let decoded = try? JSONDecoder().decode([TailcatPeer].self, from: data) {
                 peers = decoded

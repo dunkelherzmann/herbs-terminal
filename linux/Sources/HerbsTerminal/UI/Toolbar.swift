@@ -30,9 +30,10 @@ final class SessionToolbar {
         gtk_widget_set_focus_on_click(menuButton, 0)
         hint(menuButton, "Main Menu\nTabs, windows, zoom, themes, appearance and settings.")
         accessibleLabel(menuButton, "Main Menu")
+        accessibleID(menuButton, "toolbar.mainMenu")
 
         var weakSelf: SessionToolbar?
-        func glyph(_ icon: String, _ name: String, toggle: Bool = false, _ action: @escaping @MainActor (Workspace) -> Void) -> Widget {
+        func glyph(_ icon: String, _ name: String, id: String, toggle: Bool = false, _ action: @escaping @MainActor (Workspace) -> Void) -> Widget {
             // A toggle (MultiExec) is a real toggle button, so screen readers announce whether it's on.
             let widget: Widget
             if toggle { widget = gtk_toggle_button_new()!; gtk_button_set_icon_name(c(widget), icon) } else { widget = gtk_button_new_from_icon_name(icon)! }
@@ -41,23 +42,24 @@ final class SessionToolbar {
             // Like the Mac's toolbar buttons, they never take the keyboard focus from the terminal.
             gtk_widget_set_focus_on_click(widget, 0)
             accessibleLabel(widget, name)
+            accessibleID(widget, "toolbar." + id)
             on(widget, "clicked") { _ in if let workspace = weakSelf?.workspace { action(workspace) } }
             return widget
         }
-        let newTab = glyph("ht-tab-new-symbolic", "New Tab") { $0.add() }
+        let newTab = glyph("ht-tab-new-symbolic", "New Tab", id: "newTab") { $0.add() }
         hint(newTab, "New Tab (Ctrl+Shift+T)\nOpen another local terminal in this window.")
-        connect = glyph("ht-network-symbolic", "Connect via SSH") { $0.connectButton() }
-        let export = glyph("ht-share-symbolic", "Export Session") { $0.exportSession() }
+        connect = glyph("ht-network-symbolic", "Connect via SSH", id: "connect") { $0.connectButton() }
+        let export = glyph("ht-share-symbolic", "Export Session", id: "exportSession") { $0.exportSession() }
         hint(export, "Export Session (Ctrl+Shift+S)\nSave everything in this terminal, scrollback included, to a text file.")
-        screenshot = glyph("ht-camera-symbolic", "Take Screenshot") { $0.takeScreenshot() }
+        screenshot = glyph("ht-camera-symbolic", "Take Screenshot", id: "takeScreenshot") { $0.takeScreenshot() }
         hint(screenshot, "Take Screenshot (Ctrl+Alt+S)\nCopy a picture of this whole window to the clipboard, ready to paste.")
-        explorer = glyph("ht-folder-symbolic", "Switch Terminal / Explorer") { workspace in
+        explorer = glyph("ht-folder-symbolic", "Switch Terminal / Explorer", id: "switchView") { workspace in
             workspace.setLayout(workspace.selected.state.layout == .explorer ? .terminal : .explorer)
         }
-        multiExec = glyph("ht-layers-symbolic", "MultiExec", toggle: true) { $0.setMultiExec(!$0.multiExec) }
-        let peers = glyph("ht-peers-symbolic", "Tailcat Peers") { TailcatWindow.show($0) }
+        multiExec = glyph("ht-layers-symbolic", "MultiExec", id: "multiExec", toggle: true) { $0.setMultiExec(!$0.multiExec) }
+        let peers = glyph("ht-peers-symbolic", "Tailcat Peers", id: "tailcatPeers") { TailcatWindow.show($0) }
         hint(peers, "Tailcat Peers\nPair with machines that can't reach each other by IP, and connect through Tailcat.")
-        search = glyph("ht-search-symbolic", "Search") { $0.find() }
+        search = glyph("ht-search-symbolic", "Search", id: "search") { $0.find() }
 
         let left = box(.horizontal, spacing: 4, [menuButton, newTab, connect])
         adw_header_bar_pack_start(c(header), left)
@@ -70,6 +72,8 @@ final class SessionToolbar {
         // Long titles (a command line in the foreground) shorten in the middle rather than push the buttons away.
         gtk_label_set_max_width_chars(c(titleLabel), 60)
         gtk_label_set_max_width_chars(c(subtitleLabel), 30)
+        accessibleID(titleLabel, "toolbar.title")
+        accessibleID(subtitleLabel, "toolbar.title")
         titleBox = box(.horizontal, spacing: 5, [titleLabel, subtitleLabel])
         gtk_widget_set_valign(titleBox, GTK_ALIGN_CENTER)
         gtk_box_set_baseline_position(c(titleBox), GTK_BASELINE_POSITION_CENTER)

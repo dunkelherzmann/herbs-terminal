@@ -50,6 +50,11 @@ final class LocalShell: ObservableObject, Identifiable {
     func start() {
         guard !started else { return }
         started = true
+        if ParityScene.isActive {
+            view.startProcess(executable: "/bin/sh", args: [], environment: ParityScene.shellEnvironment().map { "\($0.key)=\($0.value)" },
+                              execName: "sh", currentDirectory: ParityScene.home.path)
+            return
+        }
         let shell = getpwuid(getuid()).map { String(cString: $0.pointee.pw_shell) } ?? "/bin/zsh"
         var environment = ProcessInfo.processInfo.environment
         environment["TERM"] = "xterm-256color"
