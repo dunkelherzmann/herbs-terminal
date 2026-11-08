@@ -34,16 +34,17 @@ run_mac() {
 }
 
 run_linux() {
+    # macOS's bash 3.2 treats an empty array as unset under set -u, so the key is expanded only when given.
     local host="${PARITY_LINUX_HOST:?set PARITY_LINUX_HOST}" key=(); [[ -n "${PARITY_LINUX_KEY:-}" ]] && key=(-i "$PARITY_LINUX_KEY")
     sh script/version.sh >/dev/null 2>&1 || true
-    rsync -az --delete --exclude .build --exclude dist --exclude .git -e "ssh ${key[*]}" ./ "$host:src/herbs-parity/"
+    rsync -az --delete --exclude .build --exclude dist --exclude .git -e "ssh ${key[*]:-}" ./ "$host:src/herbs-parity/"
     if $build; then
-        ssh "${key[@]}" -o BatchMode=yes "$host" 'cd ~/src/herbs-parity && flatpak run org.flatpak.Builder --user --state-dir=$HOME/src/herbs-state \
+        ssh ${key[@]+"${key[@]}"} -o BatchMode=yes "$host" 'cd ~/src/herbs-parity && flatpak run org.flatpak.Builder --user --state-dir=$HOME/src/herbs-state \
             --force-clean $HOME/src/herbs-parity-build linux/org.herbsterminal.app.yml >$HOME/src/parity-build.log 2>&1' \
             || { echo "Linux: build failed; see ~/src/parity-build.log there" >&2; return 1; }
     fi
-    ssh "${key[@]}" -o BatchMode=yes "$host" "cd ~/src/herbs-parity && sh parity/tests/linux.sh ${args[*]:-}" | grep -vE '^(WORKS|UNVERIFIED|N/A) '
-    scp -q "${key[@]}" "$host:src/herbs-parity/parity/results/linux.json" parity/results/linux.json
+    ssh ${key[@]+"${key[@]}"} -o BatchMode=yes "$host" "cd ~/src/herbs-parity && sh parity/tests/linux.sh ${args[*]:-}" | grep -vE '^(WORKS|UNVERIFIED|N/A) '
+    scp -q ${key[@]+"${key[@]}"} "$host:src/herbs-parity/parity/results/linux.json" parity/results/linux.json
 }
 
 run_windows() {

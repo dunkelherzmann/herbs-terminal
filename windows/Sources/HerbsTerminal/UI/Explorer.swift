@@ -1,3 +1,5 @@
+        guard let name = askNewName(folder: isFolder, message: "Name for the new \(isFolder ? "folder" : "file") in \(place):",
+                                    initial: initial) else { return }
 import Foundation
 import WinSDK
 
@@ -48,8 +50,6 @@ final class ExplorerPane: WindowObject {
     var onLocationChange: (() -> Void)?
     /// Asks the workspace to open a file in a text editor tab.
     var onOpenInEditor: ((TextFileSource) -> Void)?
-    /// A file New File just made: it opens in the editor once its name is chosen.
-    private var editAfterRename: String?
 
     struct Place {
         let name: String
@@ -573,8 +573,9 @@ final class ExplorerPane: WindowObject {
                             message: "Choose a destination outside the folder you copied.")
             return
         }
-        let names = paths.map { (($0 as NSString).lastPathComponent) }
-        ShellOperation.run(move ? .move : .copy, paths, to: target, owner: hwnd)
+        let kind: ShellOperation.Kind = move ? .move : .copy
+        let names = ShellOperation.plan(kind, paths, to: target).map { ($0.destination as NSString).lastPathComponent }
+        ShellOperation.run(kind, paths, to: target, owner: hwnd)
         if move { ShellClipboard.clear(owner: hwnd) }
         reload()
         refill(keepSelection: false, select: Set(names))
@@ -592,9 +593,14 @@ final class ExplorerPane: WindowObject {
         reload()
     }
 
-    /// New Folder / New File: a free "untitled" name, then straight into renaming it.
+    /// New Folder / New File, as on the Mac: asks for the name (a free "untitled" one to start with), creates the
+    /// item, selects it, and opens a new file straight away in the text editor.
     private func create(folder isFolder: Bool) {
-        let name = FreeName.next(isFolder ? "untitled folder" : "untitled file", in: folder)
+        let owner = GetAncestor(hwnd, UINT(GA_ROOT))
+        let initial = FreeName.next(isFolder ? "untitled folder" : "untitled", in: folder)
+        let place = (folder as NSString).lastPathComponent.isEmpty ? folder : (folder as NSString).lastPathComponent
+        guard let name = askNewName(folder: isFolder, message: "Name for the new \(isFolder ? "folder" : "file") in \(place):",
+                                    initial: initial) else { return }
         let path = folder.hasSuffix("\\") ? folder + name : folder + "\\" + name
         let ok: Bool
         if isFolder {
@@ -605,17 +611,27 @@ final class ExplorerPane: WindowObject {
             if ok { CloseHandle(handle) }
         }
         guard ok else {
-            FormDialog.tell(owner: GetAncestor(hwnd, UINT(GA_ROOT)), title: "Couldn't create “\(name)”",
-                            message: Self.describe(GetLastError(), folder))
+            FormDialog.tell(owner: owner, title: "Couldn't create “\(name)”", message: Self.describe(GetLastError(), folder))
             return
         }
         reload()
-        if let row = rows.firstIndex(where: { $0.name == name }) {
-            if !isFolder { editAfterRename = path }
-            selectRow(row)
-            SetFocus(list)
-            SendMessageW(list, UINT(LVM_EDITLABELW), WPARAM(row), 0)
-        }
+        if let row = rows.firstIndex(where: { $0.name == name }) { selectRow(row) }
+        if !isFolder { onOpenInEditor?(.local(path)) }
+    }
+
+    /// The New Folder / New File question, as on the Mac.
+    private func askNewName(folder isFolder: Bool, message: String, initial: String) -> String? {
+        guard let answer = FormDialog.run(owner: GetAncestor(hwnd, UINT(GA_ROOT)), title: isFolder ? "New Folder" : "New File",
+                                          message: message, fields: [.init(label: "Name", text: initial)],
+                                          buttons: [.init(title: "Cancel"), .init(title: "OK", isDefault: true)],
+                                          validate: { button, values, _ in
+                                              guard button == 1 else { return nil }
+                                              let name = values[0].trimmingCharacters(in: .whitespaces)
+                                              if name.isEmpty { return "Enter a name." }
+                                              if name.contains(where: { "\\/:*?\"<>|".contains($0) }) { return "A name can't contain \\ / : * ? \" < > or |." }
+                                              return nil
+                                          }), answer.button == 1 else { return nil }
+        return answer.values[0].trimmingCharacters(in: .whitespaces)
     }
 
     private func finishRename(row: Int, to newName: String) {
@@ -791,9 +807,12 @@ final class ExplorerPane: WindowObject {
             remoteChange({ client in for path in paths { try RemoteFiles.remove(path, client: client, asRoot: asRoot) } })
         case .newFolder, .newFile:
             let isFolder = command == .newFolder
+            guard let chosen = askNewName(folder: isFolder, message: "Name for the new \(isFolder ? "folder" : "file") on \(remote?.endpoint.label ?? "the host"):",
+                                          initial: isFolder ? "untitled folder" : "untitled.txt") else { return true }
             let created = Locked<String?>(nil)
             remoteChange({ client in
-                let name = try RemoteFiles.freeName(isFolder ? "untitled folder" : "untitled file", in: folder, client: client)
+                // Never over an existing item: a taken name gets the next free one ("name 2").
+                let name = try RemoteFiles.freeName(chosen, in: folder, client: client)
                 if isFolder { try client.mkdir(remoteJoin(folder, name)) } else { try RemoteFiles.newFile(remoteJoin(folder, name), client: client) }
                 created.update { $0 = name }
             }, select: { created.value.map { [$0] } ?? [] }, done: { [weak self] in
@@ -1506,7 +1525,7 @@ final class ExplorerPane: WindowObject {
                     // Rename after the edit box has gone, so dialogs don't fight it for the focus.
                     pendingRename = (Int(info.item.iItem), String(wide: text))
                 }
-                if info.item.pszText != nil || editAfterRename != nil { PostMessageW(hwnd, UINT(WM_APP_DEFERRED), 0, 0) }
+                if info.item.pszText != nil { PostMessageW(hwnd, UINT(WM_APP_DEFERRED), 0, 0) }
                 return 0
             default:
                 return nil
@@ -1531,19 +1550,9 @@ final class ExplorerPane: WindowObject {
             }
             return 0
         case WM_APP_DEFERRED:
-            var renamedTo: String?
             if let rename = pendingRename {
                 pendingRename = nil
                 finishRename(row: rename.row, to: rename.name)
-                renamedTo = rename.name.trimmingCharacters(in: .whitespaces)
-            }
-            if let created = editAfterRename {
-                editAfterRename = nil
-                // New File: the file opens in the editor under the name it ended up with.
-                let folder = (created as NSString).deletingLastPathComponent
-                let renamed = renamedTo.map { (folder as NSString).appendingPathComponent($0) }
-                let path = renamed.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil } ?? created
-                if FileManager.default.fileExists(atPath: path) { onOpenInEditor?(.local(path)) }
             }
             return 0
         case WM_CTLCOLOREDIT:
@@ -1622,15 +1631,39 @@ enum ShellClipboard {
 }
 
 /// Copy, move, rename and delete through the Windows shell: its progress window for long jobs, the Recycle Bin, and
-/// new names on clashes ("name - Copy"), never overwriting.
+/// new names on clashes ("name copy", as on the Mac), never overwriting.
 @MainActor
 enum ShellOperation {
     enum Kind { case copy, move, rename, recycle, deletePermanently }
 
+    /// Where each item of a copy or move into `target` goes. As on the Mac, nothing is overwritten: a taken name
+    /// gets "name copy", "name copy 2", … An item moved into the folder it's already in stays where it is.
+    static func plan(_ kind: Kind, _ paths: [String], to target: String) -> [(source: String, destination: String)] {
+        var claimed = Set<String>()
+        return paths.compactMap { path in
+            let parent = (path as NSString).deletingLastPathComponent
+            if kind == .move, parent.caseInsensitiveCompare(target) == .orderedSame { return nil }
+            let name = (path as NSString).lastPathComponent
+            let destination = FreeName.copy(name, in: target) { FileManager.default.fileExists(atPath: $0) || claimed.contains($0.lowercased()) }
+            claimed.insert(destination.lowercased())
+            return (path, destination)
+        }
+    }
+
     @discardableResult
     static func run(_ kind: Kind, _ paths: [String], to target: String? = nil, owner: HWND?) -> Bool {
-        var from: [UInt16] = paths.flatMap { Array($0.utf16) + [0] } + [0]
-        var to: [UInt16] = (target.map { Array($0.utf16) + [0] } ?? []) + [0]
+        var sources = paths
+        var destinations: [String] = target.map { [$0] } ?? []
+        var multiple = false
+        if let target, kind == .copy || kind == .move {
+            let pairs = plan(kind, paths, to: target)
+            guard !pairs.isEmpty else { return true }
+            sources = pairs.map(\.source)
+            destinations = pairs.map(\.destination)
+            multiple = true
+        }
+        var from: [UInt16] = sources.flatMap { Array($0.utf16) + [0] } + [0]
+        var to: [UInt16] = destinations.flatMap { Array($0.utf16) + [0] } + [0]
         var operation = SHFILEOPSTRUCTW()
         operation.hwnd = owner.flatMap { GetAncestor($0, UINT(GA_ROOT)) }
         switch kind {
@@ -1641,7 +1674,7 @@ enum ShellOperation {
         }
         var flags = FOF_NOCONFIRMMKDIR
         switch kind {
-        case .copy, .move: flags |= FOF_RENAMEONCOLLISION | FOF_ALLOWUNDO
+        case .copy, .move: flags |= FOF_ALLOWUNDO | (multiple ? FOF_MULTIDESTFILES : 0)
         case .rename: flags |= FOF_ALLOWUNDO
         // Recycling asks nothing (it can be restored); Windows still warns if an item is too big to recycle.
         case .recycle: flags |= FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_WANTNUKEWARNING
@@ -1660,6 +1693,21 @@ enum ShellOperation {
 
 /// Free "untitled" names: "untitled folder", then "untitled folder 2", 3, … as on the Mac and Linux.
 enum FreeName {
+    /// Where a copy of `name` goes in `folder`: the same name when it's free, else "name copy", "name copy 2", …
+    /// before the extension, as on the Mac. Returns the full path.
+    static func copy(_ name: String, in folder: String, exists: (String) -> Bool) -> String {
+        let join = { (name: String) in folder.hasSuffix("\\") ? folder + name : folder + "\\" + name }
+        if !exists(join(name)) { return join(name) }
+        let ext = (name as NSString).pathExtension
+        let base = ext.isEmpty ? name : (name as NSString).deletingPathExtension
+        var index = 1
+        while true {
+            let candidate = join(base + (index == 1 ? " copy" : " copy \(index)") + (ext.isEmpty ? "" : "." + ext))
+            if !exists(candidate) { return candidate }
+            index += 1
+        }
+    }
+
     static func next(_ base: String, in folder: String, exists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) -> String {
         let join = { (name: String) in folder.hasSuffix("\\") ? folder + name : folder + "\\" + name }
         if !exists(join(base)) { return base }
