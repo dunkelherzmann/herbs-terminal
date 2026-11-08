@@ -125,6 +125,7 @@ enum TestBridge {
     private static let explorerCommands: [String: String] = [
         "cut": "cut", "copy": "copy", "paste": "paste", "delete": "delete", "new-folder": "newFolder", "new-file": "newFile",
         "select-all": "selectAll", "open": "open", "edit": "edit", "info": "info", "reveal": "reveal", "open-default": "openWith",
+        "administrator": "toggleAdmin",
     ]
 
     private static func command(_ name: String, run: Bool) throws -> String {

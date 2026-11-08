@@ -150,7 +150,12 @@ enum TestBridge {
         for number in 1...9 { actions["tab-\(number)"] = { workspace.selectTab(number: number - 1) } }
         // Menus that pick from a list: present when the list is.
         for name in ["new-tab-profile", "use-profile", "color-scheme", "color-preset"] { actions[name] = {} }
-        if name.hasPrefix("explorer.") { return "unsupported" }
+        // The explorer's lock button: Administrator mode on or off.
+        actions["explorer.administrator"] = {
+            let state = workspace.selected.state
+            if state.adminViewModel != nil { AdministratorMode.leave(state) } else { Task { await AdministratorMode.enter(state) } }
+        }
+        if name.hasPrefix("explorer."), name != "explorer.administrator" { return "unsupported" }
         guard let action = actions[name] else { return "missing" }
         if name == "disconnect", workspace.selected.state.connection == .local { return "disabled" }
         // Run after this request is answered: an alert's modal loop would otherwise hold the answer back.
@@ -235,6 +240,7 @@ enum TestBridge {
                         entry["connection"] = bridgeConnection(tab.state.connection)
                         let remote: Bool = { if case .remote = tab.state.endpoint { return true }; return false }()
                         entry["explorer"] = ["shown": tab.state.layout == .explorer, "remote": remote,
+                                             "administrator": tab.state.adminViewModel != nil,
                                              "path": remote ? tab.state.remoteDirectory : tab.state.directory.path,
                                              "items": [String](), "selected": [String]()] as [String: Any]
                         if let editor = tab.editor { entry["editor"] = ["name": editor.source.name, "edited": editor.isEdited, "text": editor.bridgeText] }

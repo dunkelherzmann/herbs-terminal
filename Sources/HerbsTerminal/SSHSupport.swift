@@ -502,6 +502,16 @@ enum TailcatProxy {
                                   sin_port: port.bigEndian, sin_addr: in_addr(s_addr: inet_addr("127.0.0.1")), sin_zero: (0, 0, 0, 0, 0, 0, 0, 0))
         let connected = withUnsafePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } }
         if connected == 0 { return fd }
+        // A signal (a child process ending, say) can interrupt connect while the connection goes on being made:
+        // wait for it to finish and take its real result.
+        if errno == EINTR {
+            var ready = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
+            var result: Int32 = 0
+            var length = socklen_t(MemoryLayout<Int32>.size)
+            var waited: Int32 = -1
+            repeat { waited = poll(&ready, 1, 2000) } while waited < 0 && errno == EINTR
+            if waited > 0, getsockopt(fd, SOL_SOCKET, SO_ERROR, &result, &length) == 0, result == 0 { return fd }
+        }
         close(fd)
         return -1
     }

@@ -993,7 +993,7 @@ final class ExplorerView {
         }
     }
 
-    private func toggleAdministrator() {
+    func toggleAdministrator() {
         guard let host else { return }
         if isAdministrator { AdministratorMode.leave(host) } else { Task { await AdministratorMode.enter(host, parent: parentWindow) } }
     }
@@ -1164,10 +1164,13 @@ extension ExplorerView {
     func bridgeGo(_ target: String) -> Bool { visit(target); return true }
     func bridgeSelect(_ names: [String]) -> [String] { select(Set(names)); return selectedNames }
     func bridgeProbe(_ action: String) -> String {
+        if action == "administrator" { return "enabled" }
         guard g_action_group_has_action(group, action) != 0 else { return "missing" }
         return g_action_group_get_action_enabled(group, action) != 0 ? "enabled" : "disabled"
     }
     func bridgeDo(_ action: String) -> String {
+        // The lock button: Administrator mode on or off.
+        if action == "administrator" { toggleAdministrator(); return "ran" }
         guard g_action_group_has_action(group, action) != 0 else { return "missing" }
         guard g_action_group_get_action_enabled(group, action) != 0 else { return "disabled" }
         g_action_group_activate_action(group, action, nil)
