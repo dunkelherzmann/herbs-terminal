@@ -1,5 +1,3 @@
-        guard let name = askNewName(folder: isFolder, message: "Name for the new \(isFolder ? "folder" : "file") in \(place):",
-                                    initial: initial) else { return }
 import Foundation
 import WinSDK
 
