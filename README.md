@@ -101,6 +101,14 @@ Or on a Mac, in a Linux VM (needs `brew install container`): `script/build_flatp
 
 The Flatpak asks for broad access, as terminals do: it runs your shell and `ssh` on the host (`flatpak-spawn`), and the explorer reaches all your folders.
 
+## Windows (early)
+
+A native Win32 version is under way in [`windows/`](windows/README.md): tabs and a full-color terminal running PowerShell through ConPTY work today; the explorer and SSH come next. Build it with the Swift toolchain for Windows and Visual Studio Build Tools:
+
+```powershell
+windows\dev\build.ps1 -Run
+```
+
 ## Built with
 
 Built with **Swift 6** and Swift Package Manager: on macOS with **SwiftUI + AppKit** and [SwiftTerm 1.20](https://github.com/migueldeicaza/SwiftTerm), on Linux with **GTK 4**, **libadwaita**, [VTE](https://gitlab.gnome.org/GNOME/vte) and GtkSourceView. Both share the SSH, SFTP and login-vault code.
@@ -115,6 +123,7 @@ Tests/
   HerbsTerminalTests/  unit and integration tests
 linux/                 the Linux version: Swift package, Flatpak manifest, desktop file, icons
   Sources/HerbsTerminal/Shared/   links to the macOS sources both versions share
+windows/               the Windows version (early): Swift package, Win32 UI, ConPTY
 Assets/                app icon source files
 Vendor/tailcat/        bundled tailcat binary + license
 script/                build, signing, icon generation, and test scripts
