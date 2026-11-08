@@ -108,6 +108,8 @@ enum TestBridge {
     /// Like `command`, without running it.
     private static func probe(_ name: String) throws -> String {
         let workspace = try workspace
+        // The toolbar's SSH button: connection details while connected, Connect via SSH otherwise.
+        if name == "connect-button" { workspace.connectButton(); return "ran" }
         if name.hasPrefix("explorer.") {
             guard let explorer = workspace.selected.explorer else { return "missing" }
             return explorer.bridgeProbe(String(name.dropFirst("explorer.".count)))
@@ -158,6 +160,7 @@ enum TestBridge {
                                  "exited": pane.exited, "text": pane.screenText, "fontSize": pane.settings.effectiveSize]
                             },
                         ]
+                        entry["connection"] = bridgeConnection(tab.state.connection)
                         if let explorer = tab.explorer { entry["explorer"] = explorer.bridgeState }
                         if let editor = tab.editor { entry["editor"] = ["name": editor.source.name, "edited": editor.isEdited, "text": editor.bridgeText] }
                         return entry
@@ -184,5 +187,15 @@ enum TestBridge {
             g_object_unref(item)
         }
         return titles
+    }
+}
+
+/// A tab's connection for the feature tests: "local", "connecting", "connected" or "failed", and the account.
+func bridgeConnection(_ state: ConnectionState) -> [String: Any] {
+    switch state {
+    case .local: ["state": "local"]
+    case .connecting(let endpoint): ["state": "connecting", "account": endpoint.label]
+    case .connected(let endpoint): ["state": "connected", "account": endpoint.label]
+    case .failed(let reason): ["state": "failed", "reason": reason]
     }
 }
