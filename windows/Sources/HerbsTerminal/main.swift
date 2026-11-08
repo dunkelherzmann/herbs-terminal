@@ -13,6 +13,9 @@ func attachParentConsole() {
 
 // ssh runs this same executable as its SSH_ASKPASS helper; that mode never opens a window.
 if let status = HelperMode.run() { exit(status) }
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == SFTPRelay.flag {
+    exit(SFTPRelay.run(Array(CommandLine.arguments.dropFirst(2))))
+}
 
 MainActor.assumeIsolated {
     if CommandLine.arguments.contains("--self-test") {

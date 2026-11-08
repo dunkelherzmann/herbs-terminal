@@ -295,8 +295,8 @@ final class WindowChrome {
             return "Take Screenshot (Ctrl+Alt+S)\nCopy a picture of this whole window to the clipboard, ready to paste."
         case .explorer:
             if state.explorerShowing { return "Show Terminal (Ctrl+Shift+X)\nReplace the file explorer with this tab's shell." }
-            if !state.explorerAvailable { return "Show File Explorer (Ctrl+Shift+X)\nFiles on SSH hosts aren't in the Windows version yet." }
-            return "Show File Explorer (Ctrl+Shift+X)\nBrowse files on this PC in this tab."
+            if !state.explorerAvailable { return "Show File Explorer (Ctrl+Shift+X)\nNot available in this tab." }
+            return "Show File Explorer (Ctrl+Shift+X)\nBrowse files on the host this tab is connected to."
         case .multiExec: return "MultiExec (Ctrl+Shift+M)" + notYet
         case .peers: return "Tailcat Peers" + notYet
         case .search: return "Search Terminal (Ctrl+Shift+F)" + notYet

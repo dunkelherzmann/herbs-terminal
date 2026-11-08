@@ -79,7 +79,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
 
     /// The SSH login this tab runs, if it is an SSH tab. The password stays in memory only, for Reconnect.
     private(set) var remote: RemoteEndpoint?
-    private var remotePassword: String?
+    private(set) var remotePassword: String?
     private var awaitingReconnect = false
 
     /// Runs ssh to `endpoint` as this tab's process. A password goes to ssh through the askpass broker, once;

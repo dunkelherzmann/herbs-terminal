@@ -174,12 +174,6 @@ final class PseudoConsole: @unchecked Sendable {
 let WM_APP_OUTPUT = Int32(WM_APP) + 1
 let WM_APP_EXITED = Int32(WM_APP) + 2
 
-struct FileIssue: LocalizedError {
-    let message: String
-    init(_ message: String) { self.message = message }
-    var errorDescription: String? { message }
-}
-
 /// The shell new tabs start: PowerShell 7 when it's installed, otherwise Windows PowerShell.
 enum DefaultShell {
     static var commandLine: String {

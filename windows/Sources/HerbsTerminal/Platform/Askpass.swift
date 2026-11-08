@@ -212,18 +212,6 @@ enum HelperMode {
     }
 }
 
-/// Where a tab's ssh session goes.
-struct RemoteEndpoint: Equatable {
-    var host: String
-    var port: Int
-    var username: String
-
-    var label: String { "\(username)@\(host)" }
-
-    /// The names ssh's password prompt uses for this login ("user@host's password:").
-    var passwordLogins: [String] { ["\(username)@\(host)"] }
-}
-
 enum SSH {
     /// Windows' own OpenSSH client, never a copy found on PATH.
     static var executable: String? {

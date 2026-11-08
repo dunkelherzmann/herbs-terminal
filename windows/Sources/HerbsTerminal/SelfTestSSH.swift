@@ -3,6 +3,13 @@ import Foundation
 extension SelfTest {
     /// The password hand-off and the pieces of an ssh command line.
     static func sshChecks() {
+        // Host paths for the explorer: never through Windows path rules.
+        check("Host paths resolve . and ..", RemotePath.normalize("/srv/./www/../logs//") == "/srv/logs")
+        check("Host location field: ~ and relative paths",
+              RemotePath.resolve("~/site", from: "/tmp", home: "/home/herb") == "/home/herb/site"
+                  && RemotePath.resolve("../etc", from: "/home/herb", home: "/home/herb") == "/home/etc")
+        check("Host parent and name", RemotePath.parent("/home/herb") == "/home" && RemotePath.parent("/") == "/"
+                  && RemotePath.name("/home/herb/") == "herb" && RemotePath.name("/") == "/")
         // Dropped paths, quoted for each kind of shell a tab can run.
         let spaced = "C:\\Users\\Herb\\My Files\\it's.txt"
         check("Dropped path for PowerShell", DropQuoting.powerShell.typed([spaced, "C:\\a.txt"]) == "'C:\\Users\\Herb\\My Files\\it''s.txt' C:\\a.txt ")

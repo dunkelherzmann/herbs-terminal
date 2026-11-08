@@ -532,7 +532,8 @@ The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In 
 
 ### Files
 
-- **The explorer** shows this PC's files in the tab: the toolbar's folder button or Ctrl+Shift+X switches between the tab's shell and its explorer, which keeps its folder while hidden. In an SSH tab the button is dimmed; hosts' files aren't in the Windows version yet.
+- **The explorer** shows this PC's files in a local tab and the host's files in an SSH tab: the toolbar's folder button or Ctrl+Shift+X switches between the tab's shell and its explorer, which keeps its folder while hidden.
+- **Hosts:** Windows' OpenSSH can't share the terminal's connection, so the explorer signs in to the tab's host over its own SFTP channel, with the tab's saved password through the password helper (section 4) or with SSH keys and `ssh-agent`. ssh is started by a small relay (the app itself) that receives the one-time token on its input, so the token never appears in a command line or in the app's environment. The channel only accepts a host key the terminal already accepted, and it signs in again once if the connection drops. Places are Home and File System; folders and links to folders open, and the status line explains that opening files waits for downloads and the text editor. Copy and Paste duplicate items on the host with free " copy" names, Cut and Paste move them, Delete removes items (folders with everything in them) after asking, with Cancel as the default, and New Folder, New File and Rename work as on this PC. Listings and changes run in the background with "Loading…" or "Working…" in the status line.
 - **Places:** Home and the Windows user folders that exist (Desktop, Documents, Downloads, Music, Pictures, Videos), then every drive with its label.
 - **Location bar:** back, forward, up and home, an editable location (Ctrl+L) that accepts `~`, relative paths, `.` and `..`, and File Actions (Cut, Copy, Paste, Move to Recycle Bin, Select All, New Folder, New File, Show Hidden Files, Reload). The mouse's back and forward buttons work too.
 - **The list:** name, date modified, type and size, with Windows' own icons and type names; folders first, then names in File Explorer's order (`file2` before `file10`). Click a heading to sort by it. Hidden items (Windows' hidden attribute, or a name starting with `.`) show only with Show Hidden Files, faded; the status line counts them.
@@ -550,7 +551,7 @@ The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In 
 
 ### Not yet on Windows
 
-Hosts' files in the explorer, transfers, the text editor, Get Info and Administrator mode; Undo and Redo and bookmarks in the explorer; split panes; MultiExec and Run Command on Hosts; Find in Terminal; named profiles; session restore; following an `ssh` typed in a local tab; Tailcat peers; Paste Escaped Text. Their toolbar buttons and menu commands are shown dimmed.
+Uploads, downloads and the transfer strip, the text editor, Get Info and Administrator mode; Undo and Redo and bookmarks in the explorer; split panes; MultiExec and Run Command on Hosts; Find in Terminal; named profiles; session restore; following an `ssh` typed in a local tab; Tailcat peers; Paste Escaped Text. Their toolbar buttons and menu commands are shown dimmed.
 
 ## References
 

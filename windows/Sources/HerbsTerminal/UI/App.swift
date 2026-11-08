@@ -15,6 +15,8 @@ enum App {
         registerClass(FormDialog.className, background: GetSysColorBrush(COLOR_WINDOW))
         registerClass(ManageLoginsWindow.className, background: GetSysColorBrush(COLOR_WINDOW))
         registerClass(ExplorerPane.className, style: UINT(CS_DBLCLKS))
+        registerClass(MainThread.className)
+        MainThread.start()
         DarkMenus.apply(dark: appIsDark)
         newWindow()
 
