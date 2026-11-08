@@ -3,15 +3,9 @@
 What the Linux version still needs before it can ship with as few bugs as possible: everything a feature test found broken or missing, and every feature no automatic test covers yet. Fix broken items first, one pull request each, and tick an item with its PR number once it is fixed and its test passes. `bugs.md` and `enhancements.md` stay the record of requests and releases.
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-08 18:51)
+## Feature test results (2026-11-08 18:53)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
-
-### Missing (1)
-
-The command isn't there, or it's greyed out.
-
-- [ ] **S10** Connection details popover (account, host, port, route, remote home, time) with Disconnect and New… (§4): Connection details while connected: no `connect-button` command
 
 ### Not checked automatically (91)
 

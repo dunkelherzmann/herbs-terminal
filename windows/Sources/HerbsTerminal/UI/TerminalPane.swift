@@ -781,6 +781,39 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         return userAtHost + " — " + trimmed
     }
 
+    // MARK: Title and location
+
+    private func setLocation(_ folder: String?) {
+        guard let folder, folder != location else { return }
+        location = folder
+        onTitleChange?(self)
+    }
+
+    /// A local tab's title: the shell's title, and the program in the foreground beside it, as on the Mac.
+    private func composeLocalTitle() {
+        let next = foregroundProgram.map { baseTitle + " — " + $0 } ?? baseTitle
+        guard next != title else { return }
+        title = next
+        onTitleChange?(self)
+    }
+
+    /// What closing this tab would end, as the Mac's question lists it: the program in the foreground, or the
+    /// SSH session. Nil for a local shell with nothing running.
+    var runningProgram: String? {
+        if let remote, isConnected { return "ssh (\(remote.label))" }
+        refreshForegroundProgram()
+        return foregroundProgram.map { String($0.split(separator: " ").first ?? Substring($0)) }
+    }
+
+    private func refreshForegroundProgram() {
+        guard remote == nil, let session, !session.hasExited else { return }
+        let program = ShellLocation.foregroundChild(of: session.processID)
+            .flatMap(ShellLocation.commandLine(of:)).map(ShellLocation.titleText(commandLine:))
+        guard program != foregroundProgram else { return }
+        foregroundProgram = program?.isEmpty == true ? nil : program
+        composeLocalTitle()
+    }
+
     // MARK: TerminalDelegate
 
     nonisolated func send(source: Terminal, data: ArraySlice<UInt8>) {
