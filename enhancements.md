@@ -27,6 +27,6 @@ A box is ticked once the change has shipped. A request that covers several platf
   - [x] Linux: it was meant to and didn't; fixed in 1.0.73 (#14).
   - [ ] Windows: in #15 (stacked on #5). Files dropped from File Explorer are typed as paths quoted for the tab's shell (PowerShell, cmd, WSL, Git Bash or SSH); built and tested on Windows, not yet merged.
 - [ ] **Check that the Linux and Windows versions match the Mac version 1:1** in features, controls, behaviour and looks, whatever code each uses, with Craft Anything evidence. Method: the `app-parity` skill (draft, awaiting approval) and `parity/check.sh`. *Requested 2026-11-07 · Mac, Linux, Windows.*
-  - [ ] Mac: toolbar identifiers and the `main` scene in a parity copy; built and tested 2026-11-07, not yet merged.
-  - [ ] Linux: toolbar identifiers, the `main` scene in a headless KWin session and the AT-SPI reader; first check run 2026-11-07 (four differences, in `bugs.md`); not yet merged.
-  - [ ] Windows: waiting for a Remote Control session on the PC.
+  - [ ] Mac: toolbar identifiers and the `main` scene in a parity copy; built and tested 2026-11-07, merged in #23, not yet released.
+  - [ ] Linux: toolbar identifiers, the `main` scene in a headless KWin session and the AT-SPI reader; first check run 2026-11-07 (four differences, in `bugs.md`); merged in #23, not yet released.
+  - [ ] Windows: UI Automation for the drawn toolbar, tab strip and window buttons, the `main` scene, the UI Automation reader and `parity/windows-scene.ps1` (run over SSH; the scene opens for a few seconds on the PC's desktop). First check run 2026-11-08 (differences in `bugs.md`); not yet merged.

@@ -394,13 +394,14 @@ Tailcat connects machines that can't reach each other by IP. Herb's Terminal run
 
 ### Parity checks
 
-`parity/check.sh` compares the Linux (and later Windows) version with the Mac version, scene by scene, as described in `parity/parity.json`. Each scene is a fixed state that the app opens itself:
+`parity/check.sh` compares the Linux and Windows versions with the Mac version, scene by scene, as described in `parity/parity.json`. Each scene is a fixed state that the app opens itself:
 
 - **Mac:** a parity copy of the app (`parity/mac-copy.sh`, bundle identifier `org.herbsterminal.parity`) launched with `--parity-scene <name>`. Only that copy honours the flag. It has its own settings domain, keeps its files in a temporary folder, never restores or saves a session, and opens without taking focus.
 - **Linux:** the Flatpak build started with `--parity-scene <name>` and `HERBS_PARITY=1` (both are needed). It runs as a separate, non-unique application (`org.herbsterminal.app.Parity`) in a headless KWin session, with every XDG folder in a temporary folder. `--parity-capture FILE` saves the window's picture once the scene has settled (the same picture as Take Screenshot), with each identified control's place in the window beside it.
-- **The `main` scene:** one window, one local tab running `/bin/sh` in an empty home with the prompt `$ `, titled `parity@scene ~`.
+- **Windows:** the app started with `--parity-scene <name>` and `HERBS_PARITY=1` (both are needed). It keeps its files in a temporary folder (so it starts from the default settings) and opens without taking focus. `parity/windows-scene.ps1` runs it in the PC's logged-in desktop session, where UI Automation can read it, saves the window's picture and closes it. The toolbar, tab strip and window buttons are drawn, so the app describes each one to UI Automation itself (also for screen readers).
+- **The `main` scene:** one window, one local tab in an empty home with the prompt `$ `, titled `parity@scene ~`. The shell is `/bin/sh` on the Mac and Linux and Command Prompt on Windows.
 
-The check reads each version's controls through the accessibility API (macOS accessibility, AT-SPI), compares them by identifier (kind, label, hover text, value, enabled state, size, order, alignment, window size), scores the two pictures, and records the results as Craft Anything evidence in `dist/parity/report.html`.
+The check reads each version's controls through the accessibility API (macOS accessibility, AT-SPI, UI Automation), compares them by identifier (kind, label, hover text, value, enabled state, size, order, alignment, window size), scores the two pictures, and records the results as Craft Anything evidence in `dist/parity/report.html`.
 
 ## 10. Security summary
 
