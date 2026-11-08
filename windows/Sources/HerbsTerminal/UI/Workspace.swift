@@ -1,13 +1,26 @@
 import Foundation
 import WinSDK
 
-/// A main window: the toolbar and tab strip across the top (see `WindowChrome`), and one terminal per tab below.
+/// What a tab shows: a terminal (with its explorer) or a text editor.
+@MainActor
+protocol WorkspaceTab: AnyObject {
+    var number: Int { get set }
+    var tabName: String { get }
+    var title: String { get }
+    func show(_ visible: Bool)
+    func move(to rect: RECT)
+}
+
+extension TerminalPane: WorkspaceTab {}
+
+/// A main window: the toolbar and tab strip across the top (see `WindowChrome`), and a terminal or a text editor
+/// per tab below.
 @MainActor
 final class Workspace: WindowObject {
     static let className = "HerbsTerminalWindow"
 
     private(set) var hwnd: HWND?
-    private var tabs: [TerminalPane] = []
+    private var tabs: [WorkspaceTab] = []
     private var active = 0
     private let chrome = WindowChrome()
     private var trackingMouse = false
@@ -37,7 +50,11 @@ final class Workspace: WindowObject {
 
     // MARK: Tabs
 
-    var activePane: TerminalPane? { tabs.indices.contains(active) ? tabs[active] : nil }
+    var activeTab: WorkspaceTab? { tabs.indices.contains(active) ? tabs[active] : nil }
+    var activePane: TerminalPane? { activeTab as? TerminalPane }
+    var activeEditor: TextEditorPane? { activeTab as? TextEditorPane }
+    private var panes: [TerminalPane] { tabs.compactMap { $0 as? TerminalPane } }
+    private var editors: [TextEditorPane] { tabs.compactMap { $0 as? TextEditorPane } }
     var activeIndex: Int { active }
     var tabNames: [String] { tabs.map(\.tabName) }
 
@@ -62,11 +79,15 @@ final class Workspace: WindowObject {
     func select(_ index: Int) {
         guard tabs.indices.contains(index) else { return }
         active = index
-        for (i, pane) in tabs.enumerated() where i != index {
-            pane.show(false)
-            pane.explorer?.show(false)
+        for (i, tab) in tabs.enumerated() where i != index {
+            tab.show(false)
+            (tab as? TerminalPane)?.explorer?.show(false)
         }
-        let pane = tabs[index]
+        guard let pane = tabs[index] as? TerminalPane else {
+            tabs[index].show(true)
+            refreshChrome()
+            return
+        }
         if pane.showingExplorer, let explorer = pane.explorer {
             pane.show(false)
             explorer.show(true)
@@ -94,6 +115,7 @@ final class Workspace: WindowObject {
                 }
                 explorer.onOpenInTerminal = { [weak self] folder in self?.newTab(in: folder) }
                 explorer.onLocationChange = { [weak self] in self?.refreshChrome() }
+                explorer.onOpenInEditor = { [weak self] source in self?.openEditor(source) }
                 pane.explorer = explorer
                 layout()
             }
@@ -107,10 +129,41 @@ final class Workspace: WindowObject {
         addPane()?.start(directory: folder)
     }
 
-    func close(_ pane: TerminalPane) {
-        guard let index = tabs.firstIndex(where: { $0 === pane }) else { return }
-        pane.explorer?.close()
-        pane.close()
+    // MARK: Text editor
+
+    /// Opens `source` in an editor tab beside the current one, or selects the tab already showing it.
+    func openEditor(_ source: TextFileSource) {
+        guard let hwnd else { return }
+        if let open = tabs.firstIndex(where: { ($0 as? TextEditorPane)?.source.location == source.location }) {
+            select(open)
+            return
+        }
+        let editor = TextEditorPane(parent: hwnd, source: source)
+        editor.onFailure = { [weak self, weak editor] in if let editor { self?.close(editor) } }
+        editor.onChange = { [weak self] in self?.refreshChrome() }
+        let index = min(active + 1, tabs.count)
+        tabs.insert(editor, at: index)
+        layout()
+        select(index)
+    }
+
+    /// Asks each editor with unsaved changes in turn; `done(true)` when all of them may close.
+    private func confirmEditors(_ list: [TextEditorPane], _ done: @escaping (Bool) -> Void) {
+        guard let editor = list.first else { done(true); return }
+        if let index = tabs.firstIndex(where: { $0 === editor }), editor.isEdited { select(index) }
+        editor.confirmClose { [weak self] ok in
+            guard ok else { done(false); return }
+            self?.confirmEditors(Array(list.dropFirst()), done)
+        }
+    }
+
+    func close(_ tab: WorkspaceTab) {
+        guard let index = tabs.firstIndex(where: { $0 === tab }) else { return }
+        if let pane = tab as? TerminalPane {
+            pane.explorer?.close()
+            pane.close()
+        }
+        (tab as? TextEditorPane)?.close()
         tabs.remove(at: index)
         if tabs.isEmpty {
             if let hwnd { DestroyWindow(hwnd) }
@@ -123,13 +176,18 @@ final class Workspace: WindowObject {
 
     /// Ends every tab's shell without asking (the app is quitting).
     func closeAll() {
-        for pane in tabs { pane.close() }
+        for pane in panes { pane.close() }
+        for editor in editors { editor.close() }
         tabs.removeAll()
     }
 
     private func closeTab(at index: Int, confirm: Bool = true) {
         guard tabs.indices.contains(index) else { return }
-        let pane = tabs[index]
+        if let editor = tabs[index] as? TextEditorPane {
+            editor.confirmClose { [weak self, weak editor] ok in if ok, let editor { self?.close(editor) } }
+            return
+        }
+        guard let pane = tabs[index] as? TerminalPane else { return }
         if confirm, TerminalProfile.shared.askBeforeClosing, pane.isRunning,
            FormDialog.ask(owner: hwnd, title: "Close \(pane.tabName)?",
                           message: pane.isConnected ? "Its SSH session to \(pane.remote!.label) will end." : "Its shell is still running and will end.",
@@ -148,8 +206,8 @@ final class Workspace: WindowObject {
     }
 
     private func rename(_ index: Int) {
-        guard tabs.indices.contains(index) else { return }
-        let pane = tabs[index]
+        // Editor tabs show their file's name.
+        guard tabs.indices.contains(index), let pane = tabs[index] as? TerminalPane else { return }
         guard let result = FormDialog.run(owner: hwnd, title: "Rename Tab", message: "Leave the name empty to go back to “Terminal \(pane.number)”.",
                                           fields: [.init(label: "Name", text: pane.customName ?? "")],
                                           buttons: [.init(title: "Cancel"), .init(title: "Rename", isDefault: true)]),
@@ -389,6 +447,7 @@ final class Workspace: WindowObject {
     /// Keyboard shortcuts, checked before the message reaches the focused terminal. Returns true when handled.
     func shortcut(_ message: MSG) -> Bool {
         if let explorer = activePane?.explorer, activePane?.showingExplorer == true, explorer.handleKey(message) { return true }
+        if let editor = activeEditor, editor.handleKey(message) { return true }
         let isKey = message.message == UINT(WM_KEYDOWN), isSystemKey = message.message == UINT(WM_SYSKEYDOWN)
         guard isKey || isSystemKey else { return false }
         let key = Int32(message.wParam)
@@ -440,10 +499,11 @@ final class Workspace: WindowObject {
         setDarkTitleBar(hwnd, appIsDark)
         DarkMenus.apply(dark: appIsDark)
         let settings = TerminalProfile.shared.settings(for: nil)
-        for pane in tabs {
+        for pane in panes {
             pane.apply(settings)
             pane.explorer?.applyTheme()
         }
+        for editor in editors { editor.applyTheme() }
         InvalidateRect(hwnd, nil, false)
     }
 
@@ -466,6 +526,11 @@ final class Workspace: WindowObject {
                 state.title = explorer.title
                 state.subtitle = explorer.folder == explorer.title ? "" : explorer.folder
             }
+        } else if let editor = activeEditor {
+            // The file's name, and where it is beside it.
+            state.title = editor.tabName
+            state.subtitle = editor.source.location
+            state.explorerAvailable = false
         }
         if let hwnd {
             state.maximized = IsZoomed(hwnd)
@@ -482,16 +547,16 @@ final class Workspace: WindowObject {
         chrome.layout(width: rect.right, dpi: dpi, state: state)
         chrome.updateTooltips(owner: hwnd, state: state)
         rect.top = chrome.height(dpi)
-        for pane in tabs {
-            pane.move(to: rect)
-            pane.explorer?.move(to: rect)
+        for tab in tabs {
+            tab.move(to: rect)
+            (tab as? TerminalPane)?.explorer?.move(to: rect)
         }
         InvalidateRect(hwnd, nil, false)
     }
 
     private func refreshChrome() {
         guard let hwnd else { return }
-        let title = activePane.map { "\($0.title) — Herb's Terminal" } ?? "Herb's Terminal"
+        let title = activeTab.map { "\($0.title) — Herb's Terminal" } ?? "Herb's Terminal"
         withWide(title) { _ = SetWindowTextW(hwnd, $0) } // Taskbar and Alt+Tab still show it.
         var rect = RECT()
         GetClientRect(hwnd, &rect)
@@ -659,7 +724,7 @@ final class Workspace: WindowObject {
         case WM_ERASEBKGND:
             return 1
         case WM_SETFOCUS:
-            activePane?.show(true)
+            if let editor = activeEditor { editor.focus() } else { activePane?.show(true) }
             return 0
         case WM_LBUTTONDOWN:
             let point = POINT(x: Int32(loWord(lParam)), y: Int32(hiWord(lParam)))
@@ -740,7 +805,8 @@ final class Workspace: WindowObject {
                              suggested.bottom - suggested.top, UINT(SWP_NOZORDER | SWP_NOACTIVATE))
             }
             let settings = TerminalProfile.shared.settings(for: nil)
-            for pane in tabs { pane.apply(settings) }
+            for pane in panes { pane.apply(settings) }
+            for editor in editors { editor.applyTheme() }
             layout()
             return 0
         case WM_SETTINGCHANGE:
@@ -753,7 +819,18 @@ final class Workspace: WindowObject {
             }
             return 0
         case WM_CLOSE:
-            let running = tabs.filter(\.isRunning).count
+            // Unsaved files first: each asks, and saving finishes before the window closes.
+            let unsaved = editors.filter(\.isEdited)
+            if !unsaved.isEmpty {
+                confirmEditors(unsaved) { [weak self] ok in
+                    guard ok, let self, let hwnd = self.hwnd else { return }
+                    for editor in self.editors { editor.close() }
+                    self.tabs.removeAll { $0 is TextEditorPane }
+                    PostMessageW(hwnd, UINT(WM_CLOSE), 0, 0)
+                }
+                return 0
+            }
+            let running = panes.filter(\.isRunning).count
             if TerminalProfile.shared.askBeforeClosing, running > 0,
                FormDialog.ask(owner: hwnd, title: "Close this window?",
                               message: running == 1 ? "A shell is still running and will end." : "\(running) shells are still running and will end.",

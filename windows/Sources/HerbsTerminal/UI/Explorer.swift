@@ -39,6 +39,10 @@ final class ExplorerPane: WindowObject {
     var onOpenInTerminal: ((String) -> Void)?
     /// Tells the workspace the location changed (for the toolbar title).
     var onLocationChange: (() -> Void)?
+    /// Asks the workspace to open a file in a text editor tab.
+    var onOpenInEditor: ((TextFileSource) -> Void)?
+    /// A file New File just made: it opens in the editor once its name is chosen.
+    private var editAfterRename: String?
 
     struct Place {
         let name: String
@@ -53,7 +57,7 @@ final class ExplorerPane: WindowObject {
     private enum Command: UINT {
         case open = 3100, openInTerminal, openWith, cut, copy, paste, copyPath, rename, delete, deletePermanently
         case properties, showInFileExplorer, newFolder, newFile, showHidden, reload, selectAll, folderProperties
-        case upload, uploadFolder, download
+        case upload, uploadFolder, download, openInEditor
     }
 
     // MARK: Transfers
@@ -486,6 +490,8 @@ final class ExplorerPane: WindowObject {
         if remote != nil { remoteOpen(entry); return }
         if entry.isFolder {
             navigate(to: entry.path)
+        } else if TextCodec.isLocalText(entry.path) {
+            onOpenInEditor?(.local(entry.path)) // Text files open in the built-in editor, as on the Mac and Linux.
         } else {
             let result = withWide("open") { verb in withWide(entry.path) { file in ShellExecuteW(hwnd, verb, file, nil, nil, SW_SHOWNORMAL) } }
             if Int(bitPattern: UnsafeRawPointer(result)) <= 32 {
@@ -525,6 +531,7 @@ final class ExplorerPane: WindowObject {
         case .deletePermanently: delete(selection, permanently: true)
         case .properties: for entry in selection { _ = withWide(entry.path) { SHObjectProperties(hwnd, DWORD(SHOP_FILEPATH), $0, nil) } }
         case .folderProperties: _ = withWide(folder) { SHObjectProperties(hwnd, DWORD(SHOP_FILEPATH), $0, nil) }
+        case .openInEditor: for entry in selection where !entry.isFolder { onOpenInEditor?(.local(entry.path)) }
         case .upload, .uploadFolder, .download: break // Host explorers only.
         case .showInFileExplorer:
             let argument = selection.first.map { "/select,\(quoteArgument($0.path))" } ?? quoteArgument(folder)
@@ -590,6 +597,7 @@ final class ExplorerPane: WindowObject {
         }
         reload()
         if let row = rows.firstIndex(where: { $0.name == name }) {
+            if !isFolder { editAfterRename = path }
             selectRow(row)
             SetFocus(list)
             SendMessageW(list, UINT(LVM_EDITLABELW), WPARAM(row), 0)
@@ -678,7 +686,8 @@ final class ExplorerPane: WindowObject {
     }
 
     /// Runs a change on the host, then lists the folder again (selecting `select`) or shows what went wrong.
-    private func remoteChange(_ work: @escaping @Sendable (SFTPClient) throws -> Void, select: @escaping @Sendable () -> Set<String> = { [] }) {
+    private func remoteChange(_ work: @escaping @Sendable (SFTPClient) throws -> Void, select: @escaping @Sendable () -> Set<String> = { [] },
+                              done: (@MainActor () -> Void)? = nil) {
         guard let remote else { return }
         status = "Working…"
         statusIsError = false
@@ -691,6 +700,7 @@ final class ExplorerPane: WindowObject {
             if case .failure(let error) = result {
                 FormDialog.tell(owner: GetAncestor(self.hwnd, UINT(GA_ROOT)), title: "The change couldn't be made", message: error.localizedDescription)
             }
+            if case .success = result { done?() }
             guard self.listing == started else { return }
             self.remoteNavigate(to: self.folder, record: false, select: select())
         }
@@ -705,8 +715,10 @@ final class ExplorerPane: WindowObject {
             guard let self else { return }
             if case .success(let attributes) = result, attributes.directory {
                 self.remoteNavigate(to: path, record: true)
+            } else if TextCodec.isText(name: entry.name, sniff: { Data() }) {
+                self.onOpenInEditor?(.remote(path, session: remote)) // The editor refuses files that turn out binary.
             } else {
-                self.status = "Opening files from a host comes with the text editor; Download copies it to this PC."
+                self.status = "“\(entry.name)” isn't a text file. Download copies it to this PC to open it there."
                 self.statusIsError = false
                 if let hwnd = self.hwnd { InvalidateRect(hwnd, nil, false) }
             }
@@ -769,7 +781,12 @@ final class ExplorerPane: WindowObject {
                 let name = try RemoteFiles.freeName(isFolder ? "untitled folder" : "untitled file", in: folder, client: client)
                 if isFolder { try client.mkdir(remoteJoin(folder, name)) } else { try RemoteFiles.newFile(remoteJoin(folder, name), client: client) }
                 created.update { $0 = name }
-            }, select: { created.value.map { [$0] } ?? [] })
+            }, select: { created.value.map { [$0] } ?? [] }, done: { [weak self] in
+                // A new file opens straight in the editor, as on the Mac and Linux.
+                if !isFolder, let name = created.value, let remote = self?.remote {
+                    self?.onOpenInEditor?(.remote(remoteJoin(folder, name), session: remote))
+                }
+            })
         case .upload:
             let paths = openFiles(owner: GetAncestor(hwnd, UINT(GA_ROOT)), title: "Upload to \(remote?.endpoint.label ?? "the host")")
             if !paths.isEmpty { upload(paths, into: folder) }
@@ -782,6 +799,9 @@ final class ExplorerPane: WindowObject {
             if let target = chooseFolder(owner: GetAncestor(hwnd, UINT(GA_ROOT)), title: "Download to which folder on this PC?") {
                 download(selection.map(\.path), from: remote, into: URL(fileURLWithPath: target))
             }
+        case .openInEditor:
+            guard let remote else { return true }
+            for entry in selection where !entry.isFolder { onOpenInEditor?(.remote(entry.path, session: remote)) }
         case .openInTerminal, .openWith, .properties, .folderProperties, .showInFileExplorer:
             break // Not for host files.
         default:
@@ -817,6 +837,7 @@ final class ExplorerPane: WindowObject {
         let canPaste = ShellClipboard.hasFiles || (remote.map { RemoteClipboard.isCurrent && RemoteClipboard.host == $0.endpoint.label } ?? false)
         if onItem, !selection.isEmpty {
             item("Open\tEnter", .open)
+            if !selection.contains(where: \.isFolder) { item("Open in Text Editor", .openInEditor) }
             divider()
             item("Cut\tCtrl+X", .cut)
             item("Copy\tCtrl+C", .copy)
@@ -1045,7 +1066,7 @@ final class ExplorerPane: WindowObject {
         let commands: [String: Command] = [
             "cut": .cut, "copy": .copy, "paste": .paste, "delete": .delete, "deletePermanently": .deletePermanently,
             "newFolder": .newFolder, "newFile": .newFile, "showHidden": .showHidden, "reload": .reload, "selectAll": .selectAll,
-            "open": .open,
+            "open": .open, "edit": .openInEditor,
         ]
         guard let command = commands[name] else { return false }
         perform(command)
@@ -1069,6 +1090,7 @@ final class ExplorerPane: WindowObject {
         let canPaste = ShellClipboard.hasFiles || RemoteClipboard.isCurrent
         if onItem, !selection.isEmpty {
             item("Open\tEnter", .open)
+            if !selection.contains(where: \.isFolder) { item("Open in Text Editor", .openInEditor) }
             if selection.count == 1 && !selection[0].isFolder { item("Open With…", .openWith) }
             if selection.count == 1 && selection[0].isFolder { item("Open in New Terminal Tab", .openInTerminal) }
             divider()
@@ -1357,8 +1379,8 @@ final class ExplorerPane: WindowObject {
                 if let text = info.item.pszText {
                     // Rename after the edit box has gone, so dialogs don't fight it for the focus.
                     pendingRename = (Int(info.item.iItem), String(wide: text))
-                    PostMessageW(hwnd, UINT(WM_APP_DEFERRED), 0, 0)
                 }
+                if info.item.pszText != nil || editAfterRename != nil { PostMessageW(hwnd, UINT(WM_APP_DEFERRED), 0, 0) }
                 return 0
             default:
                 return nil
@@ -1383,9 +1405,19 @@ final class ExplorerPane: WindowObject {
             }
             return 0
         case WM_APP_DEFERRED:
+            var renamedTo: String?
             if let rename = pendingRename {
                 pendingRename = nil
                 finishRename(row: rename.row, to: rename.name)
+                renamedTo = rename.name.trimmingCharacters(in: .whitespaces)
+            }
+            if let created = editAfterRename {
+                editAfterRename = nil
+                // New File: the file opens in the editor under the name it ended up with.
+                let folder = (created as NSString).deletingLastPathComponent
+                let renamed = renamedTo.map { (folder as NSString).appendingPathComponent($0) }
+                let path = renamed.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil } ?? created
+                if FileManager.default.fileExists(atPath: path) { onOpenInEditor?(.local(path)) }
             }
             return 0
         case WM_CTLCOLOREDIT:
