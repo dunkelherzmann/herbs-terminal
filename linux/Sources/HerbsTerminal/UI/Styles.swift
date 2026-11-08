@@ -78,8 +78,9 @@ enum Styles {
         setStyle(widget, "background-color: \(color.css);")
     }
 
+    /// `points` are the Mac's points (one screen pixel each before scaling), so CSS gets them as px, not pt.
     static func setFont(_ widget: Widget, family: String, points: Double) {
-        setStyle(widget, "font-family: \"\(family)\"; font-size: \(points)pt;")
+        setStyle(widget, "font-family: \"\(family)\"; font-size: \(points)px;")
     }
 
     /// CSS declarations for one widget.

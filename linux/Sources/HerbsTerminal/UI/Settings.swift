@@ -234,7 +234,7 @@ final class SettingsWindow {
             setActive(blink, settings.cursorBlinks)
             let theme = ThemeLibrary.shared.theme(named: settings.theme)
             let colors = theme?.colors ?? TerminalTheme.basic(dark: true)
-            Styles.setStyle(preview, "font-family: \"\(settings.family)\"; font-size: \(settings.fontSize)pt; color: \((colors["Foreground Color"] ?? RGB(hex: 0xFFFFFF)).css); "
+            Styles.setStyle(preview, "font-family: \"\(settings.family)\"; font-size: \(settings.fontSize)px; color: \((colors["Foreground Color"] ?? RGB(hex: 0xFFFFFF)).css); "
                             + "background-color: \((colors["Background Color"] ?? RGB(hex: 0)).css); border-radius: 6px;")
         }
         return page
