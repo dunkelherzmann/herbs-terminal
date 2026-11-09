@@ -7,11 +7,11 @@ What the Linux version still needs before it can ship with as few bugs as possib
 - [x] **Main Menu matches the Mac's in-window menus** (#70). It holds the same menus, submenus, order and shortcuts (Edit, Shell and Window included), and no command is reachable only somewhere else; W19 checks it. (§2, §14, enhancements.md) *Asked 2026-11-09.*
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 16:36)
+## Feature test results (2026-11-09 18:40)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Not checked automatically (54)
+### Not checked automatically (53)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -67,7 +67,6 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **Z1** Settings, profiles or peers that can't be read are set aside, not overwritten. (§10): needs damaged files or a dropped connection (fault injection, not automated yet)
 - [ ] **Z2** Login database that can't be opened: in-memory store, Manage Logins off. (§10): needs damaged files or a dropped connection (fault injection, not automated yet)
 - [ ] **Z3** Export files readable only by you. (§10): needs damaged files or a dropped connection (fault injection, not automated yet)
-- [ ] **Z4** A dropped connection is an error, never a crash. (§10): needs damaged files or a dropped connection (fault injection, not automated yet)
 - [ ] **Z5** Self-contained: nothing extra to install. (§10): checked by each platform's packaging script
 
 <!-- feature-tests:end -->

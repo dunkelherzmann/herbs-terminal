@@ -4,7 +4,7 @@ Every bug reported for Herb's Terminal, oldest first. New reports are added at t
 A box is ticked once the fix has shipped. A bug that affects several platforms has a box for each, and its main box is ticked when they're all done.
 Items marked *found in testing* were found while testing other work, not reported by a user.
 
-- [ ] **SSH stays connected after the remote host restarts or is switched off.** The session should end soon after the host goes away. *Reported 2026-11-07.*
+- [x] **SSH stays connected after the remote host restarts or is switched off.** The session should end soon after the host goes away. *Reported 2026-11-07.* Already fixed by the keepalive every session gets (ServerAlive every 5 s, two misses), released in 1.0.231. Checked 2026-11-09 by the new feature tests S6 and Z4 on the Mac, Linux and Windows: with the test host silenced by a firewall rule, the session ends within about 15 seconds and the app keeps working.
   - [x] Mac: ends within about 15 seconds (keepalive every 5 s, gives up after 2 misses). Fixed in 1.0.11.
   - [x] Linux: same shared code. Fixed in 1.0.25.
   - [x] Windows: same options for `ssh.exe`, in #5. Built and tested on Windows 2026-11-07 (a server that stopped answering ended the session with "Timeout, server not responding"); merged in #5; released in 1.0.231.

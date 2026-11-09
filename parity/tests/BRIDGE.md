@@ -14,3 +14,7 @@ Read this before writing a feature test; each point cost a rerun once.
   window's widgets after closing it.
 - **Open and save dialogs:** call `choose-file` first; the next dialog answers with that path without showing.
 - **Reruns:** after changing only `parity/tests`, run `all.sh … --no-build`.
+- **Fault injection on the test host:** the three machines run at the same time against the same test account, so
+  anything done to the host must be scoped to this client's own connections (`silence_test_host` matches the
+  session's `SSH_CLIENT` address and uses a chain of its own), and must undo itself on a timer on the host.
+  The kernel's owner match doesn't see the account: the root listener creates the sockets.

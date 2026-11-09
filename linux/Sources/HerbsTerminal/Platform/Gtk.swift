@@ -238,18 +238,20 @@ func accessibleDescription(_ widget: Widget, _ text: String) {
 
 /// Pressed / not pressed for toggle-like buttons, for screen readers.
 func accessiblePressed(_ widget: Widget, _ pressed: Bool) {
+    // GTK reads a tristate state as a plain int (an enum-typed value logged a critical on every update).
     var value = GValue()
-    g_value_init(&value, gtk_accessible_tristate_get_type())
-    g_value_set_enum(&value, pressed ? Int32(GTK_ACCESSIBLE_TRISTATE_TRUE.rawValue) : Int32(GTK_ACCESSIBLE_TRISTATE_FALSE.rawValue))
+    g_value_init(&value, herb_type_int())
+    g_value_set_int(&value, pressed ? Int32(GTK_ACCESSIBLE_TRISTATE_TRUE.rawValue) : Int32(GTK_ACCESSIBLE_TRISTATE_FALSE.rawValue))
     var state = GTK_ACCESSIBLE_STATE_PRESSED
     gtk_accessible_update_state_value(c(widget), 1, &state, &value)
     g_value_unset(&value)
 }
 
 func accessibleSelected(_ widget: Widget, _ selected: Bool) {
+    // Selected is a boolean state (true, false or undefined), not a tristate.
     var value = GValue()
-    g_value_init(&value, gtk_accessible_tristate_get_type())
-    g_value_set_enum(&value, selected ? Int32(GTK_ACCESSIBLE_TRISTATE_TRUE.rawValue) : Int32(GTK_ACCESSIBLE_TRISTATE_FALSE.rawValue))
+    g_value_init(&value, herb_type_boolean())
+    g_value_set_boolean(&value, selected ? 1 : 0)
     var state = GTK_ACCESSIBLE_STATE_SELECTED
     gtk_accessible_update_state_value(c(widget), 1, &state, &value)
     g_value_unset(&value)
