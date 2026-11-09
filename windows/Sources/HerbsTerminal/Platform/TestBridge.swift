@@ -10,6 +10,12 @@ enum TestBridge {
     static let isActive = ParityScene.isActive && CommandLine.arguments.contains("--test-bridge")
     static var folder: String { ParityScene.appFiles.appendingPathComponent("bridge").path }
     private static var lastID = -1
+    /// Set by the feature tests: what the next Open or Save dialog picks.
+    private static var chosenFile: String?
+    static func takeChosenFile() -> String? {
+        defer { chosenFile = nil }
+        return chosenFile
+    }
 
     static func start() {
         guard isActive else { return }
@@ -44,9 +50,21 @@ enum TestBridge {
             response["error"] = "\(error)"
         }
         busy = false
+        // An answer that isn't valid JSON is reported as an error instead of never arriving.
+        if !JSONSerialization.isValidJSONObject(response) {
+            response = ["id": id, "ok": false, "error": "the answer isn't valid JSON: " + String(describing: response["result"] ?? "").prefix(600)]
+        }
         if let out = try? JSONSerialization.data(withJSONObject: response, options: [.sortedKeys]) {
             let temporary = folder + "/response.tmp", final = folder + "/response.json"
-            _ = FileManager.default.createFile(atPath: temporary, contents: out)
+            // Written with a handle no child process can inherit (Foundation's would be, by any process started
+            // meanwhile, and the answer would stay locked in the temporary file).
+            let file = withWide(temporary) {
+                CreateFileW($0, DWORD(GENERIC_WRITE), 0, nil, DWORD(CREATE_ALWAYS), DWORD(FILE_ATTRIBUTE_NORMAL), nil)
+            }
+            guard let file, file != INVALID_HANDLE_VALUE else { return }
+            var written: DWORD = 0
+            out.withUnsafeBytes { _ = WriteFile(file, $0.baseAddress, DWORD($0.count), &written, nil) }
+            CloseHandle(file)
             // The runner reads response.json every 50 ms, and Windows refuses to replace a file someone has open:
             // try again for up to two seconds, or the answer is lost and the runner thinks the app quit.
             for _ in 0..<100 {
@@ -86,6 +104,33 @@ enum TestBridge {
             guard let explorer = try workspace.activePane?.explorer else { throw Failure(description: "no explorer") }
             _ = explorer.perform(named: "filter=" + (request["text"] as? String ?? ""))
             return explorer.bridgeState["items"] ?? []
+        case "choose-file":
+            // The file (or folder) the next Open or Save dialog answers with, without showing it.
+            chosenFile = request["path"] as? String
+            return true
+        case "logins":
+            // The Manage Logins window: an action (select, check, new, edit, delete, import, export) with an
+            // optional row number, then what it shows.
+            guard let window = ManageLoginsWindow.bridgeWindow else { return ["open": false] }
+            if let action = request["action"] as? String { window.bridge(action, request["value"]) }
+            return window.bridgeState
+        case "info":
+            // The Get Info window on top: edits, then Apply / Revert / Close, then what it shows.
+            guard let info = GetInfoWindow.current else { return ["open": false] }
+            info.bridge(request)
+            return info.bridgeState
+        case "editor":
+            guard let editor = try workspace.activeEditor else { throw Failure(description: "no editor") }
+            editor.bridge(request["action"] as? String ?? "", text: request["text"] as? String ?? "")
+            return editor.bridgeState
+        case "explorer-upload":
+            // Upload with the files given instead of picked in the open dialog.
+            guard let explorer = try workspace.activePane?.explorer, explorer.isRemote else { throw Failure(description: "no host explorer") }
+            return explorer.perform(named: "upload=" + (request["paths"] as? [String] ?? []).joined(separator: "|"))
+        case "explorer-download":
+            // Download the selection into the folder given instead of picked in the folder dialog.
+            guard let explorer = try workspace.activePane?.explorer, explorer.isRemote else { throw Failure(description: "no host explorer") }
+            return explorer.perform(named: "download=" + (request["into"] as? String ?? ""))
         case "explorer-rename":
             // Types the new name into the in-place edit box Rename opened, and presses Return.
             guard let explorer = try workspace.activePane?.explorer else { throw Failure(description: "no explorer") }
@@ -259,13 +304,13 @@ enum TestBridge {
         "rename-tab": .renameTab, "move-tab-left": .moveTabLeft, "move-tab-right": .moveTabRight,
         "clear-to-start": .clearToStart, "clear-scrollback": .clearScrollback, "reset": .reset, "hard-reset": .hardReset,
         "fullscreen": .fullScreen, "settings": .settings, "about": .about, "restore-size": .restoreDefaultSize,
-        "default-size": .makeSizeDefault, "close-tab": .closeTab, "take-screenshot": .takeScreenshot,
+        "default-size": .makeSizeDefault, "close-tab": .closeTab, "take-screenshot": .takeScreenshot, "manage-logins": .manageLogins,
     ]
     private static let greyedOut: Set<MenuCommand> = []
     private static let explorerCommands: [String: String] = [
         "cut": "cut", "copy": "copy", "paste": "paste", "delete": "delete", "new-folder": "newFolder", "new-file": "newFile",
         "select-all": "selectAll", "open": "open", "edit": "edit", "info": "info", "reveal": "reveal", "open-default": "openWith",
-        "administrator": "toggleAdmin", "undo": "undo", "redo": "redo", "bookmark-selected": "bookmarkSelected", "find": "find", "rename": "rename", "upload": "upload", "download": "download",
+        "administrator": "toggleAdmin", "undo": "undo", "redo": "redo", "bookmark-selected": "bookmarkSelected", "find": "find", "rename": "rename", "upload": "upload", "download": "download", "back": "back", "forward": "forward", "up": "up", "home": "home",
     ]
 
     private static func command(_ name: String, run: Bool) throws -> String {
@@ -427,7 +472,7 @@ enum TestBridge {
                         entry["kind"] = "editor"
                         entry["layout"] = "editor"
                         entry["panes"] = [[String: Any]]()
-                        entry["editor"] = ["name": tab.tabName, "edited": tab.title.hasPrefix("•"), "text": editor.bridgeText]
+                        entry["editor"] = editor.bridgeState
                     }
                     return entry
                 }

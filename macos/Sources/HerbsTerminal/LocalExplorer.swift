@@ -82,6 +82,8 @@ struct LocalExplorer: View {
     /// Turns Administrator mode on or off; nil hides the lock button.
     var administratorToggle: (() -> Void)?
     var isAdministrator = false
+    /// The tab whose feature-test bridge this explorer answers.
+    var bridgeHost: WindowState?
     @StateObject private var listing = DirectoryListing()
     @StateObject private var filter = ExplorerFilter()
     @StateObject private var selection = ListSelection<URL>()
@@ -153,6 +155,8 @@ struct LocalExplorer: View {
         }
         .onChange(of: directory) { history.visit(path); filter.close() }
         .onChange(of: findRequest) { filter.active = true }
+        .onAppear { bridgeHost?.explorerBridge = makeBridge() }
+        .onDisappear { if bridgeHost?.explorerBridge?.owner == "local" { bridgeHost?.explorerBridge = nil } }
         .task(id: ListingRequest(directory: directory, revision: listing.revision, showHidden: showHidden)) {
             selection.ids = []
             await listing.load(directory, showHidden: showHidden)
@@ -180,7 +184,9 @@ struct LocalExplorer: View {
                 }
                 if urls.count == 1 { Button("Rename…") { rename(url) } }
                 if opensAsFolder(url) {
-                    Button(bookmarks.contains(url.path) ? "Remove Bookmark" : "Add Bookmark") { toggleBookmark(url.path) }
+                    // In the same form as the location's path (/tmp, not /private/tmp), so the star matches.
+                    let folder = url.standardizedFileURL.path
+                    Button(bookmarks.contains(folder) ? "Remove Bookmark" : "Add Bookmark") { toggleBookmark(folder) }
                 }
                 Button("Get Info…") { FileInfoWindow.show(.local(Array(urls))) }
                 Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting(Array(urls)) }
@@ -282,6 +288,9 @@ struct LocalExplorer: View {
     }
 
     private func navigate(to target: String) {
+        // In the form the location shows (/tmp, not /private/tmp): the visit when `directory` changes then
+        // matches this one instead of adding the same folder twice, which made Back need two presses.
+        let target = URL(fileURLWithPath: target, isDirectory: true).standardizedFileURL.path
         history.visit(target)
         directory = URL(fileURLWithPath: target, isDirectory: true)
     }
@@ -296,6 +305,61 @@ struct LocalExplorer: View {
         var marks = bookmarks
         if let index = marks.firstIndex(of: target) { marks.remove(at: index) } else { marks.append(target) }
         bookmarkList = marks.joined(separator: "\n")
+    }
+}
+
+extension LocalExplorer {
+    /// What the feature tests' bridge reads and runs, through the same code the menus and buttons use.
+    fileprivate func makeBridge() -> ExplorerBridge {
+        let bridge = ExplorerBridge(owner: "local")
+        // With symlinks resolved, as the tests write it (/private/var rather than /var).
+        bridge.path = {
+            guard let resolved = realpath(path, nil) else { return path }
+            defer { free(resolved) }
+            return String(cString: resolved)
+        }
+        bridge.items = { visibleEntries.map { $0.isDirectory ? $0.url.lastPathComponent + "/" : $0.url.lastPathComponent } }
+        bridge.selected = { selectedURLs.map(\.lastPathComponent) }
+        bridge.select = { names in selection.ids = Set(visibleEntries.map(\.url).filter { names.contains($0.lastPathComponent) }) }
+        bridge.go = { navigate(to: $0) }
+        bridge.setFilter = { filter.active = true; filter.text = $0 }
+        bridge.extra = {
+            ["hidden": showHidden, "bookmarked": bookmarks.contains(path), "status": listing.error ?? listing.working ?? "",
+             "finding": filter.active, "filter": filter.text, "canUndo": log.canUndo, "canRedo": log.canRedo,
+             "undoTitle": log.undoTitle, "redoTitle": log.redoTitle, "administrator": isAdministrator, "remote": false]
+        }
+        bridge.command = { name, run in
+            let actions = self.actions
+            let urls = selectedURLs
+            let selected = !urls.isEmpty
+            let one: URL? = urls.count == 1 ? urls[0] : nil
+            let commands: [String: (() -> Void)?] = [
+                "cut": actions.cut, "copy": actions.copy, "paste": actions.paste, "delete": actions.delete,
+                "select-all": actions.selectAll, "undo": actions.undo, "redo": actions.redo, "find": actions.find,
+                "upload": nil, "download": nil,
+                "new-folder": { create(folder: true) }, "new-file": { create(folder: false) },
+                "open": selected ? { urls.first.map(open) } : nil,
+                "edit": urls.contains { !opensAsFolder($0) } ? { urls.filter { !opensAsFolder($0) }.forEach { Workspace.openEditor(.local($0)) } } : nil,
+                "open-default": urls.contains { !opensAsFolder($0) } ? { urls.forEach { NSWorkspace.shared.open($0) } } : nil,
+                "rename": one.map { url in { rename(url) } },
+                "info": selected ? { FileInfoWindow.show(.local(urls)) } : nil,
+                "reveal": selected ? { NSWorkspace.shared.activateFileViewerSelecting(urls) } : nil,
+                "bookmark-selected": one.flatMap { url in opensAsFolder(url) ? { toggleBookmark(url.standardizedFileURL.path) } : nil },
+                "hidden": { showHidden.toggle() },
+                "reload": { listing.revision += 1 },
+                // The location bar's buttons run these same lines.
+                "back": history.canGoBack ? { if let p = history.goBack() { directory = URL(fileURLWithPath: p, isDirectory: true) } } : nil,
+                "forward": history.canGoForward ? { if let p = history.goForward() { directory = URL(fileURLWithPath: p, isDirectory: true) } } : nil,
+                "up": path == "/" ? nil : { navigate(to: parentPath(history.current)) },
+                "home": { navigate(to: home) },
+            ]
+            guard let entry = commands[name] else { return "missing" }
+            guard let action = entry else { return "disabled" }
+            // After the bridge's answer: a dialog's modal loop would hold it back.
+            if run { DispatchQueue.main.async { action() } }
+            return run ? "ran" : "enabled"
+        }
+        return bridge
     }
 }
 

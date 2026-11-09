@@ -8,6 +8,8 @@ Each test gets a fresh app (`Context`) and ends in one outcome:
 Tests registered with `manual` don't start the app.
 """
 import os
+import re
+import shutil
 import time
 
 import bridge as bridge_module
@@ -688,12 +690,17 @@ def _(c):
     c.probe("find-in-terminal")
     first, second = c.say("FINDME"), c.say("FINDME")
     c.until(lambda s: c.text(s).count(first) >= 2, "expected the word printed twice")
+    if c.platform == "mac":
+        c.unverified("opening the find bar is checked in W13; typing into it would use the Mac's shared find pasteboard, which the tests leave alone")
     try:
         c.bridge.call("find", text="findme")
     except bridge_module.BridgeError as error:
         if "unknown op" in str(error):
             c.unverified("the command is there; this platform's bridge doesn't report the find bar and its matches yet")
         raise
+    c.until(lambda s: c.pane(s)["find"]["shown"], "expected the find bar to open")
+    if "matches" not in c.pane()["find"]:
+        c.unverified("the find bar opens with the text; this platform's terminal (VTE) highlights matches but doesn't count them")
     # Case is ignored, and only the printed words match (the typed lines hide the word).
     s = c.until(lambda s: c.pane(s)["find"]["shown"] and c.pane(s)["find"]["matches"] == 2 and c.pane(s)["selection"] == "FINDME",
                 "expected the find bar with 2 matches and the last one selected")
@@ -1021,7 +1028,22 @@ def _(c):
     c.until(lambda s: "sub/" in items(c, s) or "sub" in items(c, s), "expected the folder sub in the list")
     c.bridge.call("explorer-go", path=c.app.home.rstrip("/\\") + ("/sub" if c.platform != "windows" else "\\sub"))
     c.until(lambda s: c.tab(s)["explorer"]["path"].rstrip("/\\").endswith("sub"), "expected to be in sub")
-    c.unverified("going into a folder works; Back, Forward, Up and Home are buttons the bridge doesn't press yet")
+    def at(target):
+        return lambda s: c.tab(s)["explorer"]["path"].rstrip("/\\").lower() == target.rstrip("/\\").lower()
+    home, sub = c.app.home, c.app.home.rstrip("/\\") + ("/sub" if c.platform != "windows" else "\\sub")
+    for name in ("explorer.back", "explorer.forward", "explorer.up", "explorer.home"):
+        if c.bridge.call("probe", name=name) in ("missing", "unsupported"):
+            c.unverified("going into a folder works; Back, Forward, Up and Home are buttons the bridge doesn't press yet")
+    c.command("explorer.back", settle=1)
+    c.until(at(home), "expected Back to return to the first folder")
+    c.command("explorer.forward", settle=1)
+    c.until(at(sub), "expected Forward to go into sub again")
+    c.command("explorer.up", settle=1)
+    c.until(at(home), "expected Up to open the folder holding sub")
+    c.bridge.call("explorer-go", path=sub)
+    c.until(at(sub), "expected to be in sub again")
+    c.command("explorer.home", settle=1)
+    c.until(lambda s: c.tab(s)["explorer"]["path"].rstrip("/\\") not in ("", sub.rstrip("/\\")), "expected Home to leave sub for the home folder")
 
 manual("E4", "Path segments and editable location", NEEDS_GUI)
 
@@ -1220,9 +1242,13 @@ def _(c):
     s = c.until(lambda s: "note.txt" in items(c, s) and "sub" not in names(c, s), "expected Find to keep note.txt and hide sub")
     c.expect(all("note" in i.lower() for i in items(c, s)), f"expected only names with 'note', saw {items(c, s)}")
     c.expect(c.tab(s)["explorer"].get("finding") is not False, "expected the Find field to be open")
-    # Changing folder closes Find and shows everything again.
+    # Going to another folder closes Find; coming back shows everything again.
+    sub = c.app.home.rstrip("/\\") + ("/sub" if c.platform != "windows" else "\\sub")
+    c.bridge.call("explorer-go", path=sub)
+    c.until(lambda s: c.tab(s)["explorer"]["path"].rstrip("/\\").endswith("sub") and not c.tab(s)["explorer"].get("filter")
+            and not c.tab(s)["explorer"].get("finding"), "expected going to another folder to close Find")
     c.bridge.call("explorer-go", path=c.app.home)
-    c.until(lambda s: "sub" in names(c, s) and not c.tab(s)["explorer"].get("filter"), "expected going to a folder to close Find")
+    c.until(lambda s: "sub" in names(c, s), "expected every item back in the first folder")
 
 @test("E15", "Open in Text Editor, Open with Default App, Show in the file manager")
 def _(c):
@@ -1235,8 +1261,121 @@ manual("E16", "Open with Administrator Mode", "needs a sudo password (not automa
 
 # ---------------------------------------------------------------- X, D, G, A
 
-for fid in ("X1", "X2", "X3", "X4", "X6", "X7"):
-    manual(fid, "Transfers", NEEDS_SSH)
+def host_folder(c, account, prefix):
+    """A fresh folder in the test account's home on the host, made with New Folder, shown in the explorer."""
+    home = f"/home/{account['user']}"
+    c.bridge.call("explorer-go", path=home)
+    c.until(lambda s: c.tab(s)["explorer"].get("path", "").rstrip("/") == home and not c.tab(s)["explorer"].get("loading"),
+            "expected the account's home on the host", timeout=15)
+    name = f"{prefix}-{int(time.time())}"
+    c.command("explorer.new-folder", settle=1.2)
+    s = c.until(lambda s: s.get("dialogs"), "expected the New Folder dialog")
+    c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() != "cancel"), [name])
+    c.until(lambda s: name in names(c, s), "expected the new folder on the host", timeout=10)
+    c.bridge.call("explorer-go", path=f"{home}/{name}")
+    c.until(lambda s: c.tab(s)["explorer"].get("path", "").rstrip("/") == f"{home}/{name}", "expected the new folder open", timeout=10)
+    return home, name
+
+def remove_host_folder(c, home, name):
+    """Deletes a folder host_folder made (best effort: a failed clean-up doesn't fail the test)."""
+    try:
+        c.bridge.call("explorer-go", path=home)
+        c.until(lambda s: name in names(c, s), "expected the folder", timeout=10)
+        c.bridge.call("explorer-select", names=[name + "/", name])
+        c.command("explorer.delete", settle=1.2)
+        s = c.state()
+        if s.get("dialogs"):
+            c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() != "cancel"))
+    except Exception:
+        pass
+
+def transfers_done(c, s, count):
+    """At least `count` transfers in the strip, and every one finished."""
+    items_ = c.tab(s)["explorer"].get("transfers") or []
+    return len(items_) >= count and all(t["state"].startswith(("completed", "failed", "cancelled")) for t in items_)
+
+def local_tree(c, root):
+    """A file and a folder tree with a nested folder, in a fresh local folder; returns the paths to upload."""
+    shutil.rmtree(root, ignore_errors=True)
+    os.makedirs(os.path.join(root, "tree", "deep"))
+    # newline="\n": the same bytes on every platform (Windows would write \r\n).
+    with open(os.path.join(root, "one.txt"), "w", encoding="utf-8", newline="\n") as f: f.write("one\n")
+    with open(os.path.join(root, "tree", "a.txt"), "w", encoding="utf-8", newline="\n") as f: f.write("alpha\n")
+    with open(os.path.join(root, "tree", "deep", "b.txt"), "w", encoding="utf-8", newline="\n") as f: f.write("beta " * 4000)
+    return [os.path.join(root, "one.txt"), os.path.join(root, "tree")]
+
+def upload(c, paths):
+    try:
+        result = c.bridge.call("explorer-upload", timeout=45, paths=paths)
+    except Exception as error:
+        if "unknown op" in str(error):
+            c.unverified("this platform's test bridge can't upload without the open dialog yet")
+        raise
+    if result == "unsupported":
+        c.unverified("this platform's test bridge can't upload without the open dialog yet")
+
+@test("X1", "Upload and download single files and folder trees")
+def _(c):
+    account = host_explorer(c)
+    home, name = host_folder(c, account, "x1")
+    try:
+        source = os.path.join(c.app.home, "x1-source")
+        upload(c, local_tree(c, source))
+        c.until(lambda s: {"one.txt", "tree"} <= set(names(c, s)) and transfers_done(c, s, 1), "expected one.txt and tree on the host", timeout=30)
+        failed = [t for t in c.tab()["explorer"]["transfers"] if not t["state"].startswith("completed")]
+        c.expect(not failed, f"expected every upload to finish, saw {failed}")
+        c.bridge.call("explorer-go", path=f"{home}/{name}/tree")
+        c.until(lambda s: {"a.txt", "deep"} <= set(names(c, s)), "expected the tree's files and its nested folder on the host", timeout=10)
+        # And back down again, into a fresh local folder.
+        c.bridge.call("explorer-go", path=f"{home}/{name}")
+        c.until(lambda s: {"one.txt", "tree"} <= set(names(c, s)), "expected the uploaded items", timeout=10)
+        c.bridge.call("explorer-select", names=["one.txt", "tree/", "tree"])
+        target = os.path.join(c.app.home, "x1-back")
+        shutil.rmtree(target, ignore_errors=True); os.makedirs(target)
+        c.bridge.call("explorer-download", into=target)
+        def same():
+            try:
+                return (open(os.path.join(target, "one.txt"), "rb").read() == b"one\n"
+                        and open(os.path.join(target, "tree", "a.txt"), "rb").read() == b"alpha\n"
+                        and open(os.path.join(target, "tree", "deep", "b.txt"), encoding="utf-8").read() == "beta " * 4000)
+            except OSError:
+                return False
+        c.until(lambda s: same(), "expected the file and the whole tree downloaded unchanged", timeout=30)
+    finally:
+        remove_host_folder(c, home, name)
+
+@test("X2", "Progress strip lists each transfer and its outcome")
+def _(c):
+    account = host_explorer(c)
+    home, name = host_folder(c, account, "x2")
+    try:
+        upload(c, local_tree(c, os.path.join(c.app.home, "x2-source"))[:1])
+        s = c.until(lambda s: transfers_done(c, s, 1), "expected the upload in the transfer strip, finished", timeout=30)
+        c.expect(any(t["name"] == "one.txt" and t["state"].startswith("completed") for t in c.tab(s)["explorer"]["transfers"]),
+                 f"expected one.txt listed as completed, saw {c.tab(s)['explorer']['transfers']}")
+    finally:
+        remove_host_folder(c, home, name)
+
+manual("X2", "Cancel, Retry and Clear Finished", "needs a transfer slow enough to cancel; not automated yet")
+
+@test("X7", "Name clashes get new names, never overwrites")
+def _(c):
+    account = host_explorer(c)
+    home, name = host_folder(c, account, "x7")
+    try:
+        one = local_tree(c, os.path.join(c.app.home, "x7-source"))[0]
+        upload(c, [one])
+        c.until(lambda s: "one.txt" in names(c, s) and transfers_done(c, s, 1), "expected one.txt on the host", timeout=30)
+        upload(c, [one])
+        s = c.until(lambda s: len([n for n in names(c, s) if n.startswith("one")]) == 2 and transfers_done(c, s, 2),
+                    "expected the second upload under a new name beside one.txt", timeout=30)
+        c.expect("one.txt" in names(c, s), f"expected the first one.txt kept, saw {names(c, s)}")
+    finally:
+        remove_host_folder(c, home, name)
+
+for fid, title in (("X3", "Up to 16 requests in flight"), ("X6", "Staged uploads")):
+    manual(fid, title, "inside the SFTP client, where the bridge can't see its requests; not automated yet")
+manual("X4", "A silent server ends the request after 30 s", "needs a dropped connection (fault injection, not automated yet)")
 manual("X5", "Local copies in the background", "needs a large folder and timing; not automated yet")
 
 @test("D1", "Text files open as a tab")
@@ -1256,11 +1395,287 @@ def _(c):
     c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() != "cancel"), ["fresh.txt"])
     c.until(lambda s: c.tab(s)["kind"] == "editor", "expected the new file in the editor")
 
-for fid, what in (("D3", "Find and undo"), ("D4", "Wrap Lines"), ("D5", "Status line"), ("D6", "Save"),
-                  ("D7", "Unsaved-changes question"), ("D8", "Changed on disk"), ("D9", "Encodings kept"), ("D10", "Size and binary limits")):
-    manual(fid, f"Text editor: {what}", "the bridge can't type into the editor or read its status yet")
-for fid in ("G1", "G2", "G3", "G5", "G6"):
-    manual(fid, "Get Info", "the Get Info window isn't driven by the bridge yet")
+def editor(c, action=None, text=""):
+    """The editor tab's state, after running an action on it (type, undo, find, save, wrap, start)."""
+    if action is None:
+        return c.tab().get("editor", {})
+    try:
+        return c.bridge.call("editor", action=action, text=text)
+    except Exception as error:
+        if "unknown op" in str(error):
+            c.unverified("the bridge can't type into the editor or read its status yet")
+        raise
+
+def open_in_editor(c, name, data):
+    """Writes a file in the scene's folder and opens it in the text editor from the explorer."""
+    with open(os.path.join(c.app.home, name), "wb") as f:
+        f.write(data)
+    explorer_at_home(c, files=False)
+    c.until(lambda s: name in items(c, s), f"expected {name} in the list")
+    c.bridge.call("explorer-select", names=[name])
+    c.command("explorer.edit", settle=1.5)
+    c.until(lambda s: c.tab(s).get("kind") == "editor", f"expected {name} in the editor")
+    editor(c, "start")
+    return c.until(lambda s: c.tab(s).get("editor", {}).get("loaded", True) and c.tab(s)["editor"].get("text") is not None,
+                   "expected the file loaded")["windows"][0]
+
+def file_bytes(c, name):
+    with open(os.path.join(c.app.home, name), "rb") as f:
+        return f.read()
+
+STATUS = re.compile(r"Line (\d+), Column (\d+) · (\d+) lines? · (.+) · (LF|CRLF)$")
+
+def status_of(c, s=None):
+    found = STATUS.match(c.tab(s).get("editor", {}).get("status", ""))
+    return found.groups() if found else None
+
+@test("D3", "Text editor: monospaced font, undo, Find")
+def _(c):
+    open_in_editor(c, "notes.txt", b"alpha\nbeta\ngamma\n")
+    c.expect(editor(c).get("monospaced") is True, "expected a monospaced font")
+    editor(c, "type", "XYZ")
+    c.until(lambda s: c.tab(s)["editor"]["text"].startswith("XYZalpha"), "expected the typed text at the start")
+    editor(c, "undo")
+    c.until(lambda s: c.tab(s)["editor"]["text"] == "alpha\nbeta\ngamma\n", "expected Undo to take the typing back")
+    editor(c, "find", "BETA")
+    c.until(lambda s: c.tab(s)["editor"].get("finding"), "expected the find bar")
+    # The Mac's find bar is AppKit's, which the bridge opens but doesn't type into; Linux and Windows search here.
+    if c.platform != "mac":
+        c.until(lambda s: c.tab(s)["editor"].get("selection", "").lower() == "beta", "expected Find to select the match, ignoring case")
+
+@test("D4", "Text editor: Wrap Lines")
+def _(c):
+    open_in_editor(c, "wide.txt", b"x" * 400 + b"\n")
+    before = editor(c).get("wrap")
+    editor(c, "wrap")
+    c.until(lambda s: c.tab(s)["editor"].get("wrap") == (not before), "expected Wrap Lines to switch")
+    editor(c, "wrap")
+    c.until(lambda s: c.tab(s)["editor"].get("wrap") == before, "expected Wrap Lines to switch back")
+
+@test("D5", "Text editor: status line")
+def _(c):
+    open_in_editor(c, "lines.txt", b"one\ntwo\nthree")
+    s = c.until(lambda s: status_of(c, s), "expected a status line with line, column, line count, encoding and endings")
+    line, column, count, encoding, endings = status_of(c, s)
+    c.expect((line, column, count, endings) == ("1", "1", "3", "LF"), f"expected Line 1, Column 1, 3 lines, LF; saw {c.tab(s)['editor']['status']!r}")
+    c.expect("UTF-8" in encoding, f"expected UTF-8, saw {encoding!r}")
+    editor(c, "type", "ab")
+    c.until(lambda s: (status_of(c, s) or ())[:2] == ("1", "3"), "expected the column to follow the caret")
+
+@test("D5", "Text editor: CRLF line endings shown")
+def _(c):
+    open_in_editor(c, "crlf.txt", b"one\r\ntwo\r\n")
+    c.until(lambda s: (status_of(c, s) or ("",) * 5)[4] == "CRLF", "expected CRLF in the status line")
+
+@test("D6", "Text editor: Save, and the dot on the tab while unsaved")
+def _(c):
+    open_in_editor(c, "save.txt", b"hello\n")
+    editor(c, "type", "x")
+    s = c.until(lambda s: c.tab(s)["editor"].get("edited"), "expected the editor to show unsaved changes")
+    c.expect("•" in c.tab(s)["name"], f"expected a dot on the tab, saw {c.tab(s)['name']!r}")
+    editor(c, "save")
+    s = c.until(lambda s: not c.tab(s)["editor"].get("edited"), "expected Save to clear the unsaved mark")
+    c.expect("•" not in c.tab(s)["name"], f"expected the dot gone, saw {c.tab(s)['name']!r}")
+    c.expect(file_bytes(c, "save.txt") == b"xhello\n", f"expected the file saved, it holds {file_bytes(c, 'save.txt')!r}")
+
+@test("D7", "Text editor: closing with unsaved changes asks first")
+def _(c):
+    open_in_editor(c, "close.txt", b"hello\n")
+    editor(c, "type", "x")
+    c.until(lambda s: c.tab(s)["editor"].get("edited"), "expected unsaved changes")
+    c.command("close-tab", settle=1.2)
+    s = c.until(lambda s: s.get("dialogs"), "expected a question before the changes are lost")
+    responses = s["dialogs"][0]["responses"]
+    # Button titles, or their ids where the bridge reports those (Linux: discard, cancel, save).
+    c.expect(any("don" in r.lower() or r.lower() == "discard" for r in responses) and any(r.lower() == "cancel" for r in responses),
+             f"expected Don't Save and Cancel, saw {responses}")
+    c.answer(next(r for r in responses if r.lower() == "cancel"))
+    c.until(lambda s: c.tab(s).get("kind") == "editor" and c.tab(s)["editor"].get("edited"), "expected Cancel to keep the tab and its changes")
+    c.expect(file_bytes(c, "close.txt") == b"hello\n", "expected the file untouched")
+
+@test("D8", "Text editor: a file changed elsewhere asks before it's replaced")
+def _(c):
+    open_in_editor(c, "changed.txt", b"mine\n")
+    time.sleep(1.1)
+    with open(os.path.join(c.app.home, "changed.txt"), "wb") as f:
+        f.write(b"theirs\n")
+    later = time.time() + 5
+    os.utime(os.path.join(c.app.home, "changed.txt"), (later, later))
+    editor(c, "type", "x")
+    editor(c, "save")
+    s = c.until(lambda s: s.get("dialogs"), "expected a question about the file changed since it was opened")
+    c.expect("changed" in s["dialogs"][0]["heading"].lower(), f"expected the question to say the file changed, saw {s['dialogs'][0]['heading']!r}")
+    c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() == "cancel"))
+    time.sleep(1)
+    c.expect(file_bytes(c, "changed.txt") == b"theirs\n", "expected Cancel to leave the other change in place")
+
+@test("D9", "Text editor: keeps UTF-16 and CRLF")
+def _(c):
+    original = "\ufeffeins\r\nzwei\r\n".encode("utf-16-le")
+    open_in_editor(c, "wide16.txt", original)
+    editor(c, "type", "x")
+    editor(c, "save")
+    c.until(lambda s: not c.tab(s)["editor"].get("edited"), "expected the save to finish")
+    saved = file_bytes(c, "wide16.txt")
+    c.expect(saved == "\ufeffxeins\r\nzwei\r\n".encode("utf-16-le"), f"expected UTF-16 with its BOM and CRLF kept, saw {saved[:40]!r}")
+
+@test("D9", "Text editor: keeps Latin-1 and the file's permissions")
+def _(c):
+    open_in_editor(c, "latin.txt", b"caf\xe9\n")
+    path = os.path.join(c.app.home, "latin.txt")
+    if c.platform != "windows":
+        os.chmod(path, 0o640)
+    editor(c, "type", "x")
+    editor(c, "save")
+    c.until(lambda s: not c.tab(s)["editor"].get("edited"), "expected the save to finish")
+    c.expect(file_bytes(c, "latin.txt") == b"xcaf\xe9\n", f"expected Latin-1 kept, saw {file_bytes(c, 'latin.txt')!r}")
+    if c.platform != "windows":
+        c.expect(os.stat(path).st_mode & 0o777 == 0o640, f"expected the permissions kept, saw {oct(os.stat(path).st_mode & 0o777)}")
+
+def refused(c, name, data, words):
+    with open(os.path.join(c.app.home, name), "wb") as f:
+        f.write(data)
+    explorer_at_home(c, files=False)
+    c.until(lambda s: name in items(c, s), f"expected {name} in the list")
+    c.bridge.call("explorer-select", names=[name])
+    try:
+        c.command("explorer.edit", settle=2)
+    except Outcome:
+        raise
+    s = c.until(lambda s: s.get("dialogs"), f"expected a message that {name} can't be edited", timeout=15)
+    dialog = s["dialogs"][0]
+    seen = (dialog.get("heading", "") + " " + dialog.get("text", "")).lower()
+    c.answer(dialog["responses"][0])
+    c.until(lambda s: c.tab(s).get("kind") != "editor", "expected no editor tab left open")
+    return seen
+
+@test("D10", "Text editor: refuses files over 20 MB")
+def _(c):
+    refused(c, "huge.txt", b"a" * (21 * 1024 * 1024), ("mb",))
+
+@test("D10", "Text editor: refuses binary files")
+def _(c):
+    refused(c, "blob.txt", bytes(range(256)) * 64, ("text",))
+def info(c, **request):
+    """The newest Get Info window's state, after editing it as given (octal, toggle, owner, group, recursive, action)."""
+    try:
+        return c.bridge.call("info", **request)
+    except Exception as error:
+        if "unknown op" in str(error):
+            c.unverified("the Get Info window isn't driven by the bridge yet")
+        raise
+
+def symbolic(mode):
+    """`ls -l`'s rwx text for a mode, with s/S and t/T."""
+    out = ""
+    for shift, special, letter in ((6, 0o4000, "s"), (3, 0o2000, "s"), (0, 0o1000, "t")):
+        r, w, x = (mode >> shift) & 4, (mode >> shift) & 2, (mode >> shift) & 1
+        out += ("r" if r else "-") + ("w" if w else "-")
+        out += (letter if x else letter.upper()) if mode & special else ("x" if x else "-")
+    return out
+
+def info_on(c, selection):
+    """Selects items and opens Get Info on them; waits until it has loaded."""
+    c.bridge.call("explorer-select", names=selection + [n + "/" for n in selection])
+    c.command("explorer.info", settle=1.5)
+    return c.until(lambda s: (lambda i: i.get("open") and not i.get("busy") and i.get("names"))(info(c)), "expected Get Info to show the items",
+                   timeout=15) and info(c)
+
+def host_items(c):
+    """The test host's explorer in a fresh folder holding one.txt and the folder tree (a.txt and deep/ inside)."""
+    account = host_explorer(c)
+    home, name = host_folder(c, account, "g")
+    upload(c, local_tree(c, os.path.join(c.app.home, "g-source")))
+    c.until(lambda s: {"one.txt", "tree"} <= set(names(c, s)) and transfers_done(c, s, 1), "expected the items on the host", timeout=30)
+    return account, home, name
+
+@test("G1", "Get Info: name, location, kind, size, modified, permissions")
+def _(c):
+    account, home, name = host_items(c)
+    try:
+        i = info_on(c, ["one.txt"])
+        c.expect(i["names"] == ["one.txt"] and i["location"].rstrip("/").endswith(name), f"expected one.txt in {name}, saw {i['names']} in {i['location']!r}")
+        c.expect(i.get("size") == 4 and i.get("modified"), f"expected its size (4 bytes) and date, saw size {i.get('size')}")
+        c.expect(i["symbolic"] == symbolic(int(i["octal"], 8)), f"expected the rwx text to match the octal {i['octal']}, saw {i['symbolic']!r}")
+        info(c, action="close")
+        i = info_on(c, ["one.txt", "tree"])
+        c.expect(sorted(i["names"]) == ["one.txt", "tree"] and i["folders"] == ["tree"], f"expected both items, saw {i['names']}")
+        info(c, action="close")
+    finally:
+        remove_host_folder(c, home, name)
+
+@test("G2", "Get Info: permission checkboxes, special bits and the octal field in step")
+def _(c):
+    account, home, name = host_items(c)
+    try:
+        info_on(c, ["one.txt"])
+        i = info(c, octal="640")
+        c.until(lambda s: info(c)["symbolic"] == "rw-r-----", "expected 640 to show as rw-r-----")
+        i = info(c, toggle=[0o001])
+        c.until(lambda s: info(c)["octal"].lstrip("0") == "641" and info(c)["symbolic"] == "rw-r----x", "expected others' execute to make it 641")
+        info(c, toggle=[0o4000])
+        c.until(lambda s: info(c)["octal"] == "4641" and info(c)["symbolic"] == "rwSr----x", "expected set-UID to make it 4641 (rwS…)")
+        info(c, octal="640", action="apply")
+        c.until(lambda s: not info(c).get("busy") and not info(c).get("changed"), "expected Apply to finish", timeout=15)
+        info(c, action="close")
+        c.until(lambda s: info_on(c, ["one.txt"])["octal"].lstrip("0") == "640", "expected 640 kept on the host after Apply", timeout=20)
+        info(c, action="close")
+    finally:
+        remove_host_folder(c, home, name)
+
+@test("G3", "Get Info: owner and group looked up on the host")
+def _(c):
+    account, home, name = host_items(c)
+    try:
+        i = info_on(c, ["one.txt"])
+        c.expect(i["owner"] == account["user"], f"expected the owner by name, {account['user']}, saw {i['owner']!r}")
+        c.expect(i["group"] != "", "expected a group")
+        info(c, owner="no-such-user-herbs", action="apply")
+        c.until(lambda s: not info(c).get("busy") and info(c).get("message", info(c).get("error", "")), "expected an unknown owner to be refused with a message", timeout=15)
+        info(c, action="revert")
+        c.until(lambda s: info(c)["owner"] == account["user"] and not info(c).get("busy"), "expected the owner unchanged", timeout=15)
+        info(c, action="close")
+    finally:
+        remove_host_folder(c, home, name)
+
+@test("G5", "Get Info: Revert, and Apply to enclosed items")
+def _(c):
+    account, home, name = host_items(c)
+    try:
+        i = info_on(c, ["one.txt"])
+        original = i["octal"]
+        c.expect(not i["hasFolders"], "expected no Apply to enclosed items for a file")
+        info(c, octal="600")
+        c.until(lambda s: info(c).get("changed"), "expected the edit to count as a change")
+        info(c, action="revert")
+        c.until(lambda s: info(c)["octal"] == original and not info(c).get("changed"), "expected Revert to bring back the values on the host", timeout=15)
+        info(c, action="close")
+        i = info_on(c, ["tree"])
+        c.expect(i["hasFolders"], "expected Apply to enclosed items for a folder")
+        info(c, octal="700", recursive=True, action="apply")
+        # With Apply to enclosed items ticked there is always something to apply, so wait for the message instead.
+        c.until(lambda s: (lambda i: not i.get("busy") and "applied" in (i.get("message", "") + i.get("notice", "")).lower())(info(c)),
+                "expected Apply to finish with “Changes applied.”", timeout=20)
+        info(c, action="close")
+        c.bridge.call("explorer-go", path=f"{home}/{name}/tree")
+        c.until(lambda s: "a.txt" in names(c, s), "expected the tree's files", timeout=10)
+        c.until(lambda s: info_on(c, ["a.txt"])["octal"].lstrip("0") == "700", "expected the file inside changed to 700 too", timeout=20)
+        info(c, action="close")
+    finally:
+        remove_host_folder(c, home, name)
+
+@test("G6", "Get Info on this computer")
+def _(c):
+    c.only("mac", "linux", reason="on Windows, this PC's items open Windows' own Properties (SPECIFICATION.md §12)")
+    explorer_at_home(c)
+    c.until(lambda s: "note.txt" in items(c, s), "expected note.txt")
+    i = info_on(c, ["note.txt"])
+    c.expect(i["names"] == ["note.txt"] and i["size"] == 6, f"expected note.txt (6 bytes), saw {i['names']} size {i.get('size')}")
+    info(c, octal="600", action="apply")
+    c.until(lambda s: not info(c).get("busy") and not info(c).get("changed"), "expected Apply to finish", timeout=10)
+    mode = os.stat(os.path.join(c.app.home, "note.txt")).st_mode & 0o777
+    c.expect(mode == 0o600, f"expected the file's mode 600 on disk, saw {oct(mode)}")
+    info(c, action="close")
 manual("G4", "Hidden and Locked", "Mac only")
 def host_explorer(c):
     """Connects to the test host and shows its files in the explorer."""
@@ -1329,8 +1744,174 @@ for fid in ("L1", "L2", "L3", "L4"):
 def _(c):
     c.command("connect", settle=2)
     c.until(lambda s: has_dialog(s, "Administrator") or has_window(s, "Administrator"), "expected the Administrator Password explanation")
-for fid in ("L6", "L7", "L8", "L9", "L10", "L11"):
-    manual(fid, "Manage Logins", "the Manage Logins window isn't driven by the bridge yet")
+def logins(c, action=None, value=None):
+    """The Manage Logins window's state, after pressing one of its controls."""
+    try:
+        request = {} if action is None else {"action": action, "value": value}
+        return c.bridge.call("logins", **request)
+    except Exception as error:
+        if "unknown op" in str(error):
+            c.unverified("the Manage Logins window isn't driven by the bridge yet")
+        raise
+
+def pick(responses, *words, avoid=("cancel", "not now", "later")):
+    """The first response containing one of the words (titles or ids), else the first that isn't a way out."""
+    for word in words:
+        for response in responses:
+            if word in response.lower():
+                return response
+    return next(r for r in responses if r.lower() not in avoid)
+
+def open_logins(c):
+    """Opens Manage Logins in the fresh test copy, choosing plain-text storage when it asks how to keep them."""
+    c.command("manage-logins", settle=1.5)
+    for _ in range(4):
+        s = c.state()
+        if logins(c).get("open"):
+            return
+        if s.get("dialogs"):
+            dialog = s["dialogs"][0]
+            c.answer(pick(dialog["responses"], "plain"), heading=dialog["heading"])
+        else:
+            time.sleep(0.8)
+    c.until(lambda s: logins(c).get("open"), "expected the Manage Logins window")
+
+PROTECTION = ("administrator password", "plain text")
+
+def settle_protection(c, rounds=4):
+    """Answers the questions about how to keep saved logins (first use), choosing plain text."""
+    for _ in range(rounds):
+        s = c.state()
+        dialog = (s.get("dialogs") or [None])[0]
+        if not dialog or not any(word in dialog["heading"].lower() for word in PROTECTION):
+            return
+        c.answer(pick(dialog["responses"], "plain"), heading=dialog["heading"])
+
+def fill_login(c, host, port, user, password):
+    """Fills in New Login or Edit Login and saves: the Mac's form sheet, or the dialog Linux and Windows show."""
+    deadline = time.time() + 8
+    while time.time() < deadline:
+        try:
+            form = c.bridge.call("login-form")
+        except Exception:
+            form = {"open": False}
+        if form.get("open"):
+            c.bridge.call("login-form", host=host, port=port, username=user, password=password, action="save")
+            time.sleep(0.8)
+            return
+        s = c.state()
+        dialog = (s.get("dialogs") or [None])[0]
+        if dialog and dialog["heading"] in ("New Login", "Edit Login"):
+            c.answer(pick(dialog["responses"], "save"), [host, str(port), user, password], heading=dialog["heading"])
+            return
+        if dialog:
+            # How to keep saved logins, asked on first use.
+            c.answer(pick(dialog["responses"], "plain"), heading=dialog["heading"])
+        time.sleep(0.5)
+    raise Outcome("broken", "expected the New Login form")
+
+def add_login(c, host, port, user, password):
+    logins(c, "new")
+    fill_login(c, host, port, user, password)
+    return c.until(lambda s: any(r["host"] == host and r["username"] == user for r in logins(c)["rows"]), f"expected {user}@{host} in the list")
+
+@test("L6", "Manage Logins: the list shows host, port, username, a hidden password and how it's stored")
+def _(c):
+    open_logins(c)
+    add_login(c, "alpha.example", 2222, "alice", "s3cret-test")
+    add_login(c, "beta.example", 22, "bob", "")
+    rows = {r["host"]: r for r in logins(c)["rows"]}
+    a, b = rows["alpha.example"], rows["beta.example"]
+    c.expect((a["port"], a["username"]) == (2222, "alice"), f"expected port 2222 and alice, saw {a}")
+    c.expect("s3cret" not in a["password"] and a["password"].strip("•") == "", f"expected the password hidden, saw {a['password']!r}")
+    c.expect("key" in b["password"].lower(), f"expected an empty password to read as SSH keys, saw {b['password']!r}")
+    c.expect(a["stored"] == "Plain text", f"expected Plain text, saw {a['stored']!r}")
+
+manual("L7", "Manage Logins: locked at start", "needs the logins locked at start, which takes a second launch of the same test copy")
+
+@test("L8", "Manage Logins: Edit changes a login")
+def _(c):
+    open_logins(c)
+    add_login(c, "gamma.example", 22, "carol", "pw-one")
+    index = next(i for i, r in enumerate(logins(c)["rows"]) if r["host"] == "gamma.example")
+    logins(c, "edit", index)
+    fill_login(c, "gamma.example", 2200, "carol", "pw-two")
+    c.until(lambda s: any(r["host"] == "gamma.example" and r["port"] == 2200 for r in logins(c)["rows"]), "expected Edit to change the port")
+    c.expect(len([r for r in logins(c)["rows"] if r["host"] == "gamma.example"]) == 1, "expected the edited login to replace the old one")
+
+@test("L9", "Manage Logins: Import a CSV, all or nothing")
+def _(c):
+    open_logins(c)
+    good = os.path.join(c.app.home, "logins_in.csv")
+    with open(good, "w", encoding="utf-8") as f:
+        f.write("host,port,username,password\nimp1.example,22,dave,pw1\nimp2.example,2022,erin,\n")
+    c.bridge.call("choose-file", path=good)
+    logins(c, "import")
+    time.sleep(1)
+    settle_protection(c)
+    c.until(lambda s: {"imp1.example", "imp2.example"} <= {r["host"] for r in logins(c)["rows"]}, "expected both imported logins", timeout=10)
+    s = c.state()
+    if s.get("dialogs"):
+        c.answer(s["dialogs"][0]["responses"][0])
+    bad = os.path.join(c.app.home, "logins_bad.csv")
+    with open(bad, "w", encoding="utf-8") as f:
+        f.write("host,port,username,password\nimp3.example,22,frank,pw\nimp4.example,notaport,gina,pw\n")
+    c.bridge.call("choose-file", path=bad)
+    logins(c, "import")
+    s = c.until(lambda s: s.get("dialogs"), "expected a broken CSV to be refused with a message", timeout=10)
+    c.answer(s["dialogs"][0]["responses"][0])
+    c.expect("imp3.example" not in {r["host"] for r in logins(c)["rows"]}, "expected nothing imported from a CSV with a bad row")
+
+@test("L10", "Manage Logins: Export the ticked logins, readable only by you")
+def _(c):
+    open_logins(c)
+    add_login(c, "exp1.example", 22, "hank", "pw-h")
+    add_login(c, "exp2.example", 22, "ivy", "pw-i")
+    rows = logins(c)["rows"]
+    logins(c, "check", next(i for i, r in enumerate(rows) if r["host"] == "exp1.example"))
+    c.until(lambda s: logins(c)["export"].replace("…", "") == "Export (1)", f"expected Export (1), saw {logins(c)['export']!r}")
+    folder = os.path.join(c.app.home, "export-here")
+    os.makedirs(folder, exist_ok=True)
+    c.bridge.call("choose-file", path=folder)
+    logins(c, "export")
+    for _ in range(3):
+        s = c.state()
+        if os.path.exists(os.path.join(folder, "logins_export.csv")):
+            break
+        if s.get("dialogs"):
+            dialog = s["dialogs"][0]
+            c.answer(pick(dialog["responses"], "export", "ok"), heading=dialog["heading"])
+        time.sleep(1)
+    path = os.path.join(folder, "logins_export.csv")
+    c.until(lambda s: os.path.exists(path), "expected logins_export.csv written", timeout=8)
+    text = open(path, encoding="utf-8").read()
+    c.expect("exp1.example" in text and "exp2.example" not in text, f"expected only the ticked login exported, saw {text!r}")
+    if c.platform != "windows":
+        c.expect(os.stat(path).st_mode & 0o777 == 0o600, f"expected the file readable only by you, saw {oct(os.stat(path).st_mode & 0o777)}")
+    if logins(c).get("checkAll") is False:
+        raise Outcome("missing", "the list has no select-all checkbox in its heading")
+    logins(c, "check-all", True)
+    c.until(lambda s: all(r["checked"] for r in logins(c)["rows"]), "expected the heading's checkbox to tick every login")
+
+@test("L11", "Manage Logins: Delete asks first, with Cancel as the default")
+def _(c):
+    open_logins(c)
+    add_login(c, "del.example", 22, "jack", "pw-j")
+    index = next(i for i, r in enumerate(logins(c)["rows"]) if r["host"] == "del.example")
+    logins(c, "delete", index)
+    s = c.until(lambda s: s.get("dialogs"), "expected a question before the login is deleted")
+    dialog = s["dialogs"][0]
+    responses = dialog["responses"]
+    # Return must never delete: the default is Cancel, or (macOS with a destructive button) there is no default.
+    # Bridges that don't report the default list the buttons in the order they were added, the default first.
+    default = dialog["default"] if "default" in dialog else responses[0]
+    c.expect(default is None or default.lower() == "cancel", f"expected Cancel (or nothing) as the default, saw {default!r} of {responses}")
+    c.answer(next(r for r in responses if r.lower() == "cancel"))
+    c.expect(any(r["host"] == "del.example" for r in logins(c)["rows"]), "expected Cancel to keep the login")
+    logins(c, "delete", index)
+    s = c.until(lambda s: s.get("dialogs"), "expected the question again")
+    c.answer(pick(s["dialogs"][0]["responses"], "delete"))
+    c.until(lambda s: not any(r["host"] == "del.example" for r in logins(c)["rows"]), "expected Delete to remove the login")
 
 # ---------------------------------------------------------------- U: MultiExec and Run Command on Hosts
 

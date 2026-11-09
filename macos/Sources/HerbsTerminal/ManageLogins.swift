@@ -75,6 +75,8 @@ struct ManageLoginsView: View {
             }
         }
         .frame(minWidth: 640, minHeight: 300)
+        .onAppear { ManageLoginsBridge.window = bridgeHooks }
+        .onDisappear { ManageLoginsBridge.window = nil }
         .sheet(item: $state.editing) { (draft: LoginDraft) in
             LoginEditor(draft: draft, store: store) { saved in
                 state.editing = nil
@@ -197,6 +199,38 @@ struct ManageLoginsView: View {
 
     private var selectedLogin: SSHLogin? { selection.flatMap(store.get(id:)) }
 
+    /// What the feature tests' bridge reads and presses, through the same code as the window's controls.
+    private var bridgeHooks: ManageLoginsBridge.Window {
+        let store = store, state = state
+        return ManageLoginsBridge.Window(
+            state: {
+                ["rows": store.logins.map { login in
+                    ["host": login.host, "port": login.port, "username": login.username,
+                     "password": login.password.isEmpty ? "None (keys)" : "••••••••",
+                     "stored": store.plainTextIDs.contains(login.id) ? "Plain text" : "Encrypted",
+                     "checked": state.checked.contains(login.id), "selected": state.selection == login.id] as [String: Any]
+                },
+                 "locked": store.isLocked, "lockedCount": store.lockedCount, "protection": "\(store.protection)",
+                 "export": state.checked.intersection(store.logins.map(\.id)).isEmpty ? "Export" : "Export (\(state.checked.intersection(store.logins.map(\.id)).count))",
+                 "notice": state.notice ?? "", "editing": state.editing != nil]
+            },
+            run: { action, value in
+                let logins = store.logins
+                func login(_ index: Int?) -> SSHLogin? { index.flatMap { logins.indices.contains($0) ? logins[$0] : nil } }
+                switch action {
+                case "select": state.selection = login(value as? Int)?.id
+                case "check": if let id = login(value as? Int)?.id { if state.checked.contains(id) { state.checked.remove(id) } else { state.checked.insert(id) } }
+                case "check-all": state.checked = (value as? Bool ?? true) ? Set(logins.map(\.id)) : []
+                case "new": edit(nil)
+                case "edit", "open": edit(login(value as? Int) ?? selectedLogin)
+                case "delete": if let selected = login(value as? Int) ?? selectedLogin { delete(selected) }
+                case "import": state.notice = LoginVaultPrompts.importData(store) ?? state.notice
+                case "export": state.notice = LoginVaultPrompts.exportData(store, only: state.checked.intersection(logins.map(\.id))) ?? state.notice
+                default: break
+                }
+            })
+    }
+
     private func edit(_ login: SSHLogin?) {
         // Saving needs a protection choice, and an unlocked store when logins are encrypted.
         if store.protection == .unset, !LoginVaultPrompts.explainSetup(store) { return }
@@ -283,7 +317,24 @@ private struct LoginEditor: View {
         }
         .padding(20)
         .frame(width: 380)
+        .onDisappear { ManageLoginsBridge.form = nil }
         .onAppear {
+            let fields = fields
+            ManageLoginsBridge.form = ManageLoginsBridge.Form(
+                state: {
+                    ["title": draft.original == nil ? "New Login" : "Edit Login", "host": fields.host, "port": fields.port,
+                     "username": fields.username, "password": fields.password, "showPassword": fields.showPassword,
+                     "canShowPassword": store.protection != .adminPassword || !store.isLocked, "error": fields.error ?? ""]
+                },
+                run: { action, request in
+                    if let value = request["host"] as? String { fields.host = value }
+                    if let value = request["port"] as? Int { fields.port = value }
+                    if let value = request["username"] as? String { fields.username = value }
+                    if let value = request["password"] as? String { fields.password = value }
+                    if let value = request["showPassword"] as? Bool { fields.showPassword = value }
+                    if action == "save" { save() }
+                    if action == "cancel" { done(nil) }
+                })
             guard let original = draft.original else { return }
             fields.host = original.host
             fields.port = original.port
@@ -304,4 +355,19 @@ private struct LoginEditor: View {
             fields.error = error.localizedDescription
         }
     }
+}
+
+/// The Manage Logins window and its New / Edit form as the feature tests' bridge sees them.
+@MainActor
+enum ManageLoginsBridge {
+    struct Window {
+        let state: () -> [String: Any]
+        let run: (String, Any?) -> Void
+    }
+    struct Form {
+        let state: () -> [String: Any]
+        let run: (String, [String: Any]) -> Void
+    }
+    static var window: Window?
+    static var form: Form?
 }

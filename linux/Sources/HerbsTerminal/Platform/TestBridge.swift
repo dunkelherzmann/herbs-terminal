@@ -17,6 +17,12 @@ enum TestBridge {
     static let isActive = ParityScene.isActive && CommandLine.arguments.contains("--test-bridge")
     static let folder = ParityScene.appFiles + "/bridge"
     private static var lastID = -1
+    /// Set by the feature tests: what the next file chooser picks (a folder for a save names the file inside it).
+    private static var chosenFiles: [String]?
+    static func takeChosenFiles() -> [String]? {
+        defer { chosenFiles = nil }
+        return chosenFiles
+    }
 
     static func start() {
         guard isActive else { return }
@@ -37,6 +43,10 @@ enum TestBridge {
         } catch {
             response["ok"] = false
             response["error"] = "\(error)"
+        }
+        // An answer that isn't valid JSON is reported as an error instead of never arriving.
+        if !JSONSerialization.isValidJSONObject(response) {
+            response = ["id": id, "ok": false, "error": "the answer isn't valid JSON: " + String(describing: response["result"] ?? "").prefix(600)]
         }
         if let out = try? JSONSerialization.data(withJSONObject: response, options: [.sortedKeys]) {
             let temporary = folder + "/response.tmp"
@@ -62,6 +72,40 @@ enum TestBridge {
         case "explorer-go":
             guard let explorer = try workspace.selected.explorer else { throw Failure(description: "no explorer") }
             return explorer.bridgeGo(request["path"] as? String ?? "")
+        case "info":
+            // The newest Get Info window: edits, then Apply / Revert / Close, then what it shows.
+            guard let info = FileInfoWindow.newest else { return ["open": false] }
+            info.bridge(request)
+            // Closing destroys the window's widgets at once: read nothing from them after that.
+            if request["action"] as? String == "close" { return ["open": false] }
+            return info.bridgeState
+        case "editor":
+            guard let editor = try workspace.selected.editor else { throw Failure(description: "no editor") }
+            editor.bridge(request["action"] as? String ?? "", text: request["text"] as? String ?? "")
+            return editor.bridgeState
+        case "find":
+            // Types into the focused terminal's find bar, opening it first.
+            try workspace.selected.focused.bridgeFind(request["text"] as? String ?? "")
+            return true
+        case "choose-file":
+            // The file (or folder) the next file chooser answers with, without showing it.
+            chosenFiles = (request["path"] as? String).map { [$0] } ?? (request["paths"] as? [String])
+            return true
+        case "logins":
+            // The Manage Logins window: an action (select, check, check-all, new, edit, delete, import, export) with
+            // an optional row number or value, then what it shows.
+            guard let window = ManageLoginsWindow.current else { return ["open": false] }
+            if let action = request["action"] as? String { window.bridge(action, request["value"]) }
+            return window.bridgeState
+        case "explorer-filter":
+            guard let explorer = try workspace.selected.explorer else { throw Failure(description: "no explorer") }
+            return explorer.bridgeFilter(request["text"] as? String ?? "")
+        case "explorer-upload":
+            guard let explorer = try workspace.selected.explorer else { throw Failure(description: "no explorer") }
+            return explorer.bridgeUpload(request["paths"] as? [String] ?? [])
+        case "explorer-download":
+            guard let explorer = try workspace.selected.explorer else { throw Failure(description: "no explorer") }
+            return explorer.bridgeDownload(into: request["into"] as? String ?? "")
         case "explorer-select":
             guard let explorer = try workspace.selected.explorer else { throw Failure(description: "no explorer") }
             return explorer.bridgeSelect(request["names"] as? [String] ?? [])
@@ -222,6 +266,11 @@ enum TestBridge {
         let workspace = try workspace
         // The toolbar's SSH button: connection details while connected, Connect via SSH otherwise.
         if name == "connect-button" { workspace.connectButton(); return "ran" }
+        // Connect via SSH ▸ Manage Logins…
+        if name == "manage-logins" {
+            ManageLoginsWindow.show(CredentialStore.shared ?? CredentialStore.unavailable(), parent: workspace.window)
+            return "ran"
+        }
         if name.hasPrefix("explorer.") {
             guard let explorer = workspace.selected.explorer else { return "missing" }
             return explorer.bridgeDo(String(name.dropFirst("explorer.".count)))
@@ -255,13 +304,13 @@ enum TestBridge {
                             "panes": tab.panes.map { pane -> [String: Any] in
                                 ["number": (panes.firstIndex { $0 === pane } ?? -1) + 1, "focused": pane === tab.focused,
                                  "columns": pane.columns, "rows": pane.rows, "title": pane.title, "subtitle": pane.subtitle,
-                                 "exited": pane.exited, "text": pane.screenText, "fontSize": pane.settings.effectiveSize,
+                                 "exited": pane.exited, "text": pane.screenText, "fontSize": pane.settings.effectiveSize, "find": pane.bridgeFind,
                                  "profile": TerminalProfile.shared.name(of: pane.profileID), "badge": pane.bridgeBadge ?? NSNull()]
                             },
                         ]
                         entry["connection"] = bridgeConnection(tab.state.connection)
                         if let explorer = tab.explorer { entry["explorer"] = explorer.bridgeState }
-                        if let editor = tab.editor { entry["editor"] = ["name": editor.source.name, "edited": editor.isEdited, "text": editor.bridgeText] }
+                        if let editor = tab.editor { entry["editor"] = editor.bridgeState }
                         return entry
                     },
                 ]

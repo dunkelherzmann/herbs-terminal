@@ -370,6 +370,9 @@ final class ManageLoginsWindow {
     private var token: ObservationToken?
     private var updating = false
 
+    /// The window while it's open, for the feature tests' bridge.
+    static var current: ManageLoginsWindow? { open }
+
     static func show(_ store: CredentialStore, parent: Widget?) {
         if let open { open.window.present(); return }
         Task {
@@ -580,6 +583,43 @@ final class ManageLoginsWindow {
         }
     }
 
+    /// Feature tests: what the window shows.
+    var bridgeState: [String: Any] {
+        let selected = selectedLogin?.id
+        return ["open": true, "rows": shown.map { login in
+                    ["host": login.host, "port": login.port, "username": login.username,
+                     "password": login.password.isEmpty ? "None (keys)" : "••••••••",
+                     "stored": store.plainTextIDs.contains(login.id) ? "Plain text" : "Encrypted",
+                     "checked": checked.contains(login.id), "selected": login.id == selected] as [String: Any]
+                },
+                "locked": store.isLocked, "lockedCount": store.lockedCount, "protection": "\(store.protection)",
+                "export": checkedIDs.isEmpty ? "Export" : "Export (\(checkedIDs.count))",
+                "notice": gtk_widget_get_visible(noticeBar) != 0 ? String(cString: gtk_label_get_text(c(noticeLabel))) : ""]
+    }
+
+    /// Feature tests: presses the window's controls, through the same code they run.
+    func bridge(_ action: String, _ value: Any?) {
+        func login(_ index: Int?) -> SSHLogin? { index.flatMap { shown.indices.contains($0) ? shown[$0] : nil } }
+        func row(_ index: Int) -> UnsafeMutablePointer<GtkListBoxRow>? { gtk_list_box_get_row_at_index(c(list), Int32(index)) }
+        switch action {
+        case "select": if let index = value as? Int, let row = row(index) { gtk_list_box_select_row(c(list), row) }
+        case "check":
+            if let target = login(value as? Int) {
+                if checked.contains(target.id) { checked.remove(target.id) } else { checked.insert(target.id) }
+                refresh()
+            }
+        case "check-all": setActive(checkAll, value as? Bool ?? true)
+        case "new": edit(nil)
+        case "edit", "open": if let target = login(value as? Int) ?? selectedLogin { edit(target) }
+        case "delete": if let target = login(value as? Int) ?? selectedLogin { delete(target) }
+        case "import": Task { if let notice = await LoginVaultPrompts.importData(store, parent: window.window) { setNotice(notice) } }
+        case "export":
+            let ids = checkedIDs
+            Task { if let notice = await LoginVaultPrompts.exportData(store, only: ids, parent: window.window) { setNotice(notice) } }
+        default: break
+        }
+    }
+
     private func delete(_ login: SSHLogin) {
         Task {
             // Cancel is the default, so Return or a stray click never deletes.
@@ -613,6 +653,7 @@ enum LoginEditor {
                                   classes: ["caption", "dim-label"]))
             if let message { append(content, label(message, classes: ["caption", "error-text"], wrap: true)) }
             after(milliseconds: 80) { gtk_widget_grab_focus(fields[0]) }
+            Dialogs.fieldsForNextAsk(fields)
             let answer = await Dialogs.ask(parent, original == nil ? "New Login" : "Edit Login",
                                            choices: [.init("cancel", "Cancel"), .init("save", "Save", .suggested)], defaultID: "save", cancel: "cancel",
                                            extra: content, collect: { values = fields.map { text(of: $0) } })

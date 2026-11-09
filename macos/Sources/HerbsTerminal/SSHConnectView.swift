@@ -230,11 +230,17 @@ enum LoginVaultPrompts {
     static func importData(_ store: CredentialStore) -> String? {
         if store.protection == .unset, !explainSetup(store) { return nil }
         if store.isLocked, !unlock(store) { return nil }
-        let panel = NSOpenPanel()
-        panel.title = "Import Login Data"
-        panel.allowedContentTypes = [UTType.commaSeparatedText]
-        panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        let url: URL
+        if let chosen = TestBridge.takeChosenFile() {
+            url = chosen // The feature tests' bridge stands in for the open panel.
+        } else {
+            let panel = NSOpenPanel()
+            panel.title = "Import Login Data"
+            panel.allowedContentTypes = [UTType.commaSeparatedText]
+            panel.allowsMultipleSelection = false
+            guard panel.runModal() == .OK, let picked = panel.url else { return nil }
+            url = picked
+        }
         do {
             let summary = try store.importCSV(try Data(contentsOf: url), policy: .overwrite)
             return "Import completed: \(summary.added) added, \(summary.updated) updated, \(summary.skipped) skipped."
@@ -248,11 +254,17 @@ enum LoginVaultPrompts {
     static func exportData(_ store: CredentialStore, only ids: Set<SSHLogin.ID>) -> String? {
         guard !ids.isEmpty else { return nil }
         guard confirmExport(store) else { return nil }
-        let panel = NSSavePanel()
-        panel.title = "Export Login Data"
-        panel.allowedContentTypes = [UTType.commaSeparatedText]
-        panel.nameFieldStringValue = "logins_export.csv"
-        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        let url: URL
+        if let chosen = TestBridge.takeChosenFile() {
+            url = chosen.hasDirectoryPath ? chosen.appendingPathComponent("logins_export.csv") : chosen
+        } else {
+            let panel = NSSavePanel()
+            panel.title = "Export Login Data"
+            panel.allowedContentTypes = [UTType.commaSeparatedText]
+            panel.nameFieldStringValue = "logins_export.csv"
+            guard panel.runModal() == .OK, let picked = panel.url else { return nil }
+            url = picked
+        }
         do {
             let data = try store.exportCSV(only: ids)
             // The export holds passwords: readable by this account only, from the moment it exists.

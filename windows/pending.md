@@ -56,19 +56,11 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 11:26)
+## Feature test results (2026-11-09 16:14)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Missing (3)
-
-The command isn't there, or it's greyed out.
-
-- [ ] **E6** File Actions menu: Upload, Download, Undo, Redo, Cut, Copy, Paste, Delete, Select All, Find. (§5): File Actions commands: `explorer.find` is not there
-- [ ] **E13** New Folder, New File (free "untitled" name), Rename; undoable locally, rename undoable on a host. (§5): New Folder and Rename: no `explorer.rename` command
-- [ ] **E14** Search files (Find). (§5): Find files: `explorer.find` is not there
-
-### Not checked automatically (65)
+### Not checked automatically (44)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -90,42 +82,21 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **S8** Host-key questions, one-time codes and retries asked in the terminal. (§4): needs the user's own ssh setup or a dropped link; not automated yet
 - [ ] **S9** Your own `~/.ssh/config`, agent, keys and jump hosts are used. (§4): needs the user's own ssh setup or a dropped link; not automated yet
 - [ ] **E1** Places: Home, the user folders, Computer, Trash, mounted devices; on a host Home and File System. (§5): checked in the accessibility tree by parity/check.sh; the bridge doesn't report places
-- [ ] **E3** Back, Forward, Up, Home, Reload, show hidden files; Delete/BackSpace goes back. (§5): going into a folder works; Back, Forward, Up and Home are buttons the bridge doesn't press yet
 - [ ] **E4** Clickable path segments and an editable location (accepts `~` and relative paths). (§5): needs pointer or keyboard input the test bridge doesn't reach yet
 - [ ] **E11** Pasting local files into a host uploads them; host items pasted locally download. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **E16** Open with Administrator Mode… on an item. (§5): needs a sudo password (not automated)
-- [ ] **X1** Upload and download single files and folder trees. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
-- [ ] **X2** Progress strip with Cancel and Retry; Clear Finished. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
-- [ ] **X3** Up to 16 requests in flight. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
-- [ ] **X4** A server silent for 30 s ends the request with an error; Reload works again. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
+- [ ] **X2** Progress strip with Cancel and Retry; Clear Finished. (§5): needs a transfer slow enough to cancel; not automated yet
+- [ ] **X3** Up to 16 requests in flight. (§5): inside the SFTP client, where the bridge can't see its requests; not automated yet
+- [ ] **X4** A server silent for 30 s ends the request with an error; Reload works again. (§5): needs a dropped connection (fault injection, not automated yet)
 - [ ] **X5** Local copy, move and Trash run in the background with a "Copying…" note. (§5): needs a large folder and timing; not automated yet
-- [ ] **X6** Staged uploads (temporary name, exclusive, renamed into place). (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
-- [ ] **X7** Name clashes get new names; links to folders inside trees are skipped. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
-- [ ] **D3** Monospaced font, undo, Find. (§5): the bridge can't type into the editor or read its status yet
-- [ ] **D4** Wrap Lines. (§5): the bridge can't type into the editor or read its status yet
-- [ ] **D5** Status line: line, column, line count, encoding, line endings. (§5): the bridge can't type into the editor or read its status yet
-- [ ] **D6** Save shortcut and button; • on the tab while unsaved. (§5): the bridge can't type into the editor or read its status yet
-- [ ] **D7** Closing the tab, window or app asks before discarding. (§5): the bridge can't type into the editor or read its status yet
-- [ ] **D8** Changed elsewhere since opened: asks before replacing. (§5): the bridge can't type into the editor or read its status yet
-- [ ] **D9** Keeps encoding (UTF-8, UTF-16, Latin-1), line endings and permissions; links edited at their… (§5): the bridge can't type into the editor or read its status yet
-- [ ] **D10** Refuses files over 20 MB and binary files, with a message. (§5): the bridge can't type into the editor or read its status yet
-- [ ] **G1** Get Info… on one or more items: name, location, kind, size, modified, `ls -l` permissions with… (§5): the Get Info window isn't driven by the bridge yet
-- [ ] **G2** Read / write / execute for owner, group, others; set-UID, set-GID, sticky; octal field in step. (§5): the Get Info window isn't driven by the bridge yet
-- [ ] **G3** Owner and group by name or number (looked up on the host). (§5): the Get Info window isn't driven by the bridge yet
+- [ ] **X6** Staged uploads (temporary name, exclusive, renamed into place). (§5): inside the SFTP client, where the bridge can't see its requests; not automated yet
 - [ ] **G4** Hidden and Locked (Mac only). (§5): Mac only
-- [ ] **G5** Apply to enclosed items; Apply changes only what was edited; Revert. (§5): the Get Info window isn't driven by the bridge yet
-- [ ] **G6** Works on this computer and on hosts. (§5): the Get Info window isn't driven by the bridge yet
 - [ ] **A4** Safe root delete rules. (§5): deleting system folders as root isn't something to try on a real machine
 - [ ] **L1** Login database (host, port, username, password), several logins per host, host names ignore case. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L2** Administrator Password: AES-GCM with PBKDF2 600,000 rounds; locked at start, unlock once per… (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L3** Change the Administrator Password re-encrypts everything; removing it asks. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L4** Plain text needs an explicit choice and a second confirmation. (§6): covered by the unit and self tests of the shared vault code
-- [ ] **L6** Manage Logins window: list with host, port, username, hidden password, encrypted or plain. (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **L7** Opening asks for the Administrator Password; Skip shows plain-text logins with an unlock bar. (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **L8** New and Edit form with Show password. (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **L9** Import (CSV, all-or-nothing). (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **L10** Export ticked logins (checkbox column with select-all heading), file readable only by you,… (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **L11** Double-click edits; Delete key or right-click removes after a confirmation defaulting to Cancel. (§6): the Manage Logins window isn't driven by the bridge yet
+- [ ] **L7** Opening asks for the Administrator Password; Skip shows plain-text logins with an unlock bar. (§6): needs the logins locked at start, which takes a second launch of the same test copy
 - [ ] **C3** Connect: shell and explorer through Tailcat, address never in arguments or history. (§8): needs the test host shared over tailcat (~/.config/herbs-terminal/test-tailcat holds its address)
 - [ ] **C4** Clear message when nothing answers SSH on the peer. (§8): needs a peer whose SSH service is off
 - [ ] **C7** Unlock… / Lock… button with the vault states. (§8): the Tailcat window isn't driven by the bridge yet

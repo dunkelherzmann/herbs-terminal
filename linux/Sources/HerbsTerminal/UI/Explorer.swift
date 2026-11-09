@@ -1151,6 +1151,9 @@ extension ExplorerHost {
     func bridgeSelect(_ names: [String]) -> [String] { current?.bridgeSelect(names) ?? [] }
     func bridgeDo(_ action: String) -> String { current?.bridgeDo(action) ?? "missing" }
     func bridgeProbe(_ action: String) -> String { current?.bridgeProbe(action) ?? "missing" }
+    func bridgeFilter(_ text: String) -> [String] { current?.bridgeFilter(text) ?? [] }
+    func bridgeUpload(_ paths: [String]) -> Bool { current?.bridgeUpload(paths) ?? false }
+    func bridgeDownload(into folder: String) -> Bool { current?.bridgeDownload(into: folder) ?? false }
 }
 
 extension ExplorerView {
@@ -1158,19 +1161,51 @@ extension ExplorerView {
         ["shown": gtk_widget_get_mapped(view) != 0, "path": path, "items": visible.map { $0.isFolder ? $0.name + "/" : $0.name },
          "selected": selectedNames, "hidden": showHidden, "administrator": isAdministrator, "remote": remoteModel != nil,
          "bookmarked": bookmarks.contains(path),
+         "finding": gtk_widget_get_visible(filterBar) != 0, "filter": filterText,
+         "transfers": remoteModel?.queue.items.map { ["name": $0.name, "state": "\($0.state)"] as [String: Any] } ?? [],
          "canUndo": actions["undo"] != nil && g_action_group_get_action_enabled(group, "undo") != 0,
          "canRedo": actions["redo"] != nil && g_action_group_get_action_enabled(group, "redo") != 0]
     }
     func bridgeGo(_ target: String) -> Bool { visit(target); return true }
+    /// Types into Find's field, opening it first.
+    func bridgeFilter(_ text: String) -> [String] {
+        showFilter()
+        setText(filterEntry, text)
+        filterText = text
+        renderList()
+        return visible.map { $0.isFolder ? $0.name + "/" : $0.name }
+    }
+    /// Upload and Download with the files and folder given instead of picked in the file chooser.
+    func bridgeUpload(_ paths: [String]) -> Bool {
+        guard case .remote(let model) = kind else { return false }
+        let folder = path
+        Task { await model.upload(paths.map { URL(fileURLWithPath: $0) }, into: folder) }
+        return true
+    }
+    func bridgeDownload(into target: String) -> Bool {
+        guard case .remote(let model) = kind else { return false }
+        let names = selectedNames, folder = path
+        Task { await model.download(names, from: folder, to: URL(fileURLWithPath: target, isDirectory: true)) }
+        return true
+    }
     func bridgeSelect(_ names: [String]) -> [String] { select(Set(names)); return selectedNames }
     func bridgeProbe(_ action: String) -> String {
         if action == "administrator" { return "enabled" }
+        if let button = bridgeButtons[action] { return gtk_widget_get_sensitive(button) != 0 ? "enabled" : "disabled" }
         guard g_action_group_has_action(group, action) != 0 else { return "missing" }
         return g_action_group_get_action_enabled(group, action) != 0 ? "enabled" : "disabled"
     }
+    /// The location bar's buttons, pressed as a person would (greyed-out ones report "disabled").
+    private var bridgeButtons: [String: Widget] { ["back": back, "forward": forward, "up": up, "home": home] }
+
     func bridgeDo(_ action: String) -> String {
         // The lock button: Administrator mode on or off.
         if action == "administrator" { toggleAdministrator(); return "ran" }
+        if let button = bridgeButtons[action] {
+            guard gtk_widget_get_sensitive(button) != 0 else { return "disabled" }
+            _ = gtk_widget_activate(button)
+            return "ran"
+        }
         guard g_action_group_has_action(group, action) != 0 else { return "missing" }
         guard g_action_group_get_action_enabled(group, action) != 0 else { return "disabled" }
         g_action_group_activate_action(group, action, nil)

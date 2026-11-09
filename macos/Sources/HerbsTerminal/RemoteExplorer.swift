@@ -430,6 +430,8 @@ struct RemoteExplorer: View {
     /// Turns Administrator mode on or off; nil hides the lock button.
     var administratorToggle: (() -> Void)?
     var isAdministrator = false
+    /// The tab whose feature-test bridge this explorer answers.
+    var bridgeHost: WindowState?
     @StateObject private var selection = ListSelection<String>()
     @StateObject private var filter = ExplorerFilter()
     @AppStorage("remoteExplorerBookmarks") private var bookmarkStore = ""
@@ -546,6 +548,8 @@ struct RemoteExplorer: View {
         .onChange(of: currentPath) { history.visit(currentPath); filter.close() }
         .onChange(of: viewModel.showHidden) { Task { await viewModel.load(path: currentPath) } }
         .onChange(of: findRequest) { filter.active = true }
+        .onAppear { bridgeHost?.explorerBridge = makeBridge() }
+        .onDisappear { if bridgeHost?.explorerBridge?.owner == bridgeOwner { bridgeHost?.explorerBridge = nil } }
         .task(id: currentPath) {
             selection.ids = []
             await viewModel.load(path: currentPath)
@@ -691,6 +695,67 @@ struct RemoteExplorer: View {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         let folder = currentPath
         Task { await viewModel.delete(names, in: folder) }
+    }
+}
+
+extension RemoteExplorer {
+    /// Each host explorer's own key: Administrator mode's explorer appears before the user's one has gone.
+    fileprivate var bridgeOwner: String { "remote-\(ObjectIdentifier(viewModel).hashValue)" }
+
+    /// What the feature tests' bridge reads and runs, through the same code the menus and buttons use. Upload
+    /// and Download take their files and folder from the bridge instead of the open panel.
+    fileprivate func makeBridge() -> ExplorerBridge {
+        let bridge = ExplorerBridge(owner: bridgeOwner)
+        bridge.path = { currentPath }
+        bridge.items = { visibleEntries.map { $0.attributes.directory ? $0.name + "/" : $0.name } }
+        bridge.selected = { selectedNames }
+        bridge.select = { names in selection.ids = Set(visibleEntries.map(\.name).filter { names.contains($0) || names.contains($0 + "/") }) }
+        bridge.go = { navigate(to: $0) }
+        bridge.setFilter = { filter.active = true; filter.text = $0 }
+        bridge.upload = { paths in
+            let folder = currentPath
+            Task { await viewModel.upload(paths.map { URL(fileURLWithPath: $0) }, into: folder) }
+        }
+        bridge.download = { target in
+            let names = selectedNames, folder = currentPath
+            Task { await viewModel.download(names, from: folder, to: URL(fileURLWithPath: target, isDirectory: true)) }
+        }
+        bridge.extra = {
+            ["hidden": viewModel.showHidden, "bookmarked": bookmarks.contains(normalizePath(currentPath)),
+             "status": viewModel.errorMessage ?? (viewModel.isLoading ? "Loading…" : ""),
+             "finding": filter.active, "filter": filter.text, "canUndo": !viewModel.undoMoves.isEmpty, "canRedo": !viewModel.redoMoves.isEmpty,
+             "undoTitle": viewModel.undoMoves.isEmpty ? "Undo" : "Undo Move", "redoTitle": viewModel.redoMoves.isEmpty ? "Redo" : "Redo Move",
+             "remote": true, "loading": viewModel.isLoading,
+             "transfers": viewModel.queue.items.map { ["name": $0.name, "state": "\($0.state)"] as [String: Any] }]
+        }
+        bridge.command = { name, run in
+            let actions = self.actions
+            let names = selectedNames
+            let entries = names.compactMap { self.entry(named: $0) }
+            let one: String? = names.count == 1 ? names[0] : nil
+            let commands: [String: (() -> Void)?] = [
+                "cut": actions.cut, "copy": actions.copy, "paste": actions.paste, "delete": actions.delete,
+                "select-all": actions.selectAll, "undo": actions.undo, "redo": actions.redo, "find": actions.find,
+                "upload": actions.upload, "download": actions.download,
+                "new-folder": { newFolder() }, "new-file": { newFile() },
+                "open": entries.first.map { entry in { open(entry) } },
+                "edit": entries.contains { !$0.attributes.directory } ? { entries.filter { !$0.attributes.directory }.forEach(edit) } : nil,
+                "rename": one.map { name in { rename(name) } },
+                "info": names.isEmpty ? nil : { FileInfoWindow.show(viewModel.infoSource(for: names, in: currentPath)) },
+                "bookmark-selected": entries.count == 1 && entries[0].attributes.directory ? { toggleBookmark(remoteJoin(currentPath, entries[0].name)) } : nil,
+                "hidden": { viewModel.showHidden.toggle() },
+                "back": history.canGoBack ? { if let p = history.goBack() { currentPath = p } } : nil,
+                "forward": history.canGoForward ? { if let p = history.goForward() { currentPath = p } } : nil,
+                "up": currentPath == "/" ? nil : { navigate(to: parentPath(history.current)) },
+                "home": { navigate(to: home) },
+                "reload": { Task { await viewModel.load(path: currentPath) } },
+            ]
+            guard let entry = commands[name] else { return "missing" }
+            guard let action = entry else { return "disabled" }
+            if run { DispatchQueue.main.async { action() } }
+            return run ? "ran" : "enabled"
+        }
+        return bridge
     }
 }
 

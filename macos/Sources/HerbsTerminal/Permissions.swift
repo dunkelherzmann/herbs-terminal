@@ -237,18 +237,49 @@ final class FileInfoModel: ObservableObject {
         let change = change
         guard !change.isEmpty else { return }
         busy = true
+        var failure: String?
         do {
             try await source.apply(change)
             notice = "Changes applied."
             error = nil
         } catch {
-            self.error = error.localizedDescription
+            failure = error.localizedDescription
+            notice = nil
         }
         busy = false
         await load()
+        // Reloading shows what's on disk now; the reason Apply failed stays in view (load would clear it).
+        if let failure { error = failure }
     }
 
     func toggle(_ bit: UInt32) { mode ^= bit }
+}
+
+extension FileInfoModel {
+    /// Feature tests: what the Get Info window shows.
+    var bridgeState: [String: Any] {
+        ["names": items.map(\.name), "folders": items.filter(\.isFolder).map(\.name), "location": items.first?.location ?? "",
+         "size": items.first?.size.map { Int($0) as Any } ?? NSNull(), "modified": items.first?.modified != nil,
+         "octal": octal, "symbolic": symbolicMode(mode), "owner": owner, "group": group, "recursive": recursive,
+         "hasFolders": hasFolders, "macFlags": source.hasMacFlags, "hidden": hidden, "locked": locked,
+         "busy": busy, "error": error ?? "", "notice": notice ?? "", "changed": !change.isEmpty]
+    }
+
+    /// Feature tests: edits the fields as a person would, then Apply, Revert or neither.
+    func bridge(_ request: [String: Any]) async {
+        if let value = request["octal"] as? String { octal = value }
+        for bit in request["toggle"] as? [Int] ?? [] { toggle(UInt32(bit)) }
+        if let value = request["owner"] as? String { owner = value }
+        if let value = request["group"] as? String { group = value }
+        if let value = request["recursive"] as? Bool { recursive = value }
+        if let value = request["hidden"] as? Bool { hidden = value }
+        if let value = request["locked"] as? Bool { locked = value }
+        switch request["action"] as? String {
+        case "apply": await apply()
+        case "revert": await load()
+        default: break
+        }
+    }
 }
 
 private extension String {
@@ -259,6 +290,8 @@ private extension String {
 @MainActor
 enum FileInfoWindow {
     private static var windows: [NSWindow] = []
+    /// The open windows' models, newest last, for the feature tests' bridge.
+    private(set) static var models: [(window: NSWindow, model: FileInfoModel)] = []
 
     static func show(_ source: FileInfoSource) {
         let model = FileInfoModel(source: source)
@@ -268,8 +301,12 @@ enum FileInfoWindow {
         window.isReleasedWhenClosed = false
         window.center()
         windows.append(window)
+        models.append((window, model))
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { _ in
-            MainActor.assumeIsolated { windows.removeAll { $0 === window } }
+            MainActor.assumeIsolated {
+                windows.removeAll { $0 === window }
+                models.removeAll { $0.window === window }
+            }
         }
         window.makeKeyAndOrderFront(nil)
         Task { await model.load() }

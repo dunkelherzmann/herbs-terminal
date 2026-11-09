@@ -35,21 +35,13 @@ enum SFTPRelay {
             errors = GetStdHandle(STD_ERROR_HANDLE)
             if errors == INVALID_HANDLE_VALUE { errors = nil }
         }
-        for handle in [input, output, errors] where handle != nil { SetHandleInformation(handle, DWORD(HANDLE_FLAG_INHERIT), DWORD(HANDLE_FLAG_INHERIT)) }
-        var startup = STARTUPINFOW()
-        startup.cb = DWORD(MemoryLayout<STARTUPINFOW>.size)
-        startup.dwFlags = DWORD(STARTF_USESTDHANDLES)
-        startup.hStdInput = input
-        startup.hStdOutput = output
-        startup.hStdError = errors
-        var info = PROCESS_INFORMATION()
-        var command = ([ssh] + sshArguments).map(quoteArgument).joined(separator: " ").wide
+        // Only those three handles: anything else the relay inherited stays out of ssh.
         let job = CreateJobObjectW(nil, nil)
         var limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
         limits.BasicLimitInformation.LimitFlags = DWORD(JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE)
         SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, DWORD(MemoryLayout<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>.size))
         let flags = DWORD(CREATE_NO_WINDOW) | DWORD(CREATE_SUSPENDED) | DWORD(CREATE_UNICODE_ENVIRONMENT)
-        guard CreateProcessW(nil, &command, nil, nil, true, flags, nil, nil, &startup, &info) else { return 4 }
+        guard let info = ChildLaunch.start([ssh] + sshArguments, input: input, output: output, error: errors, flags: flags) else { return 4 }
         AssignProcessToJobObject(job, info.hProcess)
         ResumeThread(info.hThread)
         CloseHandle(info.hThread)

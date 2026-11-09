@@ -37,6 +37,10 @@ enum TestBridge {
             response["ok"] = false
             response["error"] = "\(error)"
         }
+        // An answer that isn't valid JSON is reported as an error instead of never arriving.
+        if !JSONSerialization.isValidJSONObject(response) {
+            response = ["id": id, "ok": false, "error": "the answer isn't valid JSON: " + String(describing: response["result"] ?? "").prefix(600)]
+        }
         if let out = try? JSONSerialization.data(withJSONObject: response, options: [.sortedKeys]) {
             let temporary = folder + "/response.tmp"
             FileManager.default.createFile(atPath: temporary, contents: out)
@@ -63,7 +67,58 @@ enum TestBridge {
             // As the keyboard does: through the view, so MultiExec forwards it like real typing.
             try workspace.selected.focusedShell.view.send(txt: request["text"] as? String ?? "")
             return true
-        case "explorer-go", "explorer-select": return "unsupported"
+        case "explorer-go":
+            guard let explorer = try workspace.selected.state.explorerBridge else { return "unsupported" }
+            explorer.go(request["path"] as? String ?? "")
+            return true
+        case "explorer-select":
+            guard let explorer = try workspace.selected.state.explorerBridge else { return "unsupported" }
+            explorer.select(request["names"] as? [String] ?? [])
+            return explorer.selected()
+        case "logins":
+            // The Manage Logins window: an action (select, check, check-all, new, edit, delete, import, export) with
+            // an optional row number or value, then what it shows. Actions that ask run after the answer.
+            guard let window = ManageLoginsBridge.window else { return ["open": false] }
+            if let action = request["action"] as? String {
+                let value = request["value"]
+                DispatchQueue.main.async { window.run(action, value) }
+            }
+            return window.state().merging(["open": true]) { a, _ in a }
+        case "login-form":
+            // The New / Edit Login form: fields to fill, then save or cancel.
+            guard let form = ManageLoginsBridge.form else { return ["open": false] }
+            let action = request["action"] as? String ?? ""
+            form.run(action, request)
+            return form.state().merging(["open": true]) { a, _ in a }
+        case "choose-file":
+            // The file (or folder) the next open or save panel answers with, without showing it.
+            chosenFile = (request["path"] as? String).map { URL(fileURLWithPath: $0) }
+            return true
+        case "info":
+            // The newest Get Info window: edits, then Apply / Revert / Close, then what it shows.
+            guard let open = FileInfoWindow.models.last else { return ["open": false] }
+            let action = request["action"] as? String
+            if action == "close" { open.window.close(); return ["open": false] }
+            if action != nil || request.count > 1 {
+                Task { await open.model.bridge(request) }
+            }
+            return open.model.bridgeState.merging(["open": true, "title": open.window.title]) { a, _ in a }
+        case "editor":
+            guard let editor = try workspace.selected.editor else { throw Failure(description: "no editor") }
+            editor.bridge(request["action"] as? String ?? "", text: request["text"] as? String ?? "")
+            return editor.bridgeState
+        case "explorer-upload":
+            guard let upload = try workspace.selected.state.explorerBridge?.upload else { return "unsupported" }
+            upload(request["paths"] as? [String] ?? [])
+            return true
+        case "explorer-download":
+            guard let download = try workspace.selected.state.explorerBridge?.download else { return "unsupported" }
+            download(request["into"] as? String ?? "")
+            return true
+        case "explorer-filter":
+            guard let explorer = try workspace.selected.state.explorerBridge else { return "unsupported" }
+            explorer.setFilter(request["text"] as? String ?? "")
+            return explorer.items()
         case "include":
             let workspace = try workspace
             let shells = workspace.tabs.flatMap(\.shells)
@@ -140,6 +195,13 @@ enum TestBridge {
         }
     }
 
+    /// Set by the feature tests: what the next open or save panel picks.
+    private static var chosenFile: URL?
+    static func takeChosenFile() -> URL? {
+        defer { chosenFile = nil }
+        return chosenFile
+    }
+
     // MARK: Commands
 
     /// The shared command names, mapped onto what this version's menu items and buttons run.
@@ -186,6 +248,8 @@ enum TestBridge {
             "restore-theming": { ThemeMenu.restoreDefaults(shell.profileID) },
             "import-preset": { _ = ThemeMenu.importPreset() },
             "secure-keyboard-entry": { SecureInput.shared.enabled.toggle() },
+            // Connect via SSH ▸ Manage Logins…
+            "manage-logins": { ManageLoginsWindow.show(CredentialStore.shared ?? CredentialStore.unavailable()) },
         ]
         if terminal {
             actions["clear-to-start"] = { shell.view.clearToStart() }
@@ -205,7 +269,10 @@ enum TestBridge {
             let state = workspace.selected.state
             if state.adminViewModel != nil { AdministratorMode.leave(state) } else { Task { await AdministratorMode.enter(state) } }
         }
-        if name.hasPrefix("explorer."), name != "explorer.administrator" { return "unsupported" }
+        if name.hasPrefix("explorer."), name != "explorer.administrator" {
+            guard let explorer = workspace.selected.state.explorerBridge else { return "unsupported" }
+            return explorer.command(String(name.dropFirst("explorer.".count)), run)
+        }
         guard let action = actions[name] else { return "missing" }
         if name == "disconnect", workspace.selected.state.connection == .local { return "disabled" }
         // Run after this request is answered: an alert's modal loop would otherwise hold the answer back.
@@ -243,12 +310,9 @@ enum TestBridge {
         guard let index = alert.buttons.firstIndex(where: { $0.title.caseInsensitiveCompare(response) == .orderedSame }) else {
             throw Failure(description: "no button \(response)")
         }
-        // The alert runs modally and this runs inside its loop: end it as that button would.
-        if NSApp.modalWindow === alert.window {
-            NSApp.stopModal(withCode: NSApplication.ModalResponse(rawValue: NSApplication.ModalResponse.alertFirstButtonReturn.rawValue + index))
-        } else {
-            alert.buttons[index].performClick(nil)
-        }
+        // Pressed as a person would, so the alert ends with that button's own response. (Working out the response
+        // from the buttons' places went wrong where the alert lays them out in another order.)
+        alert.buttons[index].performClick(nil)
         return true
     }
 
@@ -286,21 +350,35 @@ enum TestBridge {
                                 return ["number": (shells.firstIndex { $0 === shell } ?? -1) + 1, "focused": shell === tab.focusedShell,
                                         "columns": terminal.cols, "rows": terminal.rows, "title": shell.legend.title,
                                         "subtitle": shell.legend.subtitle, "exited": false, "text": Workspace.sessionText(shell),
-                                        "fontSize": shell.settings.effectiveSize]
+                                        "fontSize": shell.settings.effectiveSize,
+                                        // SwiftTerm's find bar, a subview of the terminal while it's open.
+                                        "find": ["shown": shell.view.subviews.contains {
+                                            String(describing: type(of: $0)).contains("FindBar") && !$0.isHidden }]]
                             },
                         ]
                         entry["connection"] = bridgeConnection(tab.state.connection)
                         let remote: Bool = { if case .remote = tab.state.endpoint { return true }; return false }()
-                        entry["explorer"] = ["shown": tab.state.layout == .explorer, "remote": remote,
-                                             "administrator": tab.state.adminViewModel != nil,
-                                             "path": remote ? tab.state.remoteDirectory : tab.state.directory.path,
-                                             "items": [String](), "selected": [String]()] as [String: Any]
-                        if let editor = tab.editor { entry["editor"] = ["name": editor.source.name, "edited": editor.isEdited, "text": editor.bridgeText] }
+                        var explorer: [String: Any] = ["shown": tab.state.layout == .explorer, "remote": remote,
+                                                       "administrator": tab.state.adminViewModel != nil,
+                                                       "path": remote ? tab.state.remoteDirectory : tab.state.directory.path,
+                                                       "items": [String](), "selected": [String]()]
+                        if let bridge = tab.state.explorerBridge {
+                            explorer.merge(bridge.extra()) { _, new in new }
+                            explorer["path"] = bridge.path()
+                            explorer["items"] = bridge.items()
+                            explorer["selected"] = bridge.selected()
+                        }
+                        entry["explorer"] = explorer
+                        if let editor = tab.editor { entry["editor"] = editor.bridgeState }
                         return entry
                     },
                 ]
             },
-            "dialogs": openAlerts().map { ["heading": $0.heading, "responses": $0.buttons.map(\.title), "fields": $0.fields.count] as [String: Any] },
+            "dialogs": openAlerts().map {
+                ["heading": $0.heading, "responses": $0.buttons.map(\.title), "fields": $0.fields.count,
+                 "default": $0.buttons.first { $0.keyEquivalent == "\r" }?.title ?? NSNull(),
+                 "keys": $0.buttons.map { $0.keyEquivalent.unicodeScalars.map { String($0.value) }.joined(separator: ",") }] as [String: Any]
+            },
             "toplevels": toplevels,
             "profiles": profile.profiles.map(\.name),
             "presets": ThemeLibrary.shared.allNames,
@@ -318,4 +396,24 @@ func bridgeConnection(_ state: ConnectionState) -> [String: Any] {
     case .connected(let endpoint): ["state": "connected", "account": endpoint.label]
     case .failed(let reason): ["state": "failed", "reason": reason]
     }
+}
+
+/// One explorer as the feature tests' bridge sees it: its folder, list and selection, and its commands by their
+/// shared names. The explorer on screen fills it in with closures over its own state.
+@MainActor
+final class ExplorerBridge {
+    let owner: String
+    var path: () -> String = { "" }
+    var items: () -> [String] = { [] }
+    var selected: () -> [String] = { [] }
+    var select: ([String]) -> Void = { _ in }
+    var go: (String) -> Void = { _ in }
+    var setFilter: (String) -> Void = { _ in }
+    /// A host's explorer: uploads these local paths into its folder, or downloads the selection into a local folder.
+    var upload: (([String]) -> Void)?
+    var download: ((String) -> Void)?
+    var extra: () -> [String: Any] = { [:] }
+    /// Runs (or only checks, when the flag is false) a command: "ran", "enabled", "disabled" or "missing".
+    var command: (String, Bool) -> String = { _, _ in "missing" }
+    init(owner: String) { self.owner = owner }
 }
