@@ -95,10 +95,22 @@ enum TestBridge {
         case "profile-set":
             let value = request["value"] as? String ?? ""
             switch request["key"] as? String ?? "" {
-            case "startupCommand": TerminalProfile.shared.update(nil) { $0.startupCommand = value }
-            case "startDirectory": TerminalProfile.shared.update(nil) { $0.startDirectory = value }
+            // The focused terminal's profile, as on the Mac and Linux.
+            case "startupCommand": try TerminalProfile.shared.update(workspace.focusedPane?.profileID) { $0.startupCommand = value }
+            case "startDirectory": try TerminalProfile.shared.update(workspace.focusedPane?.profileID) { $0.startDirectory = value }
             default: throw Failure(description: "unknown profile key")
             }
+            return true
+        case "profile-add":
+            // A new named profile (a copy of the default), with a startup command when given; returns its id.
+            let profile = TerminalProfile.shared
+            let id = profile.addProfile(named: request["name"] as? String ?? "Profile")
+            if let command = request["startupCommand"] as? String { profile.update(id) { $0.startupCommand = command } }
+            return id.uuidString
+        case "profile-new-tab":
+            // New Tab with Profile.
+            guard let id = (request["profile"] as? String).flatMap(Foundation.UUID.init(uuidString:)) else { throw Failure(description: "no profile id") }
+            try workspace.newTab(profile: id)
             return true
         case "find":
             guard let pane = try workspace.focusedPane else { throw Failure(description: "no terminal") }
@@ -207,7 +219,10 @@ enum TestBridge {
         case "toggle-explorer", "show-explorer":
             if run { workspace.toggleExplorer() }
             return run ? "ran" : "enabled"
-        case "new-tab-profile", "use-profile": return "disabled"
+        case "new-tab-profile", "use-profile":
+            // Submenus of profiles; the feature tests choose one with profile-new-tab.
+            if run && name == "new-tab-profile" { workspace.newTab() }
+            return run ? "ran" : "enabled"
         case "copy", "paste", "select-all", "paste-escaped":
             let command: MenuCommand = name == "copy" ? .copy : name == "paste" ? .paste : name == "select-all" ? .selectAll : .pasteEscaped
             if run { workspace.perform(command.rawValue) }
@@ -307,7 +322,8 @@ enum TestBridge {
                             number += 1
                             return ["number": number, "focused": shell === focused, "columns": shell.terminal.cols, "rows": shell.terminal.rows,
                                     "title": shell.title, "subtitle": shell.subtitle, "exited": !shell.isRunning, "text": shell.exportText(),
-                                    "fontSize": settings.effectiveSize, "selection": shell.bridgeSelection,
+                                    "fontSize": TerminalProfile.shared.settings(for: shell.profileID).effectiveSize,
+                                    "profile": TerminalProfile.shared.name(of: shell.profileID), "selection": shell.bridgeSelection,
                                     "find": ["shown": shell.isFinding, "text": shell.findText, "matches": shell.findMatchCount]]
                         }
                         // A tab's connection, as the Mac and Linux report it.

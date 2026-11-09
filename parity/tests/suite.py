@@ -668,6 +668,23 @@ def _(c):
     c.expect(c.state().get("profiles"), "no profiles")
     c.probe("new-tab-profile", "use-profile")
 
+@test("R1", "New Tab with Profile, and new tabs keep the current tab's profile")
+def _(c):
+    word = "SECOND" + "PROFILE"
+    command = f"echo {word[:3]}\"\"{word[3:]}" if c.app.shell == "posix" else f"echo {word[:3]}^{word[3:]}"
+    try:
+        profile = c.bridge.call("profile-add", name="Test Two", startupCommand=command)
+    except bridge_module.BridgeError as error:
+        if "unknown op" in str(error):
+            c.unverified("this platform's test bridge can't make or choose profiles yet")
+        raise
+    c.bridge.call("profile-new-tab", profile=profile)
+    time.sleep(2)
+    c.until(lambda s: len(c.tabs(s)) == 2 and c.pane(s).get("profile") == "Test Two", "expected a new tab with the profile Test Two")
+    c.until(lambda s: word in c.text(s), "expected the profile's startup command to run in it", timeout=8)
+    c.command("new-tab", settle=2)
+    c.until(lambda s: len(c.tabs(s)) == 3 and c.pane(s).get("profile") == "Test Two", "expected the next new tab to keep Test Two")
+
 @test("R2", "A profile's startup command runs when a tab opens")
 def _(c):
     word = "STARTED" + "OK"

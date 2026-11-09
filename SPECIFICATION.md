@@ -557,6 +557,8 @@ The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In 
 
 - **Run Command on Hosts** (Shell submenu) works as in section 7, in a window laid out as on the Mac and Linux ("Multi-Host Commands"): the hosts with checkboxes (the tab's live connection first, then every saved login, with Unlock… while saved logins are locked), the command, what will run where, each host's result (✓ exit 0, ✗ exit code, ⚠ not reached with ssh's reason, ■ stopped; duration and output, up to 64 KB per host, longer output marked as truncated), and Stop, Close (Esc) and Run (Ctrl+Enter; Enter makes a new line in the command). Each host runs over its own `ssh -T` started through the explorer's relay, so a saved password reaches ssh only through the password helper; unknown host keys are refused, one password try, no retries, 10 seconds to connect.
 
+- **Profiles** work as in section 3: each tab uses a named profile and new tabs and split panes keep the current one; the Main Menu's Shell submenu has New Tab with Profile and Use Profile (which changes the focused terminal's profile at once). Zoom, the color preset and Restore Defaults change the focused terminal's profile. Settings starts with a Profile section: the profile it edits ("(default)" marks the default), New, Duplicate, Rename…, Delete… (asks first; tabs using it switch to the default) and Use as Default, and the profile's Run command and Start in folder; the Text, Colors and scrollback settings below apply to that profile.
+
 ### Files
 
 - **The explorer** shows this PC's files in a local tab and the host's files in an SSH tab: the toolbar's folder button or Ctrl+Shift+X switches between the tab's shell and its explorer, which keeps its folder while hidden.
@@ -590,7 +592,7 @@ The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In 
 
 ### Not yet on Windows
 
-Named profiles; session restore; following an `ssh` typed in a local tab; Tailcat peers; finding files in the explorer. Their toolbar buttons and menu commands are shown dimmed.
+Session restore; following an `ssh` typed in a local tab; Tailcat peers; finding files in the explorer. Their toolbar buttons and menu commands are shown dimmed.
 
 ## References
 

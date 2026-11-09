@@ -67,18 +67,21 @@ final class Workspace: WindowObject {
 
     /// Opens a tab as on the Mac: in the profile's start folder when it has one, else in the current tab's folder
     /// when that's a local shell and Settings asks for it, else in the home folder.
-    func newTab() {
-        let directory = newTabDirectory()
+    /// Opens a tab with `profile`, or the current tab's profile, as on the Mac.
+    func newTab(profile: Foundation.UUID? = nil) {
+        let chosen = profile ?? focusedPane?.profileID
+        let directory = newTabDirectory(chosen)
         if ParityScene.isActive {
-            addPane()?.start(commandLine: ParityScene.commandLine, directory: directory ?? ParityScene.home, environment: ParityScene.shellEnvironment)
+            addPane(profile: chosen)?.start(commandLine: ParityScene.commandLine, directory: directory ?? ParityScene.home,
+                                            environment: ParityScene.shellEnvironment)
         } else {
-            addPane()?.start(directory: directory)
+            addPane(profile: chosen)?.start(directory: directory)
         }
     }
 
-    private func newTabDirectory() -> String? {
+    private func newTabDirectory(_ chosen: Foundation.UUID?) -> String? {
         let profile = TerminalProfile.shared
-        let start = profile.settings(for: nil).startDirectory.trimmingCharacters(in: .whitespaces)
+        let start = profile.settings(for: chosen).startDirectory.trimmingCharacters(in: .whitespaces)
         var candidate: String?
         if !start.isEmpty {
             let home = ProcessInfo.processInfo.environment["USERPROFILE"] ?? ""
@@ -93,9 +96,9 @@ final class Workspace: WindowObject {
     }
 
     /// A shell's window, wired to this workspace; the caller places it and starts its process.
-    private func makePane() -> TerminalPane? {
+    private func makePane(profile: Foundation.UUID?) -> TerminalPane? {
         guard let hwnd else { return nil }
-        let pane = TerminalPane(parent: hwnd, settings: TerminalProfile.shared.settings(for: nil))
+        let pane = TerminalPane(parent: hwnd, profileID: profile)
         pane.onTitleChange = { [weak self] pane in
             // Administrator mode on a host ends with the tab's SSH session.
             if pane.remote != nil, !pane.isConnected { pane.explorer?.leaveAdministrator() }
@@ -108,8 +111,8 @@ final class Workspace: WindowObject {
     }
 
     /// A new, selected tab whose process the caller starts. It takes the lowest free number, as on the Mac.
-    private func addPane() -> TerminalPane? {
-        guard let pane = makePane() else { return nil }
+    private func addPane(profile: Foundation.UUID? = nil) -> TerminalPane? {
+        guard let pane = makePane(profile: profile ?? focusedPane?.profileID) else { return nil }
         let used = Set(tabs.map(\.number))
         pane.number = (1...).first { !used.contains($0) }!
         tabs.append(pane)
@@ -157,7 +160,7 @@ final class Workspace: WindowObject {
     /// Split Vertically (side by side) or Horizontally (stacked): a new shell beside the focused pane, in its folder
     /// when that's on this PC, as on the Mac.
     func split(_ axis: PaneNode.Axis) {
-        guard let head = activePane, !head.showingExplorer, let current = focusedPane, let pane = makePane() else { return }
+        guard let head = activePane, !head.showingExplorer, let current = focusedPane, let pane = makePane(profile: current.profileID) else { return }
         let group = head.group ?? PaneGroup(first: head)
         head.group = group
         group.split(current, axis, adding: pane)
@@ -621,7 +624,7 @@ final class Workspace: WindowObject {
     }
 
     private func zoom(_ step: Double) {
-        TerminalProfile.shared.update(nil) { settings in settings.zoom = step == 0 ? 0 : settings.zoom + step }
+        TerminalProfile.shared.update(focusedPane?.profileID) { settings in settings.zoom = step == 0 ? 0 : settings.zoom + step }
     }
 
     /// Export Session: everything in the terminal, scrollback included, to a text file named after the tab and time.
@@ -733,7 +736,7 @@ final class Workspace: WindowObject {
         guard FormDialog.ask(owner: hwnd, title: "Restore theming defaults for “\(TerminalProfile.shared.name(of: nil))”?",
                              message: "Font, size and zoom, cursor, color theme, transparency and appearance go back to the stock Basic look. Imported presets are kept.",
                              buttons: [.init(title: "Cancel"), .init(title: "Restore Defaults", isDefault: true)]) == 1 else { return }
-        TerminalProfile.shared.update(nil) { $0.restoreTheming() }
+        TerminalProfile.shared.update(focusedPane?.profileID) { $0.restoreTheming() }
         TerminalProfile.shared.appearance = "System"
     }
 
@@ -742,17 +745,27 @@ final class Workspace: WindowObject {
                                   filter: [("iTerm2 color presets (*.itermcolors)", "*.itermcolors")]) else { return }
         do {
             let name = try ThemeLibrary.shared.importFile(URL(fileURLWithPath: path))
-            TerminalProfile.shared.update(nil) { $0.theme = name }
+            TerminalProfile.shared.update(focusedPane?.profileID) { $0.theme = name }
         } catch {
             LoginVaultPrompts.show(error, owner: hwnd, heading: "Couldn't import that preset")
         }
     }
 
     func perform(_ id: UINT) {
-        if id >= MenuCommand.firstPreset {
+        if id >= MenuCommand.firstPreset, id < MenuCommand.firstNewTabProfile {
             let names = ThemeLibrary.shared.allNames
             let index = Int(id - MenuCommand.firstPreset)
-            if names.indices.contains(index) { TerminalProfile.shared.update(nil) { $0.theme = names[index] } }
+            if names.indices.contains(index) { TerminalProfile.shared.update(focusedPane?.profileID) { $0.theme = names[index] } }
+            return
+        }
+        let profiles = TerminalProfile.shared.profiles
+        if id >= MenuCommand.firstUseProfile, profiles.indices.contains(Int(id - MenuCommand.firstUseProfile)) {
+            focusedPane?.use(profile: profiles[Int(id - MenuCommand.firstUseProfile)].id)
+            refreshChrome()
+            return
+        }
+        if id >= MenuCommand.firstNewTabProfile, profiles.indices.contains(Int(id - MenuCommand.firstNewTabProfile)) {
+            newTab(profile: profiles[Int(id - MenuCommand.firstNewTabProfile)].id)
             return
         }
         if id >= MenuCommand.firstTab { select(Int(id - MenuCommand.firstTab)); return }
@@ -768,7 +781,7 @@ final class Workspace: WindowObject {
         case .schemeSystem: TerminalProfile.shared.appearance = "System"
         case .schemeLight: TerminalProfile.shared.appearance = "Light"
         case .schemeDark: TerminalProfile.shared.appearance = "Dark"
-        case .presetBasic: TerminalProfile.shared.update(nil) { $0.theme = "" }
+        case .presetBasic: TerminalProfile.shared.update(focusedPane?.profileID) { $0.theme = "" }
         case .importPreset: importPreset()
         case .restoreTheming: restoreTheming()
         case .exportSession: exportSession()
@@ -900,9 +913,8 @@ final class Workspace: WindowObject {
         guard let hwnd else { return }
         setDarkTitleBar(hwnd, appIsDark)
         DarkMenus.apply(dark: appIsDark)
-        let settings = TerminalProfile.shared.settings(for: nil)
         for pane in panes {
-            pane.apply(settings)
+            pane.apply(TerminalProfile.shared.settings(for: pane.profileID))
             pane.explorer?.applyTheme()
         }
         for editor in editors { editor.applyTheme() }
@@ -1231,8 +1243,7 @@ final class Workspace: WindowObject {
                 SetWindowPos(hwnd, nil, suggested.left, suggested.top, suggested.right - suggested.left,
                              suggested.bottom - suggested.top, UINT(SWP_NOZORDER | SWP_NOACTIVATE))
             }
-            let settings = TerminalProfile.shared.settings(for: nil)
-            for pane in panes { pane.apply(settings) }
+            for pane in panes { pane.apply(TerminalProfile.shared.settings(for: pane.profileID)) }
             for editor in editors { editor.applyTheme() }
             layout()
             return 0

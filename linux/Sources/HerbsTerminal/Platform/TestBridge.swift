@@ -71,6 +71,17 @@ enum TestBridge {
             guard number >= 1, number <= workspace.allPanes.count else { throw Failure(description: "no pane \(number)") }
             workspace.setIncluded(workspace.allPanes[number - 1], request["on"] as? Bool ?? true)
             return true
+        case "profile-add":
+            // A new named profile (a copy of the default), with a startup command when given; returns its id.
+            let profile = TerminalProfile.shared
+            let id = profile.addProfile(named: request["name"] as? String ?? "Profile")
+            if let command = request["startupCommand"] as? String { profile.update(id) { $0.startupCommand = command } }
+            return id.uuidString
+        case "profile-new-tab":
+            // New Tab with Profile.
+            guard let id = (request["profile"] as? String).flatMap(UUID.init(uuidString:)) else { throw Failure(description: "no profile id") }
+            try workspace.add(profile: id)
+            return true
         case "profile-set":
             // The profile the focused terminal uses; only what tests need.
             let value = request["value"] as? String ?? ""
@@ -205,7 +216,8 @@ enum TestBridge {
                             "panes": tab.panes.map { pane -> [String: Any] in
                                 ["number": (panes.firstIndex { $0 === pane } ?? -1) + 1, "focused": pane === tab.focused,
                                  "columns": pane.columns, "rows": pane.rows, "title": pane.title, "subtitle": pane.subtitle,
-                                 "exited": pane.exited, "text": pane.screenText, "fontSize": pane.settings.effectiveSize]
+                                 "exited": pane.exited, "text": pane.screenText, "fontSize": pane.settings.effectiveSize,
+                                 "profile": TerminalProfile.shared.name(of: pane.profileID)]
                             },
                         ]
                         entry["connection"] = bridgeConnection(tab.state.connection)
