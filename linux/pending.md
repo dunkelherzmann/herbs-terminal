@@ -3,7 +3,7 @@
 What the Linux version still needs before it can ship with as few bugs as possible: everything a feature test found broken or missing, and every feature no automatic test covers yet. Fix broken items first, one pull request each, and tick an item with its PR number once it is fixed and its test passes. `bugs.md` and `enhancements.md` stay the record of requests and releases.
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 05:51)
+## Feature test results (2026-11-09 06:03)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 

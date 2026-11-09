@@ -14,6 +14,9 @@ enum MenuCommand: UINT {
     case fullScreen, settings, manageLogins, about, quit
     case restoreDefaultSize, makeSizeDefault, closeTab, takeScreenshot
     case copy, paste, pasteEscaped, selectAll, showExplorer
+    // Ranges for the profile lists: New Tab with Profile and Use Profile.
+    static let firstNewTabProfile: UINT = 3000
+    static let firstUseProfile: UINT = 3500
     // Ranges for lists: tabs and color presets.
     static let firstTab: UINT = 1000
     static let firstPreset: UINT = 2000
@@ -63,7 +66,7 @@ enum MainMenu {
             item(sub, "Light", .schemeLight, checked: scheme == "Light")
             item(sub, "Dark", .schemeDark, checked: scheme == "Dark")
             divider(sub)
-            let theme = TerminalProfile.shared.settings(for: nil).theme
+            let theme = TerminalProfile.shared.settings(for: workspace.focusedPane?.profileID).theme
             item(sub, "macOS Terminal Basic", .presetBasic, checked: theme.isEmpty)
             for (index, name) in ThemeLibrary.shared.allNames.enumerated() {
                 item(sub, name, MenuCommand.firstPreset + UINT(index), checked: theme == name)
@@ -75,11 +78,17 @@ enum MainMenu {
         submenu(menu, "Shell") { sub in
             item(sub, "Export Session…\tCtrl+Shift+S", .exportSession, enabled: pane != nil)
             item(sub, "Take Screenshot\tCtrl+Alt+S", .takeScreenshot)
+            let current = workspace.focusedPane?.profileID ?? TerminalProfile.shared.defaultProfileID
             submenu(sub, "New Tab with Profile") { profiles in
-                for profile in TerminalProfile.shared.profiles { item(profiles, profile.name, MenuCommand.newTab.rawValue, enabled: false) }
+                for (index, profile) in TerminalProfile.shared.profiles.enumerated() {
+                    item(profiles, profile.name, MenuCommand.firstNewTabProfile + UINT(index))
+                }
             }
             submenu(sub, "Use Profile") { profiles in
-                for profile in TerminalProfile.shared.profiles { item(profiles, profile.name, MenuCommand.newTab.rawValue, enabled: false) }
+                for (index, profile) in TerminalProfile.shared.profiles.enumerated() {
+                    item(profiles, profile.name, MenuCommand.firstUseProfile + UINT(index), enabled: workspace.focusedPane != nil,
+                         checked: profile.id == current)
+                }
             }
             divider(sub)
             let terminal = pane != nil && pane?.showingExplorer == false

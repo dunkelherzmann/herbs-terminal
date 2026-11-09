@@ -1,8 +1,9 @@
 import Foundation
 import WinSDK
 
-/// Settings: the default profile's text, colors and shell, plus the app-wide window preferences. Every change
-/// applies at once to open terminals and is saved, as on the Mac and Linux.
+/// Settings: the named profiles (add, duplicate, rename, delete, the default, each one's startup command and start
+/// folder), the chosen profile's text, colors and scrollback, and the app-wide shell and window preferences. Every
+/// change applies at once to open terminals and is saved, as on the Mac and Linux.
 @MainActor
 final class SettingsWindow: WindowObject {
     static let className = "HerbsTerminalSettings"
@@ -15,8 +16,12 @@ final class SettingsWindow: WindowObject {
 
     private enum Control: Int32, CaseIterable {
         case font = 100, size, cursor, blink, theme, importTheme, appearance, shell, scrollback, columns, rows, askBeforeClosing,
-             restore, close, newTabs
+             restore, close, newTabs, profile, newProfile, duplicateProfile, renameProfile, deleteProfile, defaultProfile,
+             startupCommand, startDirectory
     }
+
+    /// The profile this page edits (Settings ▸ Profiles on the Mac).
+    private var editing: Foundation.UUID { TerminalProfile.shared.editingID }
 
     /// Opens Settings, or brings the open one to the front.
     static func show(owner: HWND?) {
@@ -38,7 +43,7 @@ final class SettingsWindow: WindowObject {
 
     private init(owner: HWND?) {
         let dpi = owner.map { GetDpiForWindow($0) } ?? 96
-        var rect = RECT(left: 0, top: 0, right: scaled(460, dpi: dpi), bottom: scaled(498, dpi: dpi))
+        var rect = RECT(left: 0, top: 0, right: scaled(460, dpi: dpi), bottom: scaled(660, dpi: dpi))
         let style = DWORD(WS_OVERLAPPED) | DWORD(WS_CAPTION) | DWORD(WS_SYSMENU) | DWORD(WS_MINIMIZEBOX)
         AdjustWindowRectExForDpi(&rect, style, false, 0, dpi)
         var x = CW_USEDEFAULT, y = CW_USEDEFAULT
@@ -90,6 +95,28 @@ final class SettingsWindow: WindowObject {
                                x: x, y: y, width: width, height: s(23), id: id)
         }
 
+        heading("Profile")
+        combo(.profile)
+        let buttons: [(Control, String, Double)] = [(.newProfile, "New", 56), (.duplicateProfile, "Duplicate", 76),
+                                                    (.renameProfile, "Rename…", 70), (.deleteProfile, "Delete…", 64)]
+        var x = fieldX
+        for (id, title, width) in buttons {
+            controls[id] = add("BUTTON", title, style: DWORD(BS_PUSHBUTTON) | DWORD(WS_TABSTOP), x: x, y: y - s(2), width: s(width), height: s(26), id: id)
+            x += s(width) + s(4)
+        }
+        y += rowHeight
+        controls[.defaultProfile] = add("BUTTON", "Use as Default", style: DWORD(BS_PUSHBUTTON) | DWORD(WS_TABSTOP),
+                                        x: fieldX, y: y - s(2), width: s(120), height: s(26), id: .defaultProfile)
+        y += rowHeight
+        label("Run command")
+        controls[.startupCommand] = add("EDIT", "", style: DWORD(ES_AUTOHSCROLL) | DWORD(WS_TABSTOP) | DWORD(WS_BORDER),
+                                        x: fieldX, y: y, width: fieldWidth, height: s(23), id: .startupCommand)
+        y += rowHeight
+        label("Start in")
+        controls[.startDirectory] = add("EDIT", "", style: DWORD(ES_AUTOHSCROLL) | DWORD(WS_TABSTOP) | DWORD(WS_BORDER),
+                                        x: fieldX, y: y, width: fieldWidth, height: s(23), id: .startDirectory)
+        y += rowHeight
+
         heading("Text")
         combo(.font)
         combo(.size, editable: true, width: s(90))
@@ -134,6 +161,7 @@ final class SettingsWindow: WindowObject {
     private static let labels: [Control: String] = [
         .font: "Font", .size: "Size", .cursor: "Cursor", .blink: "Blinking cursor", .appearance: "Appearance",
         .shell: "Shell", .newTabs: "New tabs open in", .askBeforeClosing: "Ask before closing a tab with running processes",
+        .profile: "Edit profile",
     ]
 
     @discardableResult
@@ -169,8 +197,16 @@ final class SettingsWindow: WindowObject {
         loading = true
         defer { loading = false }
         let profile = TerminalProfile.shared
-        let settings = profile.settings(for: nil)
+        let settings = profile.settings(for: editing)
 
+        // "(default)" marks the profile new windows use.
+        let names = profile.profiles.map { $0.name + ($0.id == profile.defaultProfileID ? " (default)" : "") }
+        let editingIndex = profile.profiles.firstIndex { $0.id == editing } ?? 0
+        fillCombo(.profile, names, selected: names[editingIndex])
+        EnableWindow(controls[.deleteProfile], profile.profiles.count > 1)
+        EnableWindow(controls[.defaultProfile], editing != profile.defaultProfileID)
+        setText(.startupCommand, settings.startupCommand)
+        setText(.startDirectory, settings.startDirectory)
         let families = FontSet.installedMonospacedFamilies()
         let family = settings.fontFamily.isEmpty ? FontSet.stockFamily : settings.fontFamily
         fillCombo(.font, families.contains(family) ? families : (families + [family]).sorted(), selected: family)
@@ -245,21 +281,21 @@ final class SettingsWindow: WindowObject {
         switch id {
         case .font:
             let family = selection(.font)
-            profile.update(nil) { $0.fontFamily = family == FontSet.stockFamily ? "" : family }
+            profile.update(editing) { $0.fontFamily = family == FontSet.stockFamily ? "" : family }
         case .size:
             let value = fromList ? selection(.size) : text(.size)
             if let size = Double(value.replacingOccurrences(of: ",", with: ".")) {
-                profile.update(nil) { $0.fontSize = size; $0.zoom = 0 }
+                profile.update(editing) { $0.fontSize = size; $0.zoom = 0 }
             }
         case .cursor:
             let title = selection(.cursor)
-            if let shape = Self.cursorShapes.first(where: { $0.title == title }) { profile.update(nil) { $0.cursor = shape } }
+            if let shape = Self.cursorShapes.first(where: { $0.title == title }) { profile.update(editing) { $0.cursor = shape } }
         case .blink:
             let on = isChecked(.blink)
-            profile.update(nil) { $0.cursorBlinks = on }
+            profile.update(editing) { $0.cursorBlinks = on }
         case .theme:
             let name = selection(.theme)
-            profile.update(nil) { $0.theme = name == Self.basicTheme ? "" : name }
+            profile.update(editing) { $0.theme = name == Self.basicTheme ? "" : name }
         case .appearance:
             profile.appearance = selection(.appearance)
             if let hwnd { DialogTheme.apply(to: hwnd) }
@@ -269,8 +305,8 @@ final class SettingsWindow: WindowObject {
             let value = fromList ? selection(.shell) : text(.shell)
             ShellChoice.current = ShellChoice.available.first { $0.title == value }?.commandLine ?? value
         case .scrollback:
-            if let lines = Int(text(.scrollback)) { profile.update(nil) { $0.scrollbackLines = lines } }
-            setText(.scrollback, String(profile.settings(for: nil).scrollbackLines))
+            if let lines = Int(text(.scrollback)) { profile.update(editing) { $0.scrollbackLines = lines } }
+            setText(.scrollback, String(profile.settings(for: editing).scrollbackLines))
         case .columns, .rows:
             let range = id == .columns ? TerminalProfile.gridRange.columns : TerminalProfile.gridRange.rows
             guard let value = Int(text(id)) else { return }
@@ -282,11 +318,44 @@ final class SettingsWindow: WindowObject {
         case .importTheme:
             importTheme()
         case .restore:
-            profile.update(nil) { $0.restoreTheming() }
+            profile.update(editing) { $0.restoreTheming() }
             profile.appearance = "System"
             load()
         case .close:
             if let hwnd { DestroyWindow(hwnd) }
+        case .profile:
+            let index = Int(SendMessageW(controls[.profile], UINT(CB_GETCURSEL), 0, 0))
+            if profile.profiles.indices.contains(index) { profile.editingID = profile.profiles[index].id }
+            load()
+        case .startupCommand:
+            let value = text(.startupCommand)
+            profile.update(editing) { $0.startupCommand = value }
+        case .startDirectory:
+            let value = text(.startDirectory)
+            profile.update(editing) { $0.startDirectory = value }
+        case .newProfile, .duplicateProfile:
+            let id = profile.addProfile(named: id == .newProfile ? "New Profile" : profile.name(of: editing),
+                                        copying: id == .duplicateProfile ? editing : nil)
+            profile.editingID = id
+            load()
+        case .renameProfile:
+            guard let answer = FormDialog.run(owner: hwnd, title: "Rename Profile", message: "A name for the profile “\(profile.name(of: editing))”.",
+                                              fields: [.init(label: "Name", text: profile.name(of: editing))],
+                                              buttons: [.init(title: "Cancel"), .init(title: "Rename", isDefault: true)]),
+                  answer.button == 1 else { return }
+            let name = answer.values[0].trimmingCharacters(in: .whitespaces)
+            if !name.isEmpty { profile.rename(editing, to: name) }
+            load()
+        case .deleteProfile:
+            guard profile.profiles.count > 1,
+                  FormDialog.ask(owner: hwnd, title: "Delete the profile “\(profile.name(of: editing))”?",
+                                 message: "Tabs using it switch to the default profile. This can't be undone.",
+                                 buttons: [.init(title: "Cancel", isDefault: true), .init(title: "Delete")]) == 1 else { return }
+            profile.removeProfile(editing)
+            load()
+        case .defaultProfile:
+            profile.defaultProfileID = editing
+            load()
         }
     }
 
@@ -295,7 +364,7 @@ final class SettingsWindow: WindowObject {
                                   filter: [("iTerm2 color presets (*.itermcolors)", "*.itermcolors")]) else { return }
         do {
             let name = try ThemeLibrary.shared.importFile(URL(fileURLWithPath: path))
-            TerminalProfile.shared.update(nil) { $0.theme = name }
+            TerminalProfile.shared.update(editing) { $0.theme = name }
             load()
         } catch {
             FormDialog.tell(owner: hwnd, title: "Couldn't import that preset", message: error.localizedDescription)
@@ -313,7 +382,8 @@ final class SettingsWindow: WindowObject {
             guard let id = Control(rawValue: rawID) else { return nil }
             switch code {
             case CBN_SELCHANGE: commit(id, fromList: true)
-            case BN_CLICKED where [.blink, .askBeforeClosing, .importTheme, .restore, .close].contains(id): commit(id)
+            case BN_CLICKED where [.blink, .askBeforeClosing, .importTheme, .restore, .close, .newProfile, .duplicateProfile,
+                                   .renameProfile, .deleteProfile, .defaultProfile].contains(id): commit(id)
             case CBN_KILLFOCUS where id == .size || id == .shell: commit(id)
             case EN_KILLFOCUS: commit(id)
             default: break

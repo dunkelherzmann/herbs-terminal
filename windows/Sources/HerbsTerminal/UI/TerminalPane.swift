@@ -54,6 +54,20 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     var onTitleChange: ((TerminalPane) -> Void)?
     var onExit: ((TerminalPane) -> Void)?
 
+    /// The pane's named profile; nil is the default profile, whichever that is.
+    private(set) var profileID: Foundation.UUID?
+
+    /// Use Profile: the pane takes another profile's look and settings at once.
+    func use(profile id: Foundation.UUID?) {
+        profileID = id
+        apply(TerminalProfile.shared.settings(for: id))
+    }
+
+    convenience init(parent: HWND, profileID: Foundation.UUID?) {
+        self.init(parent: parent, settings: TerminalProfile.shared.settings(for: profileID))
+        self.profileID = profileID
+    }
+
     init(parent: HWND, settings: ProfileSettings) {
         var options = TerminalOptions(cols: 80, rows: 24)
         options.scrollback = settings.scrollbackLines
@@ -430,7 +444,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         case WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, WM_CTLCOLORBTN:
             return DialogTheme.colors(message, wParam)
         case WM_DPICHANGED_AFTERPARENT:
-            apply(TerminalProfile.shared.settings(for: nil))
+            apply(TerminalProfile.shared.settings(for: profileID))
             return 0
         case WM_GETDLGCODE:
             return LRESULT(DLGC_WANTALLKEYS | DLGC_WANTCHARS | DLGC_WANTTAB | DLGC_WANTARROWS)
@@ -1051,7 +1065,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
 
     nonisolated func bell(source: Terminal) {
         MainActor.assumeIsolated {
-            switch TerminalProfile.shared.settings(for: nil).bell {
+            switch TerminalProfile.shared.settings(for: profileID).bell {
             case .audible, .both: MessageBeep(UINT(MB_OK))
             case .visual, .none: break
             }

@@ -34,7 +34,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] **9. MultiExec** (§7) (#56): every terminal in a grid, typing into all of them, include / leave out.
 - [x] **10. Run Command on Hosts** (§7) (#57).
 - [x] **11. Find in Terminal** (§2), the terminal's right-click menu, Paste Escaped Text (#58).
-- [ ] **12. Named profiles** (§3): New Tab with Profile, Use Profile, editing profiles in Settings.
+- [x] **12. Named profiles** (§3) (#59): New Tab with Profile, Use Profile, editing profiles in Settings.
 - [ ] **13. Session restore** (§2) and the size badge while resizing.
 - [ ] **14. Following an `ssh` typed in a local tab** (§4), and the explorer following that host. SSH sessions run inside the local shell, so Disconnect returns the tab to it (feature test S4).
 - [ ] **15. Tailcat peers** (§8): pairing, sharing, connecting through Tailcat, the Lock / Unlock button.
@@ -52,7 +52,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 05:51)
+## Feature test results (2026-11-09 06:05)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
@@ -62,13 +62,11 @@ A test ran and the feature didn't do what the Mac version does.
 
 - [ ] **S4** Exit or Disconnect returns the tab, title and explorer to this computer. (§4): Disconnect returns the tab and title to this computer: expected the tab back on this computer (saw: 1 window(s), tabs ['Terminal 1', 'Terminal 2'], 1 pane(s), title 'herbs-test@192.168.1.241' '', dialogs [], last lines…
 
-### Missing (7)
+### Missing (5)
 
 The command isn't there, or it's greyed out.
 
 - [ ] **W10** Tailcat Peers button. (§2): Tailcat Peers: no `tailcat` command
-- [ ] **M1** Shell menu: New Tab, Export Session, Take Screenshot, New Tab with Profile, Use Profile. (§2): Menu commands: new-tab, export-session, take-screenshot, new-tab-profile, use-profile: `new-tab-profile` is greyed out
-- [ ] **R1** Named profiles; each tab uses one; new tabs keep the current tab's profile. (§3): Named profiles: `new-tab-profile` is greyed out
 - [ ] **E6** File Actions menu: Upload, Download, Undo, Redo, Cut, Copy, Paste, Delete, Select All, Find. (§5): File Actions commands: `explorer.find` is not there
 - [ ] **E13** New Folder, New File (free "untitled" name), Rename; undoable locally, rename undoable on a host. (§5): New Folder and Rename: no `explorer.rename` command
 - [ ] **E14** Search files (Find). (§5): Find files: `explorer.find` is not there
