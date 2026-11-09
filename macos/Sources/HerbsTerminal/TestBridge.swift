@@ -372,7 +372,8 @@ enum TestBridge {
             },
             "dialogs": openAlerts().map {
                 ["heading": $0.heading, "responses": $0.buttons.map(\.title), "fields": $0.fields.count,
-                 "default": $0.buttons.first { $0.keyEquivalent == "\r" }?.title ?? NSNull()] as [String: Any]
+                 "default": $0.buttons.first { $0.keyEquivalent == "\r" }?.title ?? NSNull(),
+                 "keys": $0.buttons.map { $0.keyEquivalent.unicodeScalars.map { String($0.value) }.joined(separator: ",") }] as [String: Any]
             },
             "toplevels": toplevels,
             "profiles": profile.profiles.map(\.name),

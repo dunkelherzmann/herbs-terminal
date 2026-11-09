@@ -1889,9 +1889,10 @@ def _(c):
     s = c.until(lambda s: s.get("dialogs"), "expected a question before the login is deleted")
     dialog = s["dialogs"][0]
     responses = dialog["responses"]
-    # The default button where the bridge reports it, otherwise the first one (the order they were added in).
-    default = dialog.get("default") or responses[0]
-    c.expect(default.lower() == "cancel", f"expected Cancel as the default, saw {default!r} of {responses}")
+    # Return must never delete: the default is Cancel, or (macOS with a destructive button) there is no default.
+    # Bridges that don't report the default list the buttons in the order they were added, the default first.
+    default = dialog["default"] if "default" in dialog else responses[0]
+    c.expect(default is None or default.lower() == "cancel", f"expected Cancel (or nothing) as the default, saw {default!r} of {responses}")
     c.answer(next(r for r in responses if r.lower() == "cancel"))
     c.expect(any(r["host"] == "del.example" for r in logins(c)["rows"]), "expected Cancel to keep the login")
     logins(c, "delete", index)
