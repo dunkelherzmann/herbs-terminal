@@ -42,7 +42,11 @@ enum TestBridge {
             FileManager.default.createFile(atPath: temporary, contents: out)
             _ = rename(temporary, folder + "/response.json")
         }
+        // Exit here, once answered: a block queued on the main queue can wait for input while an alert is up.
+        if quitting { exit(0) }
     }
+
+    private static var quitting = false
 
     struct Failure: Error, CustomStringConvertible { let description: String }
 
@@ -100,7 +104,7 @@ enum TestBridge {
             try workspace.selected.focusedShell.view.drop(paths: request["paths"] as? [String] ?? [])
             return true
         case "quit":
-            DispatchQueue.main.async { exit(0) }
+            quitting = true
             return true
         default: throw Failure(description: "unknown op")
         }
