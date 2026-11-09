@@ -388,7 +388,7 @@ final class WindowChrome {
         case .maximize: 11
         case .close: 12
         case .screenshot: 13
-        case .passwords: 14
+        case .passwords: 15 // 14 is the subtitle's (ChromeAccessibility.subtitleTag).
         case .tab(let index): UINT_PTR(100 + index)
         case .tabClose(let index): UINT_PTR(1000 + index)
         }

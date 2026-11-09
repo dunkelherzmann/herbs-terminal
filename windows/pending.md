@@ -56,11 +56,18 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 16:14)
+## Feature test results (2026-11-09 16:40)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Not checked automatically (46)
+### Broken (2)
+
+A test ran and the feature didn't do what the Mac version does.
+
+- [ ] **Y1** Every control has a screen-reader name and hover hint (hint without repeating the name). (§9): Every drawn control has a name, and buttons a hover text: subprocess.TimeoutExpired: Command '['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',…
+- [ ] **Y2** Selected tab announced (and bold); toggles announce on/off; MultiExec checkboxes named. (§9): The selected tab and toggle buttons report their state: subprocess.TimeoutExpired: Command '['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',…
+
+### Not checked automatically (44)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -97,8 +104,6 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **L3** Change the Administrator Password re-encrypts everything; removing it asks. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L4** Plain text needs an explicit choice and a second confirmation. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L7** Opening asks for the Administrator Password; Skip shows plain-text logins with an unlock bar. (§6): needs the logins locked at start, which takes a second launch of the same test copy
-- [ ] **L12** Saved Passwords: a lock next to Connect via SSH lists saved passwords by name; choosing one types… (§6): no test yet
-- [ ] **L13** Manage Passwords: Name, Password and Description; New, Edit and Delete; a vault of its own under… (§6): no test yet
 - [ ] **C3** Connect: shell and explorer through Tailcat, address never in arguments or history. (§8): needs the test host shared over tailcat (~/.config/herbs-terminal/test-tailcat holds its address)
 - [ ] **C4** Clear message when nothing answers SSH on the peer. (§8): needs a peer whose SSH service is off
 - [ ] **C7** Unlock… / Lock… button with the vault states. (§8): the Tailcat window isn't driven by the bridge yet
