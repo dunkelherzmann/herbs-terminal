@@ -10,6 +10,8 @@ Tests registered with `manual` don't start the app.
 import os
 import time
 
+import bridge as bridge_module
+
 TESTS = {}      # feature id -> list of (title, function or reason)
 
 
@@ -1134,7 +1136,30 @@ def _(c):
 def _(c):
     c.command("run-on-hosts", settle=1.5)
     c.until(lambda s: has_window(s, "Run Command") or has_window(s, "Hosts"), "expected the Run Command on Hosts window")
-manual("U7", "Run Command results", NEEDS_SSH)
+@test("U7", "Run Command on Hosts runs on the host and reports the result")
+def _(c):
+    account, s = connect_test_host(c)
+    expect_connected(c, account, s)
+    c.command("run-on-hosts", settle=1.5)
+    try:
+        state = c.bridge.call("hosts-state")
+    except bridge_module.BridgeError as error:
+        if "unknown op" in str(error):
+            c.unverified("this platform's test bridge can't drive Run Command on Hosts yet")
+        raise
+    host = next((h for h in state["hosts"] if h.startswith(account["user"] + "@")), None)
+    c.expect(host is not None, f"the tab's connection isn't offered as a host: {state['hosts']}")
+    c.bridge.call("hosts-run", hosts=[host], command="echo RAN-ON-$(hostname); exit 3")
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        state = c.bridge.call("hosts-state")
+        if not state["running"] and state["results"]:
+            break
+        time.sleep(0.5)
+    result = next((r for r in state["results"] if r["host"] == host), None)
+    c.expect(result is not None, f"no result for {host}: {state}")
+    c.expect("RAN-ON-" in result["output"], f"expected the command's output, saw {result['output']!r}")
+    c.expect(result["summary"].startswith("exit 3"), f"expected exit 3 reported, saw {result['summary']!r}")
 
 # ---------------------------------------------------------------- C, Y, Z
 

@@ -32,7 +32,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] **8. Split panes** (§2) (#55): Split Vertically / Horizontally, Close Pane, Next / Previous Pane, the focused
       pane outline.
 - [x] **9. MultiExec** (§7) (#56): every terminal in a grid, typing into all of them, include / leave out.
-- [ ] **10. Run Command on Hosts** (§7).
+- [x] **10. Run Command on Hosts** (§7) (#57).
 - [ ] **11. Find in Terminal** (§2), the terminal's right-click menu, Paste Escaped Text.
 - [ ] **12. Named profiles** (§3): New Tab with Profile, Use Profile, editing profiles in Settings.
 - [ ] **13. Session restore** (§2) and the size badge while resizing.
@@ -52,7 +52,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 04:59)
+## Feature test results (2026-11-09 05:26)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
@@ -62,7 +62,7 @@ A test ran and the feature didn't do what the Mac version does.
 
 - [ ] **S4** Exit or Disconnect returns the tab, title and explorer to this computer. (§4): Disconnect returns the tab and title to this computer: expected the tab back on this computer (saw: 1 window(s), tabs ['Terminal 1', 'Terminal 2'], 1 pane(s), title 'herbs-test@192.168.1.241' '', dialogs [], last lines…
 
-### Missing (17)
+### Missing (15)
 
 The command isn't there, or it's greyed out.
 
@@ -76,15 +76,13 @@ The command isn't there, or it's greyed out.
 - [ ] **B8** Find in Terminal (scrollback search). (§2): Find in Terminal: `find-in-terminal` is greyed out
 - [ ] **B9** Copy and paste; Paste Escaped Text. (§2): Copy, Paste and Paste Escaped Text: `paste-escaped` is not there
 - [ ] **M1** Shell menu: New Tab, Export Session, Take Screenshot, New Tab with Profile, Use Profile. (§2): Menu commands: new-tab, export-session, take-screenshot, new-tab-profile, use-profile: `new-tab-profile` is greyed out
-- [ ] **M3** Shell menu: MultiExec, Run Command on Hosts…. (§2): Menu commands: multiexec, run-on-hosts: `run-on-hosts` is greyed out
 - [ ] **R1** Named profiles; each tab uses one; new tabs keep the current tab's profile. (§3): Named profiles: `new-tab-profile` is greyed out
 - [ ] **E6** File Actions menu: Upload, Download, Undo, Redo, Cut, Copy, Paste, Delete, Select All, Find. (§5): File Actions commands: `explorer.find` is not there
 - [ ] **E13** New Folder, New File (free "untitled" name), Rename; undoable locally, rename undoable on a host. (§5): New Folder and Rename: no `explorer.rename` command
 - [ ] **E14** Search files (Find). (§5): Find files: `explorer.find` is not there
-- [ ] **U6** Run Command on Hosts: targets are selected saved logins and the live connection, own ssh channel… (§7): Run Command on Hosts window: `run-on-hosts` is greyed out
 - [ ] **C1** Add a peer: name, username, secret address, One-time or Persistent; addresses protected like logins. (§8): Tailcat Peers: add a peer: no `tailcat` command
 
-### Not checked automatically (74)
+### Not checked automatically (73)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -145,7 +143,6 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **L9** Import (CSV, all-or-nothing). (§6): the Manage Logins window isn't driven by the bridge yet
 - [ ] **L10** Export ticked logins (checkbox column with select-all heading), file readable only by you,… (§6): the Manage Logins window isn't driven by the bridge yet
 - [ ] **L11** Double-click edits; Delete key or right-click removes after a confirmation defaulting to Cancel. (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **U7** Results per host: outcome, exit code, duration, output (64 KB cap, marked truncated). (§7): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **C2** Ping: Direct or Relayed with latency. (§8): needs a second machine running tailcat
 - [ ] **C3** Connect: shell and explorer through Tailcat, address never in arguments or history. (§8): needs a second machine running tailcat
 - [ ] **C4** Clear message when nothing answers SSH on the peer. (§8): needs a second machine running tailcat

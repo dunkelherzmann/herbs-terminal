@@ -9,6 +9,43 @@ final class HoverHints {
     private var ids: [UINT_PTR] = []
     private var signature = ""
 
+    /// The hint of a child control (a button, checkbox or field): the control itself gets the mouse, so a hint on
+    /// the window's rectangle under it would never show.
+    func set(_ control: HWND?, _ text: String, owner: HWND) {
+        guard let control else { return }
+        makeTooltip(owner)
+        var units = text.wide
+        units.withUnsafeMutableBufferPointer { pointer in
+            var info = TTTOOLINFOW()
+            info.cbSize = UINT(MemoryLayout<TTTOOLINFOW>.size)
+            info.uFlags = UINT(TTF_IDISHWND | TTF_SUBCLASS)
+            info.hwnd = owner
+            info.uId = UINT_PTR(UInt(bitPattern: Int(bitPattern: UnsafeRawPointer(control))))
+            info.lpszText = pointer.baseAddress
+            // Adding a control again replaces nothing, so its text is updated instead.
+            if controls.contains(info.uId) {
+                _ = withUnsafeMutablePointer(to: &info) { SendMessageW(tooltip, UINT(TTM_UPDATETIPTEXTW), 0, LPARAM(Int(bitPattern: $0))) }
+            } else {
+                _ = withUnsafeMutablePointer(to: &info) { SendMessageW(tooltip, UINT(TTM_ADDTOOLW), 0, LPARAM(Int(bitPattern: $0))) }
+                controls.insert(info.uId)
+            }
+        }
+    }
+
+    private var controls = Set<UINT_PTR>()
+
+    private func makeTooltip(_ owner: HWND) {
+        guard tooltip == nil else { return }
+        tooltip = withWide("tooltips_class32") {
+            CreateWindowExW(DWORD(WS_EX_TOPMOST), $0, nil, DWORD(WS_POPUP) | DWORD(TTS_ALWAYSTIP) | DWORD(TTS_NOPREFIX),
+                            CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, owner, nil, GetModuleHandleW(nil), nil)
+        }
+        SendMessageW(tooltip, UINT(TTM_SETMAXTIPWIDTH), 0, LPARAM(scaled(340, dpi: GetDpiForWindow(owner))))
+        SendMessageW(tooltip, UINT(TTM_SETDELAYTIME), WPARAM(TTDT_INITIAL), 500)
+        SendMessageW(tooltip, UINT(TTM_SETDELAYTIME), WPARAM(TTDT_AUTOPOP), 12_000)
+        if appIsDark { withWide("DarkMode_Explorer") { _ = SetWindowTheme(tooltip, $0, nil) } }
+    }
+
     /// Replaces the hints of `owner` with `entries`; nothing is redone while they haven't changed.
     func update(owner: HWND, _ entries: [(id: UINT_PTR, rect: RECT, text: String)]) {
         if tooltip == nil {
@@ -51,6 +88,7 @@ final class HoverHints {
     func release() {
         if let tooltip { DestroyWindow(tooltip) }
         tooltip = nil
+        controls = []
     }
 }
 
