@@ -75,6 +75,23 @@ enum TestBridge {
             guard let explorer = try workspace.selected.state.explorerBridge else { return "unsupported" }
             explorer.select(request["names"] as? [String] ?? [])
             return explorer.selected()
+        case "hosts-state":
+            // Run Command on Hosts: the hosts it offers, what's ticked, and each host's result.
+            let workspace = try workspace
+            guard workspace.panel == .multiHost else { throw Failure(description: "the Run Command on Hosts window isn't open") }
+            let model = workspace.multiHost
+            return ["hosts": workspace.hostTargets.map(\.id), "selected": Array(model.selected), "running": model.running,
+                    "results": model.results.map { ["host": $0.id, "summary": MultiHostView.summary($0), "output": $0.output] as [String: Any] }]
+        case "hosts-run":
+            // Ticks hosts, sets the command and presses Run, as the controls would.
+            let workspace = try workspace
+            guard workspace.panel == .multiHost else { throw Failure(description: "the Run Command on Hosts window isn't open") }
+            let model = workspace.multiHost, hosts = Set(request["hosts"] as? [String] ?? [])
+            model.selected = hosts
+            model.command = request["command"] as? String ?? ""
+            let chosen = workspace.hostTargets.filter { hosts.contains($0.id) }
+            Task { await model.run(chosen) }
+            return true
         case "session-snapshot":
             // Every window as session restore would save it (the test copy never writes it).
             return try JSONSerialization.jsonObject(with: try JSONEncoder().encode(SessionRestore.snapshot(Workspace.all)))

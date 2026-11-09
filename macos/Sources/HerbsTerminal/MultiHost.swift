@@ -209,7 +209,7 @@ struct MultiHostView: View {
                 case .cancelled: Image(systemName: "stop.circle.fill").foregroundStyle(.secondary)
                 }
                 Text(result.target.endpoint.label).font(.callout.weight(.semibold))
-                Text(summary(result)).font(.caption).foregroundStyle(.secondary)
+                Text(Self.summary(result)).font(.caption).foregroundStyle(.secondary)
             }
             if !result.output.isEmpty {
                 Text(result.output).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
@@ -219,7 +219,7 @@ struct MultiHostView: View {
         }
     }
 
-    private func summary(_ result: HostResult) -> String {
+    static func summary(_ result: HostResult) -> String {
         let time = String(format: "%.1fs", result.seconds)
         switch result.outcome {
         case .running: return "running…"
