@@ -7,15 +7,9 @@ What the Linux version still needs before it can ship with as few bugs as possib
 - [x] **Main Menu matches the Mac's in-window menus** (#70). It holds the same menus, submenus, order and shortcuts (Edit, Shell and Window included), and no command is reachable only somewhere else; W19 checks it. (§2, §14, enhancements.md) *Asked 2026-11-09.*
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 21:17)
+## Feature test results (2026-11-09 21:19)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
-
-### Broken (1)
-
-A test ran and the feature didn't do what the Mac version does.
-
-- [ ] **U7** Results per host: outcome, exit code, duration, output (64 KB cap, marked truncated). (§7): Run Command on Hosts runs on the host and reports the result: expected the command's output, saw ''
 
 ### Not checked automatically (49)
 

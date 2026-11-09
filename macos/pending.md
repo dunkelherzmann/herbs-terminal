@@ -7,15 +7,9 @@ What the Mac version still needs before it can ship with as few bugs as possible
 - [x] **Every menu in the window, none in the macOS menu bar.** (#67) All menus and submenus (Shell, Edit, View, Window, Help and the rest) move into the Main Menu in the window, as on Linux and Windows, so nothing needs a trip to the top of a wide screen. The macOS menu bar keeps only the app menu macOS always shows. Every shortcut keeps working, Undo, Cut, Copy, Paste and Select All in text fields included, and every item keeps its hover text and VoiceOver label. Describe the new menu in `SPECIFICATION.md` in the same PR. (§2, enhancements.md) *Asked 2026-11-09.*
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 21:15)
+## Feature test results (2026-11-09 21:20)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
-
-### Broken (1)
-
-A test ran and the feature didn't do what the Mac version does.
-
-- [ ] **E1** Places: Home, the user folders, Computer, Trash, mounted devices; on a host Home and File System. (§5): Places on this computer: Home, the user folders, the whole disk and Trash: the app didn't start: the app didn't start its test bridge
 
 ### Not checked automatically (49)
 
