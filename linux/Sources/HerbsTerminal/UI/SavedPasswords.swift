@@ -11,15 +11,15 @@ enum SavedPasswordsMenu {
     static func entries(_ store: CredentialStore) -> [(title: String, help: String, action: String)] {
         var entries: [(String, String, String)] = []
         if store.isLocked {
-            entries.append(("Unlock…", "Unlock\nEnter the Administrator Password to use your saved passwords.", "unlock"))
+            entries.append(("Unlock…", "Unlock\nEnter the Administrator Password to use your snippets.", "unlock"))
         } else if store.passwords.isEmpty {
-            entries.append(("No Saved Passwords", "", ""))
+            entries.append(("No Snippets", "", ""))
         } else {
             for saved in store.passwords {
-                entries.append((saved.name, saved.description.isEmpty ? "Type this password into the terminal." : saved.description, saved.id))
+                entries.append((saved.name, saved.description.isEmpty ? "Type this snippet into the terminal." : saved.description, saved.id))
             }
         }
-        entries.append(("Manage Passwords…", "Manage Passwords\nAdd, change or remove saved passwords.", "manage"))
+        entries.append(("Manage Snippets…", "Manage Snippets\nAdd, change or remove snippets.", "manage"))
         return entries
     }
 
@@ -85,7 +85,7 @@ final class ManagePasswordsWindow {
         Task {
             if store.isLocked {
                 await LoginVaultPrompts.unlock(store, parent: parent, cancelTitle: "Skip",
-                                               detail: "Enter the Administrator Password to see your saved passwords.")
+                                               detail: "Enter the Administrator Password to see your snippets.")
             }
             let window = ManagePasswordsWindow(store: store, parent: parent)
             window.window.owner = window
@@ -96,7 +96,7 @@ final class ManagePasswordsWindow {
 
     private init(store: CredentialStore, parent: Widget?) {
         self.store = store
-        window = ToolWindow(title: "Manage Passwords", width: 620, height: 360, resizable: true, parent: parent)
+        window = ToolWindow(title: "Manage Snippets", width: 620, height: 360, resizable: true, parent: parent)
         list = gtk_list_box_new()!
         gtk_list_box_set_selection_mode(c(list), GTK_SELECTION_SINGLE)
         gtk_list_box_set_activate_on_single_click(c(list), 0)
@@ -126,13 +126,13 @@ final class ManagePasswordsWindow {
     private func build() {
         let bar = box(.horizontal, spacing: 2, classes: ["toolbar-strip"])
         append(bar,
-               barButton(gtk_button_new()!, "New", "list-add-symbolic", "New Password\nSave a name, a password and a description.") { [weak self] in self?.edit(nil) },
-               barButton(editButton, "Edit", "document-edit-symbolic", "Edit Password\nChange the selected password.") { [weak self] in self?.edit(self?.selected) },
-               barButton(deleteButton, "Delete", "user-trash-symbolic", "Delete Password\nRemove the selected password, after asking.") { [weak self] in
+               barButton(gtk_button_new()!, "New", "list-add-symbolic", "New Snippet\nSave a name, a snippet and a description.") { [weak self] in self?.edit(nil) },
+               barButton(editButton, "Edit", "document-edit-symbolic", "Edit Snippet\nChange the selected snippet.") { [weak self] in self?.edit(self?.selected) },
+               barButton(deleteButton, "Delete", "user-trash-symbolic", "Delete Snippet\nRemove the selected snippet, after asking.") { [weak self] in
                    if let selected = self?.selected { self?.delete(selected) }
                })
         let header = box(.horizontal, spacing: 8, classes: ["login-header"])
-        append(header, column("Name", width: 150), column("Description", expand: true), column("Password", width: 90), column("Stored", width: 100))
+        append(header, column("Name", width: 150), column("Description", expand: true), column("Snippets", width: 90), column("Stored", width: 100))
         let stack = gtk_overlay_new()!
         gtk_overlay_set_child(c(stack), scrolled(list))
         gtk_widget_set_halign(empty, GTK_ALIGN_CENTER)
@@ -158,7 +158,7 @@ final class ManagePasswordsWindow {
                 append(items, button("Edit…", classes: ["flat"]) { [weak self] in gtk_popover_popdown(c(menu)); self?.edit(saved) },
                        button("Delete…", classes: ["flat"]) { [weak self] in gtk_popover_popdown(c(menu)); self?.delete(saved) })
             } else {
-                append(items, button("New Password…", classes: ["flat"]) { [weak self] in gtk_popover_popdown(c(menu)); self?.edit(nil) })
+                append(items, button("New Snippet…", classes: ["flat"]) { [weak self] in gtk_popover_popdown(c(menu)); self?.edit(nil) })
             }
             gtk_popover_set_child(c(menu), items)
             gtk_widget_set_parent(menu, self.list)
@@ -186,11 +186,11 @@ final class ManagePasswordsWindow {
         removeChildren(banners)
         if store.isLocked {
             let count = store.lockedPasswordCount
-            let unlock = button("Unlock…", classes: ["flat"], hint: "Unlock\nEnter the Administrator Password to see and use your saved passwords.") { [weak self] in
+            let unlock = button("Unlock…", classes: ["flat"], hint: "Unlock\nEnter the Administrator Password to see and use your snippets.") { [weak self] in
                 guard let self else { return }
                 Task { await LoginVaultPrompts.unlock(self.store, parent: self.window.window) }
             }
-            let message = label("\(count) saved password\(count == 1 ? " is" : "s are") hidden until you enter the Administrator Password.", wrap: true)
+            let message = label("\(count) snippet\(count == 1 ? " is" : "s are") hidden until you enter the Administrator Password.", wrap: true)
             gtk_widget_set_hexpand(message, 1)
             append(banners, box(.horizontal, spacing: 8, [image("changes-prevent-symbolic", classes: ["warning"]), message, unlock], classes: ["banner-warn"]))
         }
@@ -206,7 +206,7 @@ final class ManagePasswordsWindow {
             margins(row, top: 4, bottom: 4, start: 10, end: 10)
             gtk_list_box_append(c(list), row)
         }
-        setLabel(empty, shown.isEmpty ? (store.isLocked ? "Unlock to see your saved passwords." : "No saved passwords. Click New to add one.") : "")
+        setLabel(empty, shown.isEmpty ? (store.isLocked ? "Unlock to see your snippets." : "No snippets. Click New to add one.") : "")
         updateButtons()
     }
 
@@ -228,7 +228,7 @@ final class ManagePasswordsWindow {
     private func delete(_ saved: SavedPassword) {
         Task {
             // Cancel is the default, so Return or a stray click never deletes.
-            let answer = await Dialogs.ask(window.window, "Delete the saved password “\(saved.name)”?", "It's removed from Herb's Terminal. This can't be undone.",
+            let answer = await Dialogs.ask(window.window, "Delete the snippet “\(saved.name)”?", "It's removed from Herb's Terminal. This can't be undone.",
                                            choices: [.init("cancel", "Cancel"), .init("delete", "Delete", .destructive)], cancel: "cancel")
             guard answer == "delete" else { return }
             do { try store.deletePassword(id: saved.id) } catch { await Dialogs.show(window.window, error) }
@@ -268,7 +268,7 @@ enum PasswordEditor {
         while true {
             let content = box(.vertical, spacing: 10)
             var fields: [Widget] = []
-            for (index, title) in ["Name", "Password", "Description"].enumerated() {
+            for (index, title) in ["Name", "Snippets", "Description"].enumerated() {
                 let field = entry(placeholder: index == 2 ? "Optional" : "", text: values[index], password: index == 1)
                 accessibleLabel(field, title)
                 herb_set_bool(raw(field), "activates-default", 1)
@@ -281,7 +281,7 @@ enum PasswordEditor {
             if let message { append(content, label(message, classes: ["caption", "error-text"], wrap: true)) }
             after(milliseconds: 80) { gtk_widget_grab_focus(fields[0]) }
             Dialogs.fieldsForNextAsk(fields)
-            let answer = await Dialogs.ask(parent, original == nil ? "New Password" : "Edit Password",
+            let answer = await Dialogs.ask(parent, original == nil ? "New Snippet" : "Edit Snippet",
                                            choices: [.init("cancel", "Cancel"), .init("save", "Save", .suggested)], defaultID: "save", cancel: "cancel",
                                            extra: content, collect: { values = fields.map { text(of: $0) } })
             guard answer == "save" else { return }

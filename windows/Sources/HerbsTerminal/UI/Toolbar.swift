@@ -300,7 +300,7 @@ final class WindowChrome {
                 return "Connected to \(label)\nShow connection details, disconnect, or open a new connection (Ctrl+Shift+K)."
             }
             return "Connect via SSH (Ctrl+Shift+K)\nOpen a remote shell with a saved or new login; the explorer follows that host."
-        case .passwords: return "Saved Passwords\nType a saved password, such as a sudo password, into the terminal."
+        case .passwords: return "Snippets\nType a saved snippet, such as a command or a sudo password, into the terminal."
         case .export: return "Export Session (Ctrl+Shift+S)\nSave everything in this terminal, scrollback included, to a text file."
         case .screenshot:
             if state.screenshotCopied { return "Screenshot copied\nPaste it anywhere with Ctrl+V." }

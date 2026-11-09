@@ -16,15 +16,15 @@ enum SavedPasswordsMenu {
     static func entries(_ store: CredentialStore) -> [(title: String, help: String, action: String)] {
         var entries: [(String, String, String)] = []
         if store.isLocked {
-            entries.append(("Unlock…", "Unlock\nEnter the Administrator Password to use your saved passwords.", "unlock"))
+            entries.append(("Unlock…", "Unlock\nEnter the Administrator Password to use your snippets.", "unlock"))
         } else if store.passwords.isEmpty {
-            entries.append(("No Saved Passwords", "", ""))
+            entries.append(("No Snippets", "", ""))
         } else {
             for saved in store.passwords {
-                entries.append((saved.name, saved.description.isEmpty ? "Type this password into the terminal." : saved.description, saved.id))
+                entries.append((saved.name, saved.description.isEmpty ? "Type this snippet into the terminal." : saved.description, saved.id))
             }
         }
-        entries.append(("Manage Passwords…", "Manage Passwords\nAdd, change or remove saved passwords.", "manage"))
+        entries.append(("Manage Snippets…", "Manage Snippets\nAdd, change or remove snippets.", "manage"))
         return entries
     }
 
@@ -78,10 +78,10 @@ enum ManagePasswordsWindow {
             return
         }
         if store.isLocked {
-            LoginVaultPrompts.unlock(store, cancelTitle: "Skip", detail: "Enter the Administrator Password to see your saved passwords.")
+            LoginVaultPrompts.unlock(store, cancelTitle: "Skip", detail: "Enter the Administrator Password to see your snippets.")
         }
         let window = NSWindow(contentViewController: NSHostingController(rootView: ManagePasswordsView(store: store)))
-        window.title = "Manage Passwords"
+        window.title = "Manage Snippets"
         window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
         window.setContentSize(NSSize(width: 620, height: 360))
         window.isReleasedWhenClosed = false
@@ -112,10 +112,10 @@ struct ManagePasswordsView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 2) {
-                barButton("New", "plus", help: "New Password\nSave a name, a password and a description.") { edit(nil) }
-                barButton("Edit", "pencil", help: "Edit Password\nChange the selected password.") { edit(selected) }
+                barButton("New", "plus", help: "New Snippet\nSave a name, a snippet and a description.") { edit(nil) }
+                barButton("Edit", "pencil", help: "Edit Snippet\nChange the selected snippet.") { edit(selected) }
                     .disabled(selected == nil)
-                barButton("Delete", "trash", help: "Delete Password\nRemove the selected password, after asking.") { if let selected { delete(selected) } }
+                barButton("Delete", "trash", help: "Delete Snippet\nRemove the selected snippet, after asking.") { if let selected { delete(selected) } }
                     .disabled(selected == nil)
                 Spacer()
             }
@@ -125,11 +125,11 @@ struct ManagePasswordsView: View {
             if store.isLocked {
                 HStack(spacing: 8) {
                     Image(systemName: "lock.fill").foregroundStyle(.orange)
-                    Text("\(store.lockedPasswordCount) saved password\(store.lockedPasswordCount == 1 ? " is" : "s are") hidden until you enter the Administrator Password.")
+                    Text("\(store.lockedPasswordCount) snippet\(store.lockedPasswordCount == 1 ? " is" : "s are") hidden until you enter the Administrator Password.")
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer()
                     Button("Unlock…") { LoginVaultPrompts.unlock(store) }
-                        .hint("Unlock\nEnter the Administrator Password to see and use your saved passwords.")
+                        .hint("Unlock\nEnter the Administrator Password to see and use your snippets.")
                 }
                 .font(.caption).padding(.horizontal, 12).padding(.vertical, 6).background(.yellow.opacity(0.12))
             }
@@ -141,7 +141,7 @@ struct ManagePasswordsView: View {
                         Button("Edit…") { edit(saved) }
                         Button("Delete…", role: .destructive) { delete(saved) }
                     } else {
-                        Button("New Password…") { edit(nil) }
+                        Button("New Snippet…") { edit(nil) }
                     }
                 } primaryAction: { ids in
                     if let id = ids.first { edit(store.passwords.first { $0.id == id }) }
@@ -149,7 +149,7 @@ struct ManagePasswordsView: View {
                 .onDeleteCommand { if let selected { delete(selected) } }
                 .overlay {
                     if store.passwords.isEmpty {
-                        Text(store.isLocked ? "Unlock to see your saved passwords." : "No saved passwords. Click New to add one.")
+                        Text(store.isLocked ? "Unlock to see your snippets." : "No snippets. Click New to add one.")
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -171,7 +171,7 @@ struct ManagePasswordsView: View {
         HStack(spacing: 8) {
             Text("Name").frame(width: 150, alignment: .leading)
             Text("Description").frame(maxWidth: .infinity, alignment: .leading)
-            Text("Password").frame(width: 90, alignment: .leading)
+            Text("Snippets").frame(width: 90, alignment: .leading)
             Text("Stored").frame(width: 100, alignment: .leading)
         }
         .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
@@ -208,7 +208,7 @@ struct ManagePasswordsView: View {
     private func delete(_ saved: SavedPassword) {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Delete the saved password “\(saved.name)”?"
+        alert.messageText = "Delete the snippet “\(saved.name)”?"
         alert.informativeText = "It's removed from Herb's Terminal. This can't be undone."
         // Cancel is the default, so Return or a stray click never deletes.
         alert.addButton(withTitle: "Cancel")
@@ -263,17 +263,17 @@ private struct PasswordEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(draft.original == nil ? "New Password" : "Edit Password").font(.headline)
+            Text(draft.original == nil ? "New Snippet" : "Edit Snippet").font(.headline)
             Form {
                 TextField("Name:", text: $fields.name)
                 if fields.showPassword {
-                    TextField("Password:", text: $fields.password)
+                    TextField("Snippets:", text: $fields.password)
                 } else {
-                    SecureField("Password:", text: $fields.password)
+                    SecureField("Snippets:", text: $fields.password)
                 }
                 TextField("Description:", text: $fields.description, prompt: Text("Optional"))
-                Toggle("Show password", isOn: $fields.showPassword)
-                    .hint("Show password\nShow the password as text while you edit it.")
+                Toggle("Show snippet", isOn: $fields.showPassword)
+                    .hint("Show snippet\nShow the snippet as text while you edit it.")
             }
             if let error = fields.error { Text(error).font(.caption).foregroundStyle(.red) }
             Text(store.protection == .adminPassword ? "Saved encrypted with your Administrator Password." : "Saved as plain text.")
@@ -296,7 +296,7 @@ private struct PasswordEditor: View {
             let fields = fields
             ManagePasswordsBridge.form = ManagePasswordsBridge.Form(
                 state: {
-                    ["title": draft.original == nil ? "New Password" : "Edit Password", "name": fields.name, "password": fields.password,
+                    ["title": draft.original == nil ? "New Snippet" : "Edit Snippet", "name": fields.name, "password": fields.password,
                      "description": fields.description, "showPassword": fields.showPassword, "error": fields.error ?? ""]
                 },
                 run: { action, request in

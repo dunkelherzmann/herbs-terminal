@@ -53,10 +53,10 @@ final class SessionToolbar {
         let newTab = glyph("ht-tab-new-symbolic", "New Tab", id: "newTab") { $0.add() }
         hint(newTab, "New Tab (Ctrl+Shift+T)\nOpen another local terminal in this window.")
         connect = glyph("ht-network-symbolic", "Connect via SSH", id: "connect") { $0.connectButton() }
-        let passwords = glyph("ht-lock-symbolic", "Saved Passwords", id: "savedPasswords") { workspace in
+        let passwords = glyph("ht-lock-symbolic", "Snippets", id: "snippets") { workspace in
             if let anchor = weakSelf?.savedPasswords { SavedPasswordsMenu.show(workspace, under: anchor) }
         }
-        hint(passwords, "Saved Passwords\nType a saved password, such as a sudo password, into the terminal.")
+        hint(passwords, "Snippets\nType a saved snippet, such as a command or a sudo password, into the terminal.")
         let export = glyph("ht-share-symbolic", "Export Session", id: "exportSession") { $0.exportSession() }
         hint(export, "Export Session (Ctrl+Shift+S)\nSave everything in this terminal, scrollback included, to a text file.")
         screenshot = glyph("ht-camera-symbolic", "Take Screenshot", id: "takeScreenshot") { $0.takeScreenshot() }

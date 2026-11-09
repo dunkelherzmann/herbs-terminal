@@ -1930,7 +1930,7 @@ def passwords(c, action=None, value=None):
         return c.bridge.call("passwords", **request)
     except Exception as error:
         if "unknown op" in str(error):
-            c.unverified("Saved Passwords isn't driven by this platform's bridge yet")
+            c.unverified("Snippets isn't driven by this platform's bridge yet")
         raise
 
 def open_passwords(c):
@@ -1938,7 +1938,7 @@ def open_passwords(c):
     c.command("manage-passwords", settle=1.5)
     if c.state().get("dialogs"):
         settle_protection(c)
-    c.until(lambda s: passwords(c).get("open"), "expected the Manage Passwords window")
+    c.until(lambda s: passwords(c).get("open"), "expected the Manage Snippets window")
 
 def fill_password(c, name, password, description):
     """Fills in New or Edit Password and saves: the Mac's form sheet, or the dialog Linux and Windows show."""
@@ -1953,20 +1953,20 @@ def fill_password(c, name, password, description):
             time.sleep(0.8)
             return
         dialog = (c.state().get("dialogs") or [None])[0]
-        if dialog and dialog["heading"] in ("New Password", "Edit Password"):
+        if dialog and dialog["heading"] in ("New Snippet", "Edit Snippet"):
             c.answer(pick(dialog["responses"], "save"), [name, password, description], heading=dialog["heading"])
             return
         if dialog:
             c.answer(pick(dialog["responses"], "plain"), heading=dialog["heading"])
         time.sleep(0.5)
-    raise Outcome("broken", "expected the New Password form")
+    raise Outcome("broken", "expected the New Snippet form")
 
 def add_password(c, name, password, description=""):
     passwords(c, "new")
     fill_password(c, name, password, description)
     return c.until(lambda s: any(r["name"] == name for r in passwords(c)["rows"]), f"expected {name} in Manage Passwords")
 
-@test("L12", "Saved Passwords: choosing one types only its password, without Return")
+@test("L12", "Snippets: choosing one types only its text, without Return")
 def _(c):
     open_passwords(c)
     add_password(c, "nas sudo", "Typed-Pw-42", "root on the NAS")
@@ -1974,7 +1974,7 @@ def _(c):
     entry = next((e for e in menu if e["title"] == "nas sudo"), None)
     c.expect(entry is not None, f"expected nas sudo in the toolbar's menu, saw {[e['title'] for e in menu]}")
     c.expect(entry["help"] == "root on the NAS", f"expected its description as the hover hint, saw {entry['help']!r}")
-    c.expect(menu[-1]["title"].startswith("Manage Passwords"), "expected Manage Passwords… at the end of the menu")
+    c.expect(menu[-1]["title"].startswith("Manage Snippets"), "expected Manage Snippets… at the end of the menu")
     # A prompt that reads a line without echo, like sudo's.
     c.run("stty -echo; read -r P; stty echo; echo \"GOT:$P:\"", "set /p P=& call echo GOT:%P%:", settle=1.2)
     c.bridge.call("saved-passwords", choose=entry["action"])
@@ -1983,7 +1983,7 @@ def _(c):
     c.type(c.app.enter, settle=1.2)
     c.until(lambda s: "GOT:Typed-Pw-42:" in c.text(s), "expected the password typed into the terminal")
 
-@test("L13", "Manage Passwords: Edit and Delete, and names that are unique")
+@test("L13", "Manage Snippets: Edit and Delete")
 def _(c):
     open_passwords(c)
     add_password(c, "db", "pw-one", "database")

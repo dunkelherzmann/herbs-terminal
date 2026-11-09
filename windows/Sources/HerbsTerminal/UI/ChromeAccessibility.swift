@@ -30,7 +30,7 @@ extension WindowChrome {
         add(.menu, "toolbar.mainMenu", popup: true)
         add(.newTab, "toolbar.newTab")
         add(.connect, "toolbar.connect", name: state.connected == nil ? "Connect via SSH" : "Connection")
-        add(.passwords, "toolbar.savedPasswords", name: "Saved Passwords", popup: true)
+        add(.passwords, "toolbar.snippets", name: "Snippets", popup: true)
         if let parts = titleParts(dpi: dpi, state: state) {
             let help = Self.hintParts(Self.hint(for: .title, state: state) ?? "").help
             entries.append(Entry(identifier: "toolbar.title", name: state.title, help: help, accelerator: nil, rect: parts.title,

@@ -10,15 +10,15 @@ enum SavedPasswordsMenu {
     static func entries(_ store: CredentialStore) -> [(title: String, help: String, action: String)] {
         var entries: [(String, String, String)] = []
         if store.isLocked {
-            entries.append(("Unlock…", "Unlock\nEnter the Administrator Password to use your saved passwords.", "unlock"))
+            entries.append(("Unlock…", "Unlock\nEnter the Administrator Password to use your snippets.", "unlock"))
         } else if store.passwords.isEmpty {
-            entries.append(("No Saved Passwords", "", ""))
+            entries.append(("No Snippets", "", ""))
         } else {
             for saved in store.passwords {
-                entries.append((saved.name, saved.description.isEmpty ? "Type this password into the terminal." : saved.description, saved.id))
+                entries.append((saved.name, saved.description.isEmpty ? "Type this snippet into the terminal." : saved.description, saved.id))
             }
         }
-        entries.append(("Manage Passwords…", "Manage Passwords\nAdd, change or remove saved passwords.", "manage"))
+        entries.append(("Manage Snippets…", "Manage Snippets\nAdd, change or remove snippets.", "manage"))
         return entries
     }
 
@@ -93,7 +93,7 @@ final class ManagePasswordsWindow: WindowObject {
         }
         let store = CredentialStore.shared ?? CredentialStore.unavailable()
         if store.isLocked {
-            LoginVaultPrompts.unlock(store, owner: owner, cancelTitle: "Skip", detail: "Enter the Administrator Password to see your saved passwords.")
+            LoginVaultPrompts.unlock(store, owner: owner, cancelTitle: "Skip", detail: "Enter the Administrator Password to see your snippets.")
         }
         current = ManagePasswordsWindow(owner: owner)
     }
@@ -112,7 +112,7 @@ final class ManagePasswordsWindow: WindowObject {
             x = ownerRect.left + ((ownerRect.right - ownerRect.left) - (rect.right - rect.left)) / 2
             y = ownerRect.top + scaled(50, dpi: dpi)
         }
-        hwnd = createWindow(self, className: Self.className, title: "Manage Passwords", style: style, exStyle: DWORD(WS_EX_CONTROLPARENT),
+        hwnd = createWindow(self, className: Self.className, title: "Manage Snippets", style: style, exStyle: DWORD(WS_EX_CONTROLPARENT),
                             x: x, y: y, width: rect.right - rect.left, height: rect.bottom - rect.top, parent: owner)
         guard let hwnd else { return }
         font = withWide("Segoe UI") {
@@ -121,7 +121,7 @@ final class ManagePasswordsWindow: WindowObject {
         banner = control("STATIC", "", DWORD(SS_LEFT) | DWORD(SS_NOPREFIX))
         list = control(WC_LISTVIEWW_NAME, "", DWORD(LVS_REPORT) | DWORD(LVS_SHOWSELALWAYS) | DWORD(LVS_SINGLESEL) | DWORD(WS_BORDER) | DWORD(WS_TABSTOP))
         SendMessageW(list, UINT(LVM_SETEXTENDEDLISTVIEWSTYLE), 0, LPARAM(LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER))
-        for (index, column) in [("Name", 170.0), ("Description", 240.0), ("Password", 90.0), ("Stored", 100.0)].enumerated() {
+        for (index, column) in [("Name", 170.0), ("Description", 240.0), ("Snippets", 90.0), ("Stored", 100.0)].enumerated() {
             var item = LVCOLUMNW()
             item.mask = UINT(LVCF_TEXT | LVCF_WIDTH)
             item.cx = scaled(column.1, dpi: dpi)
@@ -205,12 +205,12 @@ final class ManagePasswordsWindow: WindowObject {
         var notice: String
         if store.isLocked {
             let count = store.lockedPasswordCount
-            notice = "\(count) saved password\(count == 1 ? " is" : "s are") hidden until you enter the Administrator Password."
+            notice = "\(count) snippet\(count == 1 ? " is" : "s are") hidden until you enter the Administrator Password."
         } else if shown.isEmpty {
-            notice = "No saved passwords: click New to add one."
+            notice = "No snippets: click New to add one."
         } else {
-            notice = store.protection == .adminPassword ? "Saved passwords are encrypted with your Administrator Password."
-                                                        : "Saved passwords are stored as plain text. Create an Administrator Password in Manage Logins to encrypt them."
+            notice = store.protection == .adminPassword ? "Snippets are encrypted with your Administrator Password."
+                                                        : "Snippets are stored as plain text. Create an Administrator Password in Manage Logins to encrypt them."
         }
         withWide(notice) { _ = SetWindowTextW(banner, $0) }
         ShowWindow(buttons[.unlock], store.isLocked ? SW_SHOW : SW_HIDE)
@@ -237,7 +237,7 @@ final class ManagePasswordsWindow: WindowObject {
         case .delete:
             guard let row = selectedRow else { return }
             let saved = shown[row]
-            if FormDialog.ask(owner: hwnd, title: "Delete the saved password “\(saved.name)”?",
+            if FormDialog.ask(owner: hwnd, title: "Delete the snippet “\(saved.name)”?",
                               message: "It's removed from Herb's Terminal. This can't be undone.",
                               buttons: [.init(title: "Cancel", isDefault: true), .init(title: "Delete")]) == 1 {
                 do { try store.deletePassword(id: saved.id) } catch { LoginVaultPrompts.show(error, owner: hwnd) }
@@ -257,9 +257,9 @@ final class ManagePasswordsWindow: WindowObject {
         var values = [original?.name ?? "", original?.password ?? "", original?.description ?? ""]
         while true {
             guard let result = FormDialog.run(
-                owner: hwnd, title: original == nil ? "New Password" : "Edit Password",
+                owner: hwnd, title: original == nil ? "New Snippet" : "Edit Snippet",
                 message: store.protection == .adminPassword ? "Saved encrypted with your Administrator Password." : "Saved as plain text.",
-                fields: [.init(label: "Name", text: values[0]), .init(label: "Password", text: values[1], secure: true),
+                fields: [.init(label: "Name", text: values[0]), .init(label: "Snippets", text: values[1], secure: true),
                          .init(label: "Description (optional)", text: values[2])],
                 buttons: [.init(title: "Cancel"), .init(title: "Save", isDefault: true)], error: problem),
                 result.button == 1 else { return }
@@ -341,7 +341,7 @@ final class ManagePasswordsWindow: WindowObject {
             withWide("Edit…") { _ = AppendMenuW(menu, UINT(MF_STRING), UINT_PTR(Action.edit.rawValue), $0) }
             withWide("Delete…\tDelete") { _ = AppendMenuW(menu, UINT(MF_STRING), UINT_PTR(Action.delete.rawValue), $0) }
         } else {
-            withWide("New Password…") { _ = AppendMenuW(menu, UINT(MF_STRING), UINT_PTR(Action.new.rawValue), $0) }
+            withWide("New Snippet…") { _ = AppendMenuW(menu, UINT(MF_STRING), UINT_PTR(Action.new.rawValue), $0) }
         }
         let chosen = MainMenu.trackPopup(menu, at: point, owner: hwnd)
         if let action = Action(rawValue: Int32(chosen)) { perform(action) }

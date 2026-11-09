@@ -181,8 +181,8 @@ When the Mac gains a feature, add it here with the next free id in its group.
 - **L9** Import (CSV, all-or-nothing).
 - **L10** Export ticked logins (checkbox column with select-all heading), file readable only by you, `logins_export.csv`.
 - **L11** Double-click edits; Delete key or right-click removes after a confirmation defaulting to Cancel.
-- **L12** Saved Passwords: a lock next to Connect via SSH lists saved passwords by name; choosing one types only its password into the terminal, without Return.
-- **L13** Manage Passwords: Name, Password and Description; New, Edit and Delete; a vault of its own under the logins' Administrator Password.
+- **L12** Snippets: a lock next to Connect via SSH lists snippets (commands, sudo passwords, any text) by name; choosing one types only its text into the terminal, without Return.
+- **L13** Manage Snippets: Name, Snippets and Description; New, Edit and Delete; a vault of its own under the logins' Administrator Password.
 
 ## U: MultiExec and Run Command on Hosts
 
