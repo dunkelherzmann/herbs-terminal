@@ -49,6 +49,10 @@ struct ThemeMenu: View {
     @MainActor
     @discardableResult
     static func importPreset() -> String? {
+        if let chosen = TestBridge.takeChosenFile() {
+            // The feature tests' bridge stands in for the open panel.
+            do { return try ThemeLibrary.shared.importFile(chosen) } catch { NSAlert(error: error).runModal(); return nil }
+        }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "itermcolors") ?? .propertyList]
         panel.prompt = "Import"

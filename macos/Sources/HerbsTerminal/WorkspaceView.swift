@@ -193,6 +193,12 @@ final class Workspace: ObservableObject {
     func exportSession() {
         if let editor = selected.editor { editor.save(); return }
         let text = Self.sessionText(selected.focusedShell)
+        if let chosen = TestBridge.takeChosenFile() {
+            // The feature tests' bridge stands in for the save panel (a folder gets the suggested name).
+            let url = chosen.hasDirectoryPath ? chosen.appendingPathComponent(Self.sessionFileName(title: selected.title)) : chosen
+            do { try Data(text.utf8).write(to: url, options: .atomic) } catch { NSAlert(error: error).runModal() }
+            return
+        }
         let panel = NSSavePanel()
         panel.title = "Export Session"
         panel.allowedContentTypes = [.plainText]
