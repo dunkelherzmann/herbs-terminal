@@ -2,6 +2,10 @@
 
 What the Linux version still needs before it can ship with as few bugs as possible: everything a feature test found broken or missing, and every feature no automatic test covers yet. Fix broken items first, one pull request each, and tick an item with its PR number once it is fixed and its test passes. `bugs.md` and `enhancements.md` stay the record of requests and releases.
 
+## Next (top priority)
+
+- [ ] **Main Menu matches the Mac's in-window menus.** Once the Mac has moved every menu into its window, check that this version's in-window menu holds the same menus, submenus, order and shortcuts, and that no command is reachable only somewhere else. (§2, §14, enhancements.md) *Asked 2026-11-09.*
+
 <!-- feature-tests:start -->
 ## Feature test results (2026-11-09 06:31)
 
