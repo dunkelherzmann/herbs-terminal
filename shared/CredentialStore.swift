@@ -42,7 +42,7 @@ struct SavedPassword: Identifiable, Equatable, Sendable {
 
     func validate() throws {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw StoreError("Enter a name.") }
-        guard !password.isEmpty else { throw StoreError("Enter the password.") }
+        guard !password.isEmpty else { throw StoreError("Enter the snippet.") }
     }
 }
 
@@ -377,7 +377,7 @@ final class CredentialStore: ObservableObject {
         guard let db else { throw StoreError("Database is not open.") }
         let payload: EncryptedPayload
         if scheme == "admin" {
-            guard let vault else { throw StoreError("Unlock saved passwords with the Administrator Password first.") }
+            guard let vault else { throw StoreError("Unlock snippets with the Administrator Password first.") }
             payload = try vault.encrypt(saved.password)
         } else {
             payload = EncryptedPayload(ciphertext: Data(saved.password.utf8), nonce: Data(), tag: Data())
@@ -400,7 +400,7 @@ final class CredentialStore: ObservableObject {
         }
         sqlite3_bind_text(stmt, 6, scheme, -1, SQLITE_TRANSIENT)
         guard sqlite3_step(stmt) == SQLITE_DONE else {
-            throw StoreError("Failed to save the password: \(String(cString: sqlite3_errmsg(db)))")
+            throw StoreError("Failed to save the snippet: \(String(cString: sqlite3_errmsg(db)))")
         }
     }
 
@@ -410,11 +410,11 @@ final class CredentialStore: ObservableObject {
         saved.name = saved.name.trimmingCharacters(in: .whitespacesAndNewlines)
         try saved.validate()
         guard protection != .unset else {
-            throw StoreError("Choose how to protect saved passwords first: create an Administrator Password or allow plain text.")
+            throw StoreError("Choose how to protect snippets first: create an Administrator Password or allow plain text.")
         }
-        guard !isLocked else { throw StoreError("Unlock saved passwords with the Administrator Password first.") }
+        guard !isLocked else { throw StoreError("Unlock snippets with the Administrator Password first.") }
         if saved.id != original, passwords.contains(where: { $0.id == saved.id }) {
-            throw StoreError("A saved password is already called “\(saved.name)”.")
+            throw StoreError("A snippet is already called “\(saved.name)”.")
         }
         try execute(sql: "BEGIN IMMEDIATE TRANSACTION;")
         do {
@@ -442,7 +442,7 @@ final class CredentialStore: ObservableObject {
         defer { sqlite3_finalize(stmt) }
         sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
         guard sqlite3_step(stmt) == SQLITE_DONE else {
-            throw StoreError("Failed to delete the password: \(String(cString: sqlite3_errmsg(db)))")
+            throw StoreError("Failed to delete the snippet: \(String(cString: sqlite3_errmsg(db)))")
         }
     }
 

@@ -73,8 +73,8 @@ public struct SessionToolbar<Actions: View>: View {
                         button("toolbar.connect", "Connect via SSH", "network",
                                help: "Connect via SSH (⇧⌘K)\nOpen a remote shell with a saved or new login; the explorer follows that host.", connect)
                     }
-                    button("toolbar.savedPasswords", "Saved Passwords", "lock",
-                           help: "Saved Passwords\nType a saved password, such as a sudo password, into the terminal.", savedPasswords)
+                    button("toolbar.snippets", "Snippets", "lock",
+                           help: "Snippets\nType a saved snippet, such as a command or a sudo password, into the terminal.", savedPasswords)
                 }
                 Spacer()
                 HStack(spacing: gap) {
