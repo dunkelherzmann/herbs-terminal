@@ -43,7 +43,8 @@ final class TabState {
 @MainActor
 final class TerminalTab {
     let id = UUID()
-    let number: Int
+    /// "Terminal 2": the lowest free number when it opened; 1 again once it's the only terminal tab left.
+    var number: Int
     let state = TabState()
     /// The tab's first pane: its SSH connection, the explorer and the title follow this shell. If it is closed while
     /// other panes remain, the next pane takes over.
@@ -321,6 +322,9 @@ final class Workspace {
         guard tabs.count > 1 else { closeWithoutAsking(); return }
         if selected === tab { selected = tabs[index == 0 ? 1 : index - 1] }
         tabs.remove(at: index)
+        // The only terminal tab left becomes Terminal 1 again (a renamed tab keeps its name).
+        let terminals = tabs.filter { $0.editor == nil }
+        if terminals.count == 1, terminals[0].number != 1 { terminals[0].number = 1; render() }
         tab.monitor?.cancel()
         tab.typedSSHWatch?.cancel()
         for pane in tab.panes {

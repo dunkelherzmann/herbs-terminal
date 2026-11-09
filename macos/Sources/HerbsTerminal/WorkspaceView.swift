@@ -6,7 +6,8 @@ import SwiftTerm
 @MainActor
 final class TerminalTab: Identifiable, ObservableObject {
     let id = UUID()
-    let number: Int
+    /// "Terminal 2": the lowest free number when it opened; 1 again once it's the only terminal tab left.
+    @Published var number: Int
     let state = WindowState()
     /// The tab's first pane: its SSH connection, the explorer and the title follow this shell. If it is
     /// closed while other panes remain, the next pane takes over.
@@ -762,11 +763,18 @@ final class Workspace: ObservableObject {
         remove(tab)
     }
 
+    /// The only terminal tab left becomes Terminal 1 again (a renamed tab keeps its name).
+    private func renumberLastTerminal() {
+        let terminals = tabs.filter { $0.editor == nil }
+        if terminals.count == 1, terminals[0].number != 1 { terminals[0].number = 1 }
+    }
+
     /// Takes `tab` out of the window and ends its shells; asks nothing.
     private func remove(_ tab: TerminalTab) {
         guard tabs.count > 1, let index = tabs.firstIndex(where: { $0 === tab }) else { return }
         if selected === tab { selected = tabs[index == 0 ? 1 : index - 1] }
         tabs.remove(at: index)
+        renumberLastTerminal()
         focusSelected()
         tab.monitor?.cancel()
         tab.typedSSHWatch?.cancel()

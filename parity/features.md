@@ -31,7 +31,7 @@ When the Mac gains a feature, add it here with the next free id in its group.
 ## T: Tabs
 
 - **T1** Each tab keeps its own shell, scrollback, explorer location and connection; switching keeps sessions running.
-- **T2** Tabs numbered "Terminal N", lowest free number.
+- **T2** Tabs numbered "Terminal N", lowest free number; the only terminal tab left becomes Terminal 1.
 - **T3** Rename a tab: double-click, right-click menu, Rename Tab shortcut.
 - **T4** Reorder: drag, Move Tab Left / Right.
 - **T5** Show Tab 1–8 and Last Tab shortcuts; keyboard focus follows.
