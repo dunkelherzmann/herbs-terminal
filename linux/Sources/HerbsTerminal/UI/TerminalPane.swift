@@ -530,14 +530,22 @@ final class TerminalPane {
         shortcuts.add("<Control><Shift>a") { [weak self] in self?.selectAll() }
 
         // Like Terminal: dropped files and folders are typed as shell-quoted paths, followed by a space.
-        gtk_widget_add_controller(terminal, filesDropTarget { [weak self] paths in
-            self?.sendAsUser(paths.map(shellQuote).joined(separator: " ") + " ")
-            self?.focus()
-        })
+        gtk_widget_add_controller(terminal, filesDropTarget { [weak self] paths in self?.drop(paths: paths) })
+    }
+
+    /// What a drop of these files does (the feature tests' bridge drops through here too).
+    func drop(paths: [String]) {
+        sendAsUser(paths.map(shellQuote).joined(separator: " ") + " ")
+        focus()
     }
 
     private func showMenu(x: Double, y: Double) {
         onFocus?()
+        popUp(contextMenu(), on: terminal, x: x, y: y)
+    }
+
+    /// The right-click menu; the feature tests' bridge lists and chooses from this same menu.
+    func contextMenu() -> OpaquePointer {
         let menu = MenuBuilder()
         menu.item("Copy", "win.copy")
         menu.item("Paste", "win.paste")
@@ -550,7 +558,7 @@ final class TerminalPane {
         menu.item("Reset", "win.reset")
         menu.divider()
         extraMenu?(menu)
-        popUp(menu.finish(), on: terminal, x: x, y: y)
+        return menu.finish()
     }
 
     // MARK: Bell

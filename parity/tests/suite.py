@@ -81,6 +81,33 @@ class Context:
             if result == "missing" or (enabled and result == "disabled"):
                 raise Outcome("missing", f"`{name}` is {'not there' if result == 'missing' else 'greyed out'}")
 
+    def context_menu(self):
+        """The focused terminal's right-click menu: a list of {"title", "enabled"}."""
+        result = self.bridge.call("context-menu")
+        if result == "unsupported":
+            raise Outcome("unverified", "this platform's test bridge can't open the right-click menu yet")
+        if result == "missing":
+            raise Outcome("missing", "the terminal has no right-click menu")
+        return result
+
+    def expect_menu(self, *titles):
+        """The right-click menu has these items, in this order."""
+        menu = [item["title"] for item in self.context_menu()]
+        absent = [title for title in titles if title not in menu]
+        if absent:
+            raise Outcome("missing", f"the right-click menu has no {', '.join(absent)} (it has: {', '.join(menu)})")
+        order = [menu.index(title) for title in titles]
+        self.expect(order == sorted(order), f"the right-click menu's order differs: {', '.join(menu)}")
+
+    def choose(self, title, settle=0.8):
+        """Chooses an item of the focused terminal's right-click menu."""
+        result = self.bridge.call("context-choose", title=title)
+        if result == "missing":
+            raise Outcome("missing", f"the right-click menu has no {title}")
+        if result == "disabled":
+            raise Outcome("missing", f"{title} is greyed out in the right-click menu")
+        time.sleep(settle)
+
     def type(self, text, settle=0.6):
         self.bridge.call("type", text=text)
         time.sleep(settle)
@@ -445,10 +472,87 @@ manual("P6", "The first pane owns the SSH connection", NEEDS_SSH)
 
 # ---------------------------------------------------------------- B: Terminal behavior
 
-for fid, what in (("B1", "Copy, Paste, Paste Escaped Text, Select All, Find"), ("B2", "Clear and Reset"),
-                  ("B3", "Splits, Close Pane, New Tab, Show File Explorer"), ("B4", "Connect / Disconnect, zoom, Settings")):
-    manual(fid, f"Right-click menu: {what}", "the right-click menu needs a pointer click the bridge doesn't make yet")
-manual("B5", "Dropping files types their paths", NEEDS_GUI)
+@test("B1", "Right-click menu: Copy, Paste, Paste Escaped Text, Select All, Find")
+def _(c):
+    c.expect_menu("Copy", "Paste", "Paste Escaped Text", "Select All", "Find…")
+    c.choose("Select All")
+    c.choose("Find…")
+    c.unverified("the items are there and Select All and Find… run; Copy and Paste aren't chosen, since they'd use "
+                 "the system clipboard, and the bridge doesn't report a selection or the find bar")
+
+@test("B2", "Right-click menu: Clear to Start, Clear Scrollback, Reset")
+def _(c):
+    c.expect_menu("Clear to Start", "Clear Scrollback", "Reset")
+    mark = c.say("CLEARME")
+    c.until(lambda s: mark in c.text(s), "expected the marker to print")
+    c.choose("Clear to Start", settle=1.2)
+    c.until(lambda s: mark not in c.text(s), "expected Clear to Start to remove the marker")
+    c.run("seq 1 300 | sed 's/^/L/'", "for /l %i in (1,1,300) do @echo L%i", settle=2)
+    c.until(lambda s: "L150" in c.text(s), "expected 300 lines of output")
+    c.choose("Clear Scrollback", settle=1.2)
+    c.until(lambda s: "L5\n" not in c.text(s) and "L150" not in c.text(s), "expected Clear Scrollback to drop the old lines")
+    c.choose("Reset")
+    mark = c.say("ALIVE")
+    c.until(lambda s: mark in c.text(s), "expected the shell to answer after Reset")
+
+@test("B3", "Right-click menu: Split Vertically, Split Horizontally, Close Pane, New Tab, Show File Explorer")
+def _(c):
+    c.expect_menu("Split Vertically", "Split Horizontally", "New Tab", "Show File Explorer")
+    c.expect("Close Pane" not in [item["title"] for item in c.context_menu()], "Close Pane is offered with only one pane")
+    c.choose("Split Vertically", settle=1.5)
+    c.until(lambda s: len(c.panes(s)) == 2, "expected Split Vertically to make two panes")
+    c.choose("Split Horizontally", settle=1.5)
+    c.until(lambda s: len(c.panes(s)) == 3, "expected Split Horizontally to make a third pane")
+    c.choose("Close Pane", settle=1.2)
+    s = c.state()
+    if s.get("dialogs"):
+        dialog = s["dialogs"][0]
+        c.answer(next(r for r in dialog["responses"] if r.lower() != "cancel"), heading=dialog["heading"])
+    c.until(lambda s: len(c.panes(s)) == 2, "expected Close Pane to leave two panes")
+    c.choose("New Tab", settle=1.5)
+    c.until(lambda s: len(c.tabs(s)) == 2, "expected New Tab to add a tab")
+    c.choose("Show File Explorer", settle=1.2)
+    c.until(lambda s: c.tab(s)["layout"] == "explorer", "expected Show File Explorer to show the explorer")
+
+@test("B4", "Right-click menu: Connect via SSH, Bigger, Smaller, Settings")
+def _(c):
+    c.expect_menu("Connect via SSH…", "Bigger", "Smaller", "Settings…")
+    base = c.pane()["fontSize"]
+    c.choose("Bigger")
+    c.until(lambda s: c.pane(s)["fontSize"] == base + 1, "expected Bigger to zoom in")
+    c.choose("Smaller")
+    c.until(lambda s: c.pane(s)["fontSize"] == base, "expected Smaller to zoom back out")
+    before = len(c.state()["toplevels"])
+    c.choose("Settings…", settle=1.5)
+    c.until(lambda s: len(s["toplevels"]) > before, "expected the Settings window to open")
+    c.choose("Connect via SSH…", settle=1.5)
+    c.until(lambda s: has_window(s, "Connect") or has_dialog(s, "Administrator") or s.get("dialogs"), "expected the Connect via SSH dialog")
+
+@test("B4", "Right-click menu: Disconnect while connected")
+def _(c):
+    account, s = connect_test_host(c)
+    expect_connected(c, account, s)
+    title = next((item["title"] for item in c.context_menu() if item["title"].startswith("Disconnect from")), None)
+    c.expect(title is not None, "the right-click menu has no Disconnect while connected")
+    c.choose(title, settle=1.5)
+    c.until(lambda s: connection(c, s).get("state") in ("local", "failed"), "expected Disconnect to end the connection")
+
+@test("B5", "Dropping files types their paths, quoted for the shell")
+def _(c):
+    folder = os.path.join(c.app.home, "drop")
+    os.makedirs(folder, exist_ok=True)
+    names = ["a b.txt", "it's.txt"] if c.app.shell == "posix" else ["a b.txt", "x&y.txt"]
+    paths = [os.path.join(folder, name) for name in names]
+    for path in paths:
+        open(path, "w").close()
+    # The shell lists what the typed paths name: a path that isn't quoted right lists something else, or fails.
+    c.type("printf '%s\\n' " if c.app.shell == "posix" else "dir /b ", settle=0.4)
+    c.bridge.call("drop", paths=paths)
+    time.sleep(0.6)
+    c.type(c.app.enter, settle=1.5)
+    expected = paths if c.app.shell == "posix" else names
+    c.until(lambda s: all(any(line.strip() == item for line in c.text(s).splitlines()) for item in expected),
+            f"expected the shell to list {', '.join(expected)} from the dropped paths")
 manual("B6", "Bell", "sound and flash can't be observed by the bridge")
 manual("B7", "Size badge while resizing", "needs a window resize by the pointer")
 

@@ -52,7 +52,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-08 19:32)
+## Feature test results (2026-11-09 03:00)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
@@ -62,7 +62,7 @@ A test ran and the feature didn't do what the Mac version does.
 
 - [ ] **S4** Exit or Disconnect returns the tab, title and explorer to this computer. (§4): Disconnect returns the tab and title to this computer: expected the tab back on this computer (saw: 1 window(s), tabs ['Terminal 1', 'Terminal 2'], 1 pane(s), title 'herbs-test@192.168.1.241' '', dialogs [], last lines…
 
-### Missing (26)
+### Missing (30)
 
 The command isn't there, or it's greyed out.
 
@@ -75,6 +75,10 @@ The command isn't there, or it's greyed out.
 - [ ] **P2** A new pane uses the current pane's profile and folder. (§2): A new pane starts in the current pane's folder: `split-vertical` is greyed out
 - [ ] **P3** Close Pane shortcut; `exit` closes a pane. (§2): Close Pane: `split-vertical` is greyed out
 - [ ] **P4** Select Next / Previous Pane. (§2): Select Next / Previous Pane: `split-vertical` is greyed out
+- [ ] **B1** Right-click menu: Copy, Paste, Paste Escaped Text, Select All, Find. (§2): Right-click menu: Copy, Paste, Paste Escaped Text, Select All, Find: the terminal has no right-click menu
+- [ ] **B2** Right-click menu: Clear to Start, Clear Scrollback, Reset. (§2): Right-click menu: Clear to Start, Clear Scrollback, Reset: the terminal has no right-click menu
+- [ ] **B3** Right-click menu: Split Vertically, Split Horizontally, Close Pane, New Tab, Show File Explorer. (§2): Right-click menu: Split Vertically, Split Horizontally, Close Pane, New Tab, Show File Explorer: the terminal has no right-click menu
+- [ ] **B4** Right-click menu: Connect via SSH / Disconnect; Bigger, Smaller, Settings. (§2): Right-click menu: Connect via SSH, Bigger, Smaller, Settings: the terminal has no right-click menu; Right-click menu: Disconnect while connected: the terminal has no right-click menu
 - [ ] **B8** Find in Terminal (scrollback search). (§2): Find in Terminal: `find-in-terminal` is greyed out
 - [ ] **B9** Copy and paste; Paste Escaped Text. (§2): Copy, Paste and Paste Escaped Text: `paste-escaped` is not there
 - [ ] **M1** Shell menu: New Tab, Export Session, Take Screenshot, New Tab with Profile, Use Profile. (§2): Menu commands: new-tab, export-session, take-screenshot, new-tab-profile, use-profile: `new-tab-profile` is greyed out
@@ -93,7 +97,7 @@ The command isn't there, or it's greyed out.
 - [ ] **U6** Run Command on Hosts: targets are selected saved logins and the live connection, own ssh channel… (§7): Run Command on Hosts window: `run-on-hosts` is greyed out
 - [ ] **C1** Add a peer: name, username, secret address, One-time or Persistent; addresses protected like logins. (§8): Tailcat Peers: add a peer: no `tailcat` command
 
-### Not checked automatically (81)
+### Not checked automatically (76)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -103,11 +107,6 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **T11** Session restore: tabs with folder, panes, explorer folder and name reopen at launch (on by… (§2): the test scene never saves or restores a session
 - [ ] **P5** Focused pane outlined; Zoom, Clear, Reset and Find act on it. (§2): visual: shown in the window's picture, not reported by the bridge
 - [ ] **P6** The tab's SSH connection and explorer belong to its first pane; the next pane takes over when it… (§2): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
-- [ ] **B1** Right-click menu: Copy, Paste, Paste Escaped Text, Select All, Find. (§2): the right-click menu needs a pointer click the bridge doesn't make yet
-- [ ] **B2** Right-click menu: Clear to Start, Clear Scrollback, Reset. (§2): the right-click menu needs a pointer click the bridge doesn't make yet
-- [ ] **B3** Right-click menu: Split Vertically, Split Horizontally, Close Pane, New Tab, Show File Explorer. (§2): the right-click menu needs a pointer click the bridge doesn't make yet
-- [ ] **B4** Right-click menu: Connect via SSH / Disconnect; Bigger, Smaller, Settings. (§2): the right-click menu needs a pointer click the bridge doesn't make yet
-- [ ] **B5** Dropping files types their paths, quoted for the shell. (§2): needs pointer or keyboard input the test bridge doesn't reach yet
 - [ ] **B6** Bell: sound, flash, both or none; flash at most twice a second, gentle with Reduce Motion. (§2): sound and flash can't be observed by the bridge
 - [ ] **B7** Size badge (columns × rows) while resizing. (§2): needs a window resize by the pointer
 - [ ] **B14** Full color, bold/italic/underline, wide characters, mouse reporting for full-screen programs. (§2): visual: needs the window's picture compared with the Mac's
