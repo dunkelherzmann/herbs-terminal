@@ -166,11 +166,11 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     func connectSSH(_ endpoint: RemoteEndpoint, password: String?, waited: Int = 0) {
         // A new tab's shell draws its prompt first, so the launcher knows how much of the screen its line takes.
         if !hasOutput, waited < 50 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.connectSSH(endpoint, password: password, waited: waited + 1) }
+            MainThread.after(0.1) { [weak self] in self?.connectSSH(endpoint, password: password, waited: waited + 1) }
             return
         }
         if waited > 0, waited < 50, lastOutputAge < 0.3 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.connectSSH(endpoint, password: password, waited: waited + 1) }
+            MainThread.after(0.1) { [weak self] in self?.connectSSH(endpoint, password: password, waited: waited + 1) }
             return
         }
         guard let path = SSHLauncher.write(endpoint, password: password, lines: { text in

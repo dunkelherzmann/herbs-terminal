@@ -101,6 +101,27 @@ enum TestBridge {
             default: throw Failure(description: "unknown profile key")
             }
             return true
+        case "tailcat-state":
+            guard let window = TailcatPeersWindow.open else { throw Failure(description: "the Tailcat Peers window isn't open") }
+            return window.bridgeState
+        case "tailcat-share":
+            TailcatShare.shared.start(persistent: request["persistent"] as? Bool ?? false)
+            return true
+        case "tailcat-stop":
+            TailcatShare.shared.stop()
+            return true
+        case "tailcat-add":
+            guard let window = TailcatPeersWindow.open else { throw Failure(description: "the Tailcat Peers window isn't open") }
+            return window.addPeer(name: request["name"] as? String ?? "", username: request["username"] as? String ?? "",
+                                  address: request["address"] as? String ?? "", persistent: request["persistent"] as? Bool ?? false)
+        case "tailcat-ping", "tailcat-connect", "tailcat-remove":
+            guard let peer = TailcatPeerStore.shared.peers.first(where: { $0.name == request["name"] as? String }) else { throw Failure(description: "no such peer") }
+            switch request["op"] as? String {
+            case "tailcat-ping": TailcatPeerStore.shared.ping(peer)
+            case "tailcat-connect": try workspace.connect(TailcatPeerStore.shared.endpoint(for: peer), password: nil)
+            default: try TailcatPeerStore.shared.remove(peer)
+            }
+            return true
         case "session-snapshot":
             // Every window as session restore would save it (the parity copy never writes it).
             let data = try JSONEncoder().encode(App.allWorkspaces.map(\.savedWindow))
@@ -219,6 +240,10 @@ enum TestBridge {
         case "connect-button":
             // The toolbar's SSH button: connection details while connected, Connect via SSH otherwise.
             if run { workspace.connectButton() }
+            return run ? "ran" : "enabled"
+        case "tailcat":
+            // The toolbar's Tailcat Peers.
+            if run { TailcatPeersWindow.show(owner: workspace.hwnd, workspace: workspace) }
             return run ? "ran" : "enabled"
         case "find":
             // The toolbar's Search: the terminal's find bar (finding files in the explorer isn't here yet).

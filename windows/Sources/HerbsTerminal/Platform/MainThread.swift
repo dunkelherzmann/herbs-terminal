@@ -32,6 +32,14 @@ final class MainThread: WindowObject {
         PostMessageW(target, UINT(WM_APP_MAIN), 0, 0)
     }
 
+    /// Runs `work` on the window thread after `seconds`; safe from any thread. (DispatchQueue.main never runs here.)
+    nonisolated static func after(_ seconds: Double, _ work: @escaping @Sendable @MainActor () -> Void) {
+        Thread.detachNewThread {
+            Thread.sleep(forTimeInterval: seconds)
+            async(work)
+        }
+    }
+
     /// Runs `body` on a background thread and hands its result to `done` on the window thread.
     nonisolated static func background<T: Sendable>(_ body: @escaping @Sendable () throws -> T,
                                                     done: @escaping @Sendable @MainActor (Result<T, Error>) -> Void) {

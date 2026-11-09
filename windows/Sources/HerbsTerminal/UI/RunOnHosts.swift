@@ -106,7 +106,9 @@ final class MultiHostRunner {
     }
 
     private static func makeProcess(_ target: HostTarget, command: String) throws -> (Process, String) {
-        let session = RemoteSession(endpoint: target.endpoint, password: target.password)
+        let address = try Tailcat.address(for: target.endpoint)
+        if address != nil { Tailcat.startSocks() }
+        let session = RemoteSession(endpoint: target.endpoint, password: target.password, tailcatAddress: address)
         let setup = try session.relaySetup()
         let process = Process()
         process.executableURL = URL(fileURLWithPath: AskpassBroker.executablePath)
@@ -115,7 +117,7 @@ final class MultiHostRunner {
         environment["HERBSTERMINAL_RELAY_ERRORS"] = "1"
         process.environment = environment
         process.arguments = [SFTPRelay.flag] + setup.arguments
-            + ["-o", "ConnectTimeout=10", "-T", "\(target.endpoint.username)@\(target.endpoint.host)", command]
+            + ["-o", "ConnectTimeout=10", "-T", setup.destination, command]
         return (process, setup.preamble)
     }
 

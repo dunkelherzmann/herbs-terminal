@@ -130,22 +130,6 @@ final class MultiHostModel: ObservableObject {
 
 // MARK: Tailcat
 
-/// A machine reached over Tailcat. Its address is a bearer secret, so it is protected like saved logins and only
-/// handed to tailcat on connect.
-struct TailcatPeer: Codable, Equatable {
-    var id = UUID()
-    var name: String
-    var username: String
-    var port = 22
-    /// One-time peers come from an ephemeral `tailcat serve` and stop working when it exits.
-    var persistent: Bool
-    var secret: Data
-}
-
-enum TailcatRoute: Equatable {
-    case unknown, checking, direct(String), relayed(String), unreachable(String)
-}
-
 enum Tailcat {
     /// The copy bundled with the app (/app/bin in the Flatpak, next to the executable in a development build).
     /// Copies on PATH are never used, so behaviour doesn't change with whatever else is installed.
@@ -155,21 +139,8 @@ enum Tailcat {
         return ["/app/bin/tailcat", beside].first { FileManager.default.isExecutableFile(atPath: $0) }
     }()
 
-    /// Reads a ping report such as "pong in 42.1ms via DERP(sfo)" or "pong in 1.2ms via 203.0.113.7:41641".
-    static func route(fromPing output: String) -> TailcatRoute {
-        let pongs = output.split(separator: "\n").filter { $0.hasPrefix("pong") }
-        guard let last = pongs.last.map(String.init) else {
-            let reason = output.split(separator: "\n").last.map(String.init) ?? "No reply."
-            return .unreachable(reason.isEmpty ? "No reply." : reason)
-        }
-        let latency = last.components(separatedBy: " ").dropFirst(2).first ?? ""
-        if pongs.contains(where: { !$0.contains("DERP") }) {
-            let path = pongs.last { !$0.contains("DERP") }.flatMap { $0.components(separatedBy: "via ").last } ?? ""
-            return .direct("\(latency) via \(path)")
-        }
-        let relay = last.components(separatedBy: "via ").last ?? "DERP"
-        return .relayed("\(latency) via \(relay)")
-    }
+    /// Reads a ping report; see `TailcatRoute.init(ping:)`.
+    static func route(fromPing output: String) -> TailcatRoute { TailcatRoute(ping: output) }
 }
 
 @MainActor

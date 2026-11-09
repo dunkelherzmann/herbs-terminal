@@ -8,5 +8,6 @@ Sources/HerbsTerminal/TransferQueue.swift
 linux/Sources/HerbsTerminal/Core/Profiles.swift
 linux/Sources/HerbsTerminal/Core/Bookmarks.swift
 linux/Sources/HerbsTerminal/Core/Session.swift
+linux/Sources/HerbsTerminal/Core/TailcatModel.swift
 linux/Sources/HerbsTerminal/Core/Redaction.swift
 linux/Sources/HerbsTerminal/Platform/Observation.swift

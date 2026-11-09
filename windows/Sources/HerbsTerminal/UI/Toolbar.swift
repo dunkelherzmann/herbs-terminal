@@ -40,7 +40,7 @@ final class WindowChrome {
     }
 
     /// The parts of the toolbar not yet in the Windows version: drawn as on the Mac and Linux, but dimmed.
-    nonisolated static let unavailable: Set<Item> = [.peers]
+    nonisolated static let unavailable: Set<Item> = []
 
     private(set) var rects: [Item: RECT] = [:]
     var hover: Item?
@@ -312,7 +312,7 @@ final class WindowChrome {
         case .multiExec:
             return state.multiExecOn ? "Exit MultiExec (Ctrl+Shift+M)\nBack to one tab at a time; typing goes to the current tab only."
                                      : "MultiExec (Ctrl+Shift+M)\nShow every tab side by side and type into all of them at once."
-        case .peers: return "Tailcat Peers" + notYet
+        case .peers: return "Tailcat Peers\nPair with machines that can't reach each other by IP, and connect through Tailcat."
         case .search:
             if state.explorerShowing { return "Find Files (Ctrl+Shift+F)" + notYet }
             return "Search Terminal (Ctrl+Shift+F)\nFind text in this tab's scrollback."

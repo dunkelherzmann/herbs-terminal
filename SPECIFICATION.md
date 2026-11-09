@@ -564,6 +564,8 @@ The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In 
 - **Session restore** works as in section 2 (Settings ▸ Shell ▸ "Restore windows and tabs when Herb's Terminal opens", on by default): Quit, closing the last window, and signing out of Windows save each window's terminal tabs with their folder, name, profile, split panes and, for this PC's files, the explorer and its folder; the next launch reopens them. SSH tabs reopen as local shells in the home folder (logins are never replayed), editor tabs aren't reopened, and a folder that no longer exists starts in the home folder. Turning the setting off forgets the saved session.
 - **Size badge:** while the terminal's grid changes size (resizing the window or splitting), each pane shows its columns × rows in the middle, in its own font at 18 px on a rounded card, and hides it 1.2 seconds after the last change (Settings ▸ Window ▸ "Show columns × rows while resizing").
 
+- **Tailcat peers** work as in section 8, with Tailscale's own Windows build of tailcat (`tailcat.exe`, BSD-3-Clause, pinned to its published checksum) beside the app. The Tailcat Peers window (the toolbar's peers button) adds a peer (name, username, secret address, One-time or Persistent; addresses protected like saved logins), lists the peers with their pairing and route, and has Ping (Direct or Relayed with the latency), Connect and Remove (asks first) for the selected one; **Share this PC** runs `tailcat serve` for this PC's SSH server, one-time or persistent, with the address, Copy and Stop Sharing, and says to turn on the OpenSSH SSH Server service when nothing answers SSH here. Unlock… / Lock… sits opposite Done. The terminal reaches a peer through ssh's ProxyCommand: the app's helper trades a one-time token for the address and hands it to tailcat's local SOCKS proxy over the loopback socket. Windows' ssh stalls running a ProxyCommand without a terminal, so the explorer and Run Command on Hosts reach the peer through a one-connection loopback port the app forwards through a shared `tailcat socks` instead, keeping the peer's name for its host key. Every tailcat the app starts ends with it. When the explorer has no password for a login (a Tailcat peer, a typed ssh) and keys don't sign in, it asks for the password once.
+
 ### Files
 
 - **The explorer** shows this PC's files in a local tab and the host's files in an SSH tab: the toolbar's folder button or Ctrl+Shift+X switches between the tab's shell and its explorer, which keeps its folder while hidden.
@@ -597,7 +599,7 @@ The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In 
 
 ### Not yet on Windows
 
-Tailcat peers; finding files in the explorer. Their toolbar buttons and menu commands are shown dimmed.
+Finding files in the explorer. Their toolbar buttons and menu commands are shown dimmed.
 
 ## References
 

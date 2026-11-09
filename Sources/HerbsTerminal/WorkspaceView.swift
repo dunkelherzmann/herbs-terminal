@@ -514,10 +514,11 @@ final class Workspace: ObservableObject {
     /// Starts the login in the selected tab's shell. The explorer follows only once the shared connection
     /// is verified, and returns to local files when the session ends or the link drops.
     func connect(_ endpoint: RemoteEndpoint, password: String?) {
-        // A tab already in a remote session gets its own shell: typing a login there would nest it.
+        // A tab already in a remote session gets its own shell: typing a login there would nest it. So does one
+        // running a program: the launcher would wait for it, or be typed into it.
         switch selected.state.connection {
         case .connecting, .connected: add()
-        default: break
+        default: if selected.shell.foregroundProgram != nil { add() }
         }
         let tab = selected
         tab.shell.connectSSH(endpoint, password: password)

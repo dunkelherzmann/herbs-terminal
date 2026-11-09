@@ -20,6 +20,7 @@ enum App {
         registerClass(TextEditorPane.className)
         registerClass(GetInfoWindow.className, background: GetSysColorBrush(COLOR_WINDOW))
         registerClass(RunOnHostsWindow.className, background: GetSysColorBrush(COLOR_WINDOW))
+        registerClass(TailcatPeersWindow.className, background: GetSysColorBrush(COLOR_WINDOW))
         // The folder picker and other shell dialogs need COM on this thread.
         CoInitializeEx(nil, DWORD(COINIT_APARTMENTTHREADED.rawValue | COINIT_DISABLE_OLE1DDE.rawValue))
         registerClass(MainThread.className)
@@ -37,6 +38,7 @@ enum App {
             if let workspace = workspace(for: message.hwnd), workspace.shortcut(message) { continue }
             if SettingsWindow.dialogMessage(&message) { continue }
             if let logins = ManageLoginsWindow.openWindow, IsDialogMessageW(logins, &message) { continue }
+            if let peers = TailcatPeersWindow.open, peers.dialogMessage(&message) { continue }
             if let hosts = RunOnHostsWindow.open, let window = hosts.hwnd, hosts.handleKey(message) || IsDialogMessageW(window, &message) { continue }
             TranslateMessage(&message)
             DispatchMessageW(&message)
@@ -57,6 +59,8 @@ enum App {
 
     static func quit() {
         Workspace.saveSession()
+        // Sharing this PC over Tailcat stops when the app quits.
+        TailcatShare.shared.stop()
         isQuitting = true
         defer { isQuitting = false }
         for workspace in workspaces {
