@@ -17,11 +17,11 @@ A box is ticked once the change has shipped. A request that covers several platf
 - [ ] **Lock button in the Tailcat Peers window.** At the bottom, opposite Done: it shows Lock or Unlock, and its hover bubble explains that it locks or unlocks the safe storage of Tailcat addresses. Clicking it opens a window that asks for the Administrator Password, offers to lock or unlock, and offers to change the Administrator Password. *Requested 2026-11-07 · Mac, Linux, Windows.*
   - [x] Mac: shipped in 1.0.73 (#13).
   - [x] Linux: shipped in 1.0.73 (#13).
-  - [ ] Windows: no Tailcat in the Windows version yet.
+  - [ ] Windows: in #63 with Tailcat for Windows (checked in the code 2026-11-09); not yet released.
 - [ ] **Explain a Tailcat share that no one can log in to.** Start Sharing checks that this computer answers SSH on port 22 and, if not, says to turn on Remote Login (Mac) or the SSH service (Linux). When the peer is reached but nothing answers SSH there, the connecting side says so and how to fix it, instead of "Connection closed by UNKNOWN port 65535". *Requested 2026-11-07 · Mac, Linux, Windows.*
   - [x] Mac: shipped in 1.0.73 (#13).
   - [x] Linux: shipped in 1.0.73 (#13).
-  - [ ] Windows: no Tailcat in the Windows version yet.
+  - [ ] Windows: in #63 with Tailcat for Windows: Start Sharing checks for the OpenSSH SSH Server, and a peer that doesn't answer SSH is explained (checked in the code 2026-11-09); not yet released.
 - [ ] **Dropping a file or folder on the terminal types its path.** *Requested 2026-11-07 · Mac, Linux, Windows.*
   - [x] Mac: already did, quoted for the shell.
   - [x] Linux: it was meant to and didn't; fixed in 1.0.73 (#14).
