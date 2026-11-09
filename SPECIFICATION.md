@@ -469,7 +469,7 @@ The Linux version is the same app on GTK 4, libadwaita and VTE, packaged as the 
 ### Window and toolbar
 
 - Minimize, maximize and close sit at the right end of the toolbar, as on Linux and Windows desktops. The Main Menu takes the left corner, followed by New Tab and Connect via SSH; the rest of the toolbar is as on the Mac.
-- The Main Menu also holds a **Shell** submenu with the Mac's Shell and Edit menu commands (export, profiles, splits, MultiExec, Run Command on Hosts, connections, tabs, Clear and Reset), and Quit.
+- The Main Menu holds the Mac's menus in the Mac's order, with Ctrl or Ctrl+Shift for ⌘ as the shortcuts list says: **Edit** (Undo, Redo and Cut for a focused text field such as the find bar; Copy, Paste and Select All, which act on the terminal otherwise; Clear to Start and Clear Scrollback), **Shell** (the Mac's Shell menu without Secure Keyboard Entry, which is macOS-only), **Window** (Minimize, Zoom, which maximizes, and Show Tab 1–8 and Show Last Tab, Alt+1–9), then Settings, About and Quit Herb's Terminal. Hide is macOS-only.
 - Toolbar buttons never take the keyboard focus from the terminal. The window's shortcuts are handled before the terminal sees the key.
 - Toolbar buttons are 30 × 28 px as on the Mac, and the Main Menu is a plain glyph with a background only while hovered or pressed.
 - Hover hints are GTK tooltips with the same text; screen readers get the same descriptions, the title's included. Items in the Main Menu and other menus are named after their text for screen readers (GTK leaves menu items unnamed).
@@ -550,7 +550,7 @@ The Windows version is the same app as a native Win32 program, with SwiftTerm's 
 
 - The toolbar replaces the title bar and is laid out as on Linux: the Main Menu, New Tab and Connect via SSH on the left; the title in the middle; Export Session, Take Screenshot, Show File Explorer, MultiExec, Tailcat Peers and Search on the right, then minimize, maximize and close. Maximize shows Windows 11's snap layouts. Drag an empty part of the toolbar to move the window, and double-click it to maximize.
 - The tab strip sits under the toolbar: click to switch, double-click to rename, drag to reorder, middle-click to close, right-click for Rename, Move Left, Move Right and Close.
-- The Main Menu is a plain glyph, as on the Mac, with a background only while hovered or pressed. It matches Linux's, Shell submenu included. Menus, hover hints, Settings, Manage Logins, Get Info and the app's dialogs follow its light or dark appearance (dark frames, fields, lists and buttons in Windows' own dark styles), and colors use the Windows accent color.
+- The Main Menu is a plain glyph, as on the Mac, with a background only while hovered or pressed. It matches Linux's: the Mac's menus in the Mac's order, Edit, Shell and Window included, plus Manage Logins. Redo is greyed, since Windows' text fields keep a single undo step. Menus, hover hints, Settings, Manage Logins, Get Info and the app's dialogs follow its light or dark appearance (dark frames, fields, lists and buttons in Windows' own dark styles), and colors use the Windows accent color.
 - Toolbar buttons never take the keyboard focus from the terminal. Hover hints appear after about half a second with the Mac's wording.
 
 ### Shortcuts

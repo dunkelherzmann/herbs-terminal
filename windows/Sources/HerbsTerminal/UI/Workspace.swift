@@ -856,6 +856,11 @@ final class Workspace: WindowObject {
     }
 
     func perform(_ id: UINT) {
+        if id >= MenuCommand.firstShowTab {
+            let number = Int(id - MenuCommand.firstShowTab) + 1
+            select(number == 9 ? tabs.count - 1 : min(number - 1, tabs.count - 1))
+            return
+        }
         if id >= MenuCommand.firstPreset, id < MenuCommand.firstNewTabProfile {
             let names = ThemeLibrary.shared.allNames
             let index = Int(id - MenuCommand.firstPreset)
@@ -927,10 +932,18 @@ final class Workspace: WindowObject {
         case .previousPane: cyclePane(-1)
         case .multiExec: setMultiExec(!multiExec)
         case .runOnHosts: showRunOnHosts()
-        case .copy: pane?.copySelection()
-        case .paste: pane?.paste()
+        case .undo: if let field = MainMenu.focusedTextField() { SendMessageW(field, UINT(WM_UNDO), 0, 0) }
+        case .redo: break  // Windows text fields keep one undo step, which Undo toggles
+        case .cut: if let field = MainMenu.focusedTextField() { SendMessageW(field, UINT(WM_CUT), 0, 0) }
+        case .copy:
+            if let field = MainMenu.focusedTextField() { SendMessageW(field, UINT(WM_COPY), 0, 0) } else { pane?.copySelection() }
+        case .paste:
+            if let field = MainMenu.focusedTextField() { SendMessageW(field, UINT(WM_PASTE), 0, 0) } else { pane?.paste() }
         case .pasteEscaped: pane?.pasteEscaped()
-        case .selectAll: pane?.selectAll()
+        case .selectAll:
+            if let field = MainMenu.focusedTextField() { SendMessageW(field, UINT(EM_SETSEL), 0, -1) } else { pane?.selectAll() }
+        case .minimize: if let hwnd { ShowWindow(hwnd, SW_MINIMIZE) }
+        case .maximize: if let hwnd { ShowWindow(hwnd, IsZoomed(hwnd) ? SW_RESTORE : SW_MAXIMIZE) }
         case .showExplorer: if activePane?.showingExplorer == false { toggleExplorer() }
         case .findInTerminal:
             if activePane?.showingExplorer == false { pane?.showFind() }

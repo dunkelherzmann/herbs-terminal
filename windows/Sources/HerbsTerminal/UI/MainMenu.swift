@@ -1,8 +1,9 @@
 import Foundation
 import WinSDK
 
-/// The Main Menu, item for item as on Linux (where the Mac's menu bar becomes its Shell submenu). Commands the
-/// Windows version doesn't have yet are shown greyed out, so the menu reads the same on every platform.
+/// The Main Menu, item for item as on the Mac and Linux: every menu of the app lives here, Edit, Shell and Window
+/// included, in the Mac's order. Commands the Windows version doesn't have yet are shown greyed out, so the menu reads
+/// the same on every platform.
 enum MenuCommand: UINT {
     case newTab = 100, newWindow, connect, findInTerminal
     case zoomIn, zoomOut, zoomReset
@@ -14,20 +15,48 @@ enum MenuCommand: UINT {
     case fullScreen, settings, manageLogins, about, quit
     case restoreDefaultSize, makeSizeDefault, closeTab, takeScreenshot
     case copy, paste, pasteEscaped, selectAll, showExplorer
+    case undo, redo, cut, minimize, maximize
     // Ranges for the profile lists: New Tab with Profile and Use Profile.
     static let firstNewTabProfile: UINT = 3000
     static let firstUseProfile: UINT = 3500
     // Ranges for lists: tabs and color presets.
     static let firstTab: UINT = 1000
     static let firstPreset: UINT = 2000
+    // Window ▸ Show Tab 1–8 and Show Last Tab.
+    static let firstShowTab: UINT = 4000
 }
 
 @MainActor
 enum MainMenu {
     /// Builds the menu for `workspace` and shows it at `point` (screen coordinates). Returns the chosen command id.
     static func show(for workspace: Workspace, at point: POINT, owner: HWND) -> UINT {
-        let menu = CreatePopupMenu()
+        let menu = build(for: workspace)
         defer { DestroyMenu(menu) }
+        return track(menu, UINT(TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON), point, owner)
+    }
+
+    /// The Main Menu's titles, submenus nested, for the feature tests.
+    static func outline(for workspace: Workspace) -> [[String: Any]] {
+        let menu = build(for: workspace)
+        defer { DestroyMenu(menu) }
+        func walk(_ menu: HMENU?) -> [[String: Any]] {
+            var items: [[String: Any]] = []
+            for index in 0..<max(0, GetMenuItemCount(menu)) {
+                var title = [WCHAR](repeating: 0, count: 256)
+                let length = GetMenuStringW(menu, UINT(index), &title, 255, UINT(MF_BYPOSITION))
+                guard length > 0 else { continue }  // a divider
+                let text = String(decoding: title.prefix(Int(length)), as: UTF16.self)
+                var item: [String: Any] = ["title": String(text.split(separator: "\t", maxSplits: 1).first ?? "")]
+                if let sub = GetSubMenu(menu, Int32(index)) { item["items"] = walk(sub) }
+                items.append(item)
+            }
+            return items
+        }
+        return walk(menu)
+    }
+
+    private static func build(for workspace: Workspace) -> HMENU? {
+        let menu = CreatePopupMenu()
         func item(_ menu: HMENU?, _ title: String, _ command: MenuCommand, enabled: Bool = true, checked: Bool = false) {
             item(menu, title, command.rawValue, enabled: enabled, checked: checked)
         }
@@ -75,9 +104,37 @@ enum MainMenu {
             item(sub, "Import iTerm2 Color Preset…", .importPreset)
             item(sub, "Restore Defaults", .restoreTheming)
         }
+        item(menu, "Toggle Full Screen\tF11", .fullScreen)
+        divider(menu)
+        // Edit: the standard commands act on a text field that has the focus; Copy, Paste and Select All otherwise
+        // act on the terminal, as their shortcuts do.
+        let field = focusedTextField()
+        submenu(menu, "Edit") { sub in
+            item(sub, "Undo\tCtrl+Z", .undo, enabled: field.map { SendMessageW($0, UINT(EM_CANUNDO), 0, 0) != 0 } ?? false)
+            item(sub, "Redo", .redo, enabled: false)  // Windows text fields keep one undo step, which Undo toggles
+            divider(sub)
+            item(sub, "Cut\tCtrl+X", .cut, enabled: field != nil)
+            item(sub, "Copy\tCtrl+Shift+C", .copy, enabled: field != nil || pane != nil)
+            item(sub, "Paste\tCtrl+Shift+V", .paste, enabled: field != nil || pane != nil)
+            item(sub, "Select All\tCtrl+Shift+A", .selectAll, enabled: field != nil || pane != nil)
+            divider(sub)
+            item(sub, "Clear to Start\tCtrl+Shift+L", .clearToStart)
+            item(sub, "Clear Scrollback\tCtrl+Alt+K", .clearScrollback)
+        }
         submenu(menu, "Shell") { sub in
+            let terminal = pane != nil && pane?.showingExplorer == false
+            let split = pane?.group?.isSplit == true
+            item(sub, "New Tab\tCtrl+Shift+T", .newTab)
             item(sub, "Export Session…\tCtrl+Shift+S", .exportSession, enabled: pane != nil)
             item(sub, "Take Screenshot\tCtrl+Alt+S", .takeScreenshot)
+            item(sub, "Split Vertically\tCtrl+Shift+E", .splitVertical, enabled: terminal)
+            item(sub, "Split Horizontally\tCtrl+Shift+O", .splitHorizontal, enabled: terminal)
+            item(sub, "Close Pane\tCtrl+Alt+W", .closePane, enabled: terminal && split)
+            item(sub, "Select Next Pane\tCtrl+Alt+Right", .nextPane, enabled: terminal && split)
+            item(sub, "Select Previous Pane\tCtrl+Alt+Left", .previousPane, enabled: terminal && split)
+            divider(sub)
+            item(sub, "MultiExec\tCtrl+Shift+M", .multiExec, checked: workspace.multiExec)
+            item(sub, "Run Command on Hosts…", .runOnHosts)
             let current = workspace.focusedPane?.profileID ?? TerminalProfile.shared.defaultProfileID
             submenu(sub, "New Tab with Profile") { profiles in
                 for (index, profile) in TerminalProfile.shared.profiles.enumerated() {
@@ -90,18 +147,7 @@ enum MainMenu {
                          checked: profile.id == current)
                 }
             }
-            divider(sub)
-            let terminal = pane != nil && pane?.showingExplorer == false
-            let split = pane?.group?.isSplit == true
-            item(sub, "Split Vertically\tCtrl+Shift+E", .splitVertical, enabled: terminal)
-            item(sub, "Split Horizontally\tCtrl+Shift+O", .splitHorizontal, enabled: terminal)
-            item(sub, "Close Pane\tCtrl+Alt+W", .closePane, enabled: terminal && split)
-            item(sub, "Select Next Pane\tCtrl+Alt+Right", .nextPane, enabled: terminal && split)
-            item(sub, "Select Previous Pane\tCtrl+Alt+Left", .previousPane, enabled: terminal && split)
-            divider(sub)
-            item(sub, "MultiExec\tCtrl+Shift+M", .multiExec, checked: workspace.multiExec)
-            item(sub, "Run Command on Hosts…", .runOnHosts)
-            item(sub, "New Remote Connection…", .newRemoteConnection)
+            item(sub, "New Remote Connection…\tCtrl+Shift+K", .newRemoteConnection)
             item(sub, "Disconnect", .disconnect, enabled: pane?.isConnected ?? false)
             divider(sub)
             item(sub, "Show Previous Tab\tCtrl+Page Up", .previousTab, enabled: workspace.tabNames.count > 1)
@@ -110,19 +156,33 @@ enum MainMenu {
             item(sub, "Move Tab Left\tCtrl+Shift+Page Up", .moveTabLeft, enabled: workspace.activeIndex > 0)
             item(sub, "Move Tab Right\tCtrl+Shift+Page Down", .moveTabRight, enabled: workspace.activeIndex < workspace.tabNames.count - 1)
             divider(sub)
-            item(sub, "Clear to Start\tCtrl+Shift+L", .clearToStart)
-            item(sub, "Clear Scrollback\tCtrl+Alt+K", .clearScrollback)
             item(sub, "Reset\tCtrl+Alt+R", .reset)
             item(sub, "Hard Reset\tCtrl+Alt+Shift+R", .hardReset)
         }
-        item(menu, "Toggle Full Screen\tF11", .fullScreen)
+        submenu(menu, "Window") { sub in
+            item(sub, "Minimize", .minimize)
+            item(sub, "Zoom", .maximize)
+            divider(sub)
+            for number in 1...9 {
+                item(sub, (number == 9 ? "Show Last Tab" : "Show Tab \(number)") + "\tAlt+\(number)",
+                     MenuCommand.firstShowTab + UINT(number - 1), enabled: number == 9 || number <= workspace.tabNames.count)
+            }
+        }
         divider(menu)
         item(menu, "Settings…\tCtrl+,", .settings)
         item(menu, "Manage Logins…", .manageLogins)
         item(menu, "About Herb's Terminal", .about)
-        item(menu, "Quit\tCtrl+Shift+Q", .quit)
+        divider(menu)
+        item(menu, "Quit Herb's Terminal\tCtrl+Shift+Q", .quit)
+        return menu
+    }
 
-        return track(menu, UINT(TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON), point, owner)
+    /// The window's focused text field (a dialog or find field), if any: where Edit's standard commands go.
+    static func focusedTextField() -> HWND? {
+        guard let focus = GetFocus() else { return nil }
+        var name = [WCHAR](repeating: 0, count: 32)
+        let length = GetClassNameW(focus, &name, 32)
+        return String(decoding: name.prefix(Int(length)), as: UTF16.self).lowercased() == "edit" ? focus : nil
     }
 
     /// A small menu of `items` (title, command) at `point`; returns the chosen command.

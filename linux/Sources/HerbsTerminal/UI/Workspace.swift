@@ -960,6 +960,15 @@ final class Workspace {
         if selected.state.layout == .explorer { selected.explorer?.find() } else { selected.focused.showFind() }
     }
 
+    /// Runs a text field's own action (`text.undo`, `clipboard.copy`…) when one has the focus: the find bar or a
+    /// dialog's field. Returns false when no text field has it.
+    @discardableResult
+    func editField(_ action: String) -> Bool {
+        guard let focus = gtk_root_get_focus(c(window)),
+              g_type_check_instance_is_a(c(focus), gtk_text_get_type()) != 0 else { return false }
+        return gtk_widget_activate_action_variant(focus, action, nil) != 0
+    }
+
     func findInTerminal() {
         guard selected.editor == nil else { return }
         if selected.state.layout == .explorer { setLayout(.terminal) }
@@ -1024,10 +1033,18 @@ final class Workspace {
             if gtk_window_is_fullscreen(c(workspace.window)) != 0 { gtk_window_unfullscreen(c(workspace.window)) }
             else { gtk_window_fullscreen(c(workspace.window)) }
         }
-        add("copy") { $0.selected.editor == nil ? $0.selected.focused.copy() : () }
-        add("paste") { $0.selected.editor == nil ? $0.selected.focused.paste() : () }
+        add("undo") { $0.editField("text.undo") }
+        add("redo") { $0.editField("text.redo") }
+        add("cut") { $0.editField("clipboard.cut") }
+        add("copy") { if !$0.editField("clipboard.copy"), $0.selected.editor == nil { $0.selected.focused.copy() } }
+        add("paste") { if !$0.editField("clipboard.paste"), $0.selected.editor == nil { $0.selected.focused.paste() } }
         add("paste-escaped") { $0.selected.editor == nil ? $0.selected.focused.pasteEscaped() : () }
-        add("select-all") { $0.selected.editor == nil ? $0.selected.focused.selectAll() : () }
+        add("select-all") { if !$0.editField("selection.select-all"), $0.selected.editor == nil { $0.selected.focused.selectAll() } }
+        add("minimize") { gtk_window_minimize(c($0.window)) }
+        add("maximize") { workspace in
+            if gtk_window_is_maximized(c(workspace.window)) != 0 { gtk_window_unmaximize(c(workspace.window)) }
+            else { gtk_window_maximize(c(workspace.window)) }
+        }
         add("show-explorer") { $0.setLayout(.explorer) }
         add("toggle-explorer") { $0.setLayout($0.selected.state.layout == .explorer ? .terminal : .explorer) }
         add("tailcat") { TailcatWindow.show($0) }
@@ -1083,6 +1100,8 @@ final class Workspace {
     }
 
     private var menuSignature = ""
+    /// The Main Menu as last built, for the feature tests.
+    private(set) var mainMenuModel: OpaquePointer?
 
     /// The Main Menu, rebuilt when what it lists (tabs, profiles, presets) changes.
     func updateMenu() {
@@ -1113,16 +1132,26 @@ final class Workspace {
             sub.item("Import iTerm2 Color Preset…", "win.import-preset")
             sub.item("Restore Defaults", "win.restore-theming")
         }
+        menu.item("Toggle Full Screen", "win.fullscreen")
+        menu.divider()
+        // Every menu is here, as on the Mac: Edit, Shell and Window. Edit's standard commands act on a text field that
+        // has the focus (the find bar, say); Copy, Paste and Select All otherwise act on the terminal.
+        menu.submenu("Edit") { sub in
+            sub.item("Undo", "win.undo", accel: "<Control>z")
+            sub.item("Redo", "win.redo", accel: "<Control><Shift>z")
+            sub.divider()
+            sub.item("Cut", "win.cut", accel: "<Control>x")
+            sub.item("Copy", "win.copy")
+            sub.item("Paste", "win.paste")
+            sub.item("Select All", "win.select-all")
+            sub.divider()
+            sub.item("Clear to Start", "win.clear-to-start")
+            sub.item("Clear Scrollback", "win.clear-scrollback")
+        }
         menu.submenu("Shell") { sub in
+            sub.item("New Tab", "win.new-tab")
             sub.item("Export Session…", "win.export-session")
             sub.item("Take Screenshot", "win.take-screenshot")
-            sub.submenu("New Tab with Profile") { profiles in
-                for profile in TerminalProfile.shared.profiles { profiles.item(profile.name, "win.new-tab-profile", target: profile.id.uuidString) }
-            }
-            sub.submenu("Use Profile") { profiles in
-                for profile in TerminalProfile.shared.profiles { profiles.item(profile.name, "win.use-profile", target: profile.id.uuidString) }
-            }
-            sub.divider()
             sub.item("Split Vertically", "win.split-vertical")
             sub.item("Split Horizontally", "win.split-horizontal")
             sub.item("Close Pane", "win.close-pane")
@@ -1131,6 +1160,12 @@ final class Workspace {
             sub.divider()
             sub.item("MultiExec", "win.multiexec")
             sub.item("Run Command on Hosts…", "win.run-on-hosts")
+            sub.submenu("New Tab with Profile") { profiles in
+                for profile in TerminalProfile.shared.profiles { profiles.item(profile.name, "win.new-tab-profile", target: profile.id.uuidString) }
+            }
+            sub.submenu("Use Profile") { profiles in
+                for profile in TerminalProfile.shared.profiles { profiles.item(profile.name, "win.use-profile", target: profile.id.uuidString) }
+            }
             sub.item("New Remote Connection…", "win.connect")
             sub.item("Disconnect", "win.disconnect")
             sub.divider()
@@ -1140,16 +1175,21 @@ final class Workspace {
             sub.item("Move Tab Left", "win.move-tab-left")
             sub.item("Move Tab Right", "win.move-tab-right")
             sub.divider()
-            sub.item("Clear to Start", "win.clear-to-start")
-            sub.item("Clear Scrollback", "win.clear-scrollback")
             sub.item("Reset", "win.reset")
             sub.item("Hard Reset", "win.hard-reset")
         }
-        menu.item("Toggle Full Screen", "win.fullscreen")
+        menu.submenu("Window") { sub in
+            sub.item("Minimize", "win.minimize")
+            sub.item("Zoom", "win.maximize")
+            sub.divider()
+            for number in 1...9 { sub.item(number == 9 ? "Show Last Tab" : "Show Tab \(number)", "win.tab-\(number)") }
+        }
         menu.divider()
         menu.item("Settings…", "app.settings")
         menu.item("About Herb's Terminal", "app.about")
-        menu.item("Quit", "app.quit")
+        menu.divider()
+        menu.item("Quit Herb's Terminal", "app.quit")
+        mainMenuModel = menu.menu
         toolbar.setMenu(menu.finish())
     }
 
