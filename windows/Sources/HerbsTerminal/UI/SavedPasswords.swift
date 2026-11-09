@@ -49,7 +49,7 @@ enum SavedPasswordsMenu {
         case "manage": ManagePasswordsWindow.show(owner: workspace.hwnd)
         default:
             guard let saved = store.passwords.first(where: { $0.id == action }), let pane = workspace.focusedPane else { return }
-            pane.focus()
+            if let terminal = pane.hwnd { SetFocus(terminal) }
             pane.type(saved.password)
         }
     }
