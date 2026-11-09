@@ -1118,7 +1118,26 @@ def safe(c):
     if not path.lower().startswith(c.app.home.lower()):
         raise Outcome("error", f"refused: the explorer is at {path}, outside the scene's folder")
 
-manual("E1", "Places", "checked in the accessibility tree by parity/check.sh; the bridge doesn't report places")
+def places(c, s=None):
+    found = c.tab(s).get("explorer", {}).get("places")
+    if found is None:
+        c.unverified("checked in the accessibility tree by parity/check.sh; the bridge doesn't report places")
+    return found
+
+@test("E1", "Places on this computer: Home, the user folders, the whole disk and Trash")
+def _(c):
+    explorer_at_home(c, files=False)
+    p = places(c)
+    c.expect("Home" in p, f"expected Home among the places, saw {p}")
+    if c.platform == "windows":
+        c.expect(any(re.search(r"\([A-Z]:\)$", name) for name in p), f"expected the drives, saw {p}")
+    else:
+        c.expect("Computer" in p and "Trash" in p, f"expected Computer and Trash, saw {p}")
+
+@test("E1", "Places on a host: Home and File System")
+def _(c):
+    host_explorer(c)
+    c.until(lambda s: {"Home", "File System"} <= set(places(c, s)), f"expected Home and File System on the host", timeout=10)
 @test("E2", "Bookmarks: add and remove a folder")
 def _(c):
     explorer_at_home(c)

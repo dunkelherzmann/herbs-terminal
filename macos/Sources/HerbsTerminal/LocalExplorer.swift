@@ -324,7 +324,8 @@ extension LocalExplorer {
         bridge.go = { navigate(to: $0) }
         bridge.setFilter = { filter.active = true; filter.text = $0 }
         bridge.extra = {
-            ["hidden": showHidden, "bookmarked": bookmarks.contains(path), "status": listing.error ?? listing.working ?? "",
+            ["places": (LocalPlaces.standard() + listing.devices).map(\.name) + bookmarks.map { URL(fileURLWithPath: $0).lastPathComponent },
+             "hidden": showHidden, "bookmarked": bookmarks.contains(path), "status": listing.error ?? listing.working ?? "",
              "finding": filter.active, "filter": filter.text, "canUndo": log.canUndo, "canRedo": log.canRedo,
              "undoTitle": log.undoTitle, "redoTitle": log.redoTitle, "administrator": isAdministrator, "remote": false]
         }

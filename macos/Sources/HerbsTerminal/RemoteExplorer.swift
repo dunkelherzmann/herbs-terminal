@@ -721,7 +721,8 @@ extension RemoteExplorer {
             Task { await viewModel.download(names, from: folder, to: URL(fileURLWithPath: target, isDirectory: true)) }
         }
         bridge.extra = {
-            ["hidden": viewModel.showHidden, "bookmarked": bookmarks.contains(normalizePath(currentPath)),
+            ["places": ["Home", "File System"] + bookmarks.paths.map { ($0 as NSString).lastPathComponent.isEmpty ? "/" : ($0 as NSString).lastPathComponent },
+             "hidden": viewModel.showHidden, "bookmarked": bookmarks.contains(normalizePath(currentPath)),
              "status": viewModel.errorMessage ?? (viewModel.isLoading ? "Loading…" : ""),
              "finding": filter.active, "filter": filter.text, "canUndo": !viewModel.undoMoves.isEmpty, "canRedo": !viewModel.redoMoves.isEmpty,
              "undoTitle": viewModel.undoMoves.isEmpty ? "Undo" : "Undo Move", "redoTitle": viewModel.redoMoves.isEmpty ? "Redo" : "Redo Move",
