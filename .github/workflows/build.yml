@@ -1,5 +1,6 @@
 # Builds and tests every version on GitHub's own runners for each pull request and push to main.
-# Release builds are still made and installed on Herbert's own Mac, Linux and Windows machines.
+# Release builds are still made and installed on Herbert's own Mac, Linux and Windows machines; only the
+# aarch64 Flatpak is taken from here.
 name: Build
 on:
   pull_request:
@@ -19,7 +20,11 @@ jobs:
       # differs between macOS releases; it runs on the Mac with the rest of the suite.
       - run: macos/dev/test.sh --skip terminalUsesFactoryBasicProfile
   linux:
-    runs-on: ubuntu-24.04
+    # x86_64, and aarch64 on GitHub's ARM runners: the release's ARM Flatpak comes from here (no ARM Linux machine).
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -31,6 +36,11 @@ jobs:
       - run: dbus-run-session -- linux/dev/build_flatpak.sh
         env:
           GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-${{ matrix.os }}
+          path: dist/*.flatpak
+          retention-days: 30
   windows:
     runs-on: windows-2022
     steps:
