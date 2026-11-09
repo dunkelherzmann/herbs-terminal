@@ -281,9 +281,24 @@ def _(c):
 
 @test("W19", "Every menu in the window; shortcuts still reach the commands")
 def _(c):
-    if c.platform != "mac":
-        raise Outcome("unverified", "this version has no system menu bar; its Main Menu is compared with the Mac's by hand")
     menus = c.bridge.call("menus")
+    if c.platform != "mac":
+        # No system menu bar: the Main Menu holds every menu, in the Mac's order.
+        main = menus["main"]
+        titles = [item.get("title") for item in main]
+        expected = ["Toggle Full Screen", "Edit", "Shell", "Window", "Settings…", "About Herb's Terminal", "Quit Herb's Terminal"]
+        if [t for t in titles if t in expected] != expected:
+            raise Outcome("broken", f"the Main Menu reads {titles}, expected {expected} in that order")
+        def sub(title):
+            return [item.get("title") for item in next(m for m in main if m.get("title") == title).get("items", [])]
+        for title, items in (("Edit", ["Undo", "Redo", "Cut", "Copy", "Paste", "Select All", "Clear to Start", "Clear Scrollback"]),
+                             ("Window", ["Minimize", "Zoom", "Show Tab 1", "Show Last Tab"])):
+            missing = [i for i in items if i not in sub(title)]
+            if missing:
+                raise Outcome("broken", f"the Main Menu's {title} menu lacks {missing}")
+        if sub("Shell")[0] != "New Tab" or sub("Shell")[-1] != "Hard Reset":
+            raise Outcome("broken", f"the Shell menu isn't in the Mac's order: {sub('Shell')}")
+        return
     if menus["bar"] != ["Herb's Terminal"]:
         raise Outcome("broken", f"the macOS menu bar shows {menus['bar']}, expected only the app menu")
     for title in ("Edit", "Shell", "Window"):

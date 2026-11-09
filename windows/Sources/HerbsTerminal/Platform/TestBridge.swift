@@ -157,6 +157,9 @@ enum TestBridge {
             guard let pane = try workspace.focusedPane else { throw Failure(description: "no terminal") }
             pane.bridgeFindStep(up: request["up"] as? Bool ?? true)
             return true
+        case "menus":
+            // No system menu bar here; the Main Menu holds every menu, nested.
+            return ["bar": [String](), "main": MainMenu.outline(for: try workspace)] as [String: Any]
         case "context-menu":
             // The focused terminal's right-click menu, as it would open now.
             guard let pane = try workspace.focusedPane else { throw Failure(description: "no terminal") }

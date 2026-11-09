@@ -104,6 +104,10 @@ enum TestBridge {
             default: throw Failure(description: "unknown profile key")
             }
             return true
+        case "menus":
+            // No system menu bar here; the Main Menu holds every menu, nested.
+            guard let model = try workspace.mainMenuModel else { throw Failure(description: "no Main Menu") }
+            return ["bar": [String](), "main": menuTree(model)] as [String: Any]
         case "context-menu":
             // The focused terminal's right-click menu, as it would open now.
             let workspace = try workspace
@@ -162,6 +166,29 @@ enum TestBridge {
                 return String(cString: g_variant_get_string(value, nil))
             }
             items.append((attribute("label"), attribute("action")))
+        }
+        return items
+    }
+
+    /// A menu model's titles with their submenus nested, sections flattened.
+    private static func menuTree(_ model: OpaquePointer) -> [[String: Any]] {
+        var items: [[String: Any]] = []
+        for index in 0..<g_menu_model_get_n_items(c(model)) {
+            if let section = g_menu_model_get_item_link(c(model), index, "section") {
+                items += menuTree(c(section))
+                g_object_unref(raw(section))
+                continue
+            }
+            var item: [String: Any] = [:]
+            if let value = g_menu_model_get_item_attribute_value(c(model), index, "label", nil) {
+                item["title"] = String(cString: g_variant_get_string(value, nil))
+                g_variant_unref(value)
+            }
+            if let submenu = g_menu_model_get_item_link(c(model), index, "submenu") {
+                item["items"] = menuTree(c(submenu))
+                g_object_unref(raw(submenu))
+            }
+            items.append(item)
         }
         return items
     }
