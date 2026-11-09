@@ -28,7 +28,7 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           sudo apt-get update -q && sudo apt-get install -yq flatpak
       # The project's own build script: it prefetches the downloads with retries and gh, then builds the bundle.
-      - run: linux/dev/build_flatpak.sh
+      - run: dbus-run-session -- linux/dev/build_flatpak.sh
         env:
           GH_TOKEN: ${{ github.token }}
   windows:
