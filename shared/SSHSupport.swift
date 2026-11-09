@@ -59,7 +59,11 @@ enum SSHControl {
         process.standardInput = FileHandle.nullDevice
         guard (try? process.run()) != nil else { return logins }
         let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        process.waitUntilExit()
+        // ssh has closed its output, so it's exiting: reap it directly. waitUntilExit spins Foundation's run loop on
+        // the calling (main) thread until Foundation notices the exit, and on Linux, with a session already open, it
+        // never did, so the window stopped responding.
+        var status: Int32 = 0
+        while waitpid(process.processIdentifier, &status, 0) == -1 && errno == EINTR {}
         var resolvedUser = user, resolvedHost: String?
         for line in text.split(separator: "\n") {
             let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
