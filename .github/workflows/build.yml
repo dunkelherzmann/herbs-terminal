@@ -12,6 +12,8 @@ concurrency:
 jobs:
   macos:
     runs-on: macos-26
+    # A hung test otherwise holds the job (and every merge) for hours; a normal run takes about 5 minutes.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }

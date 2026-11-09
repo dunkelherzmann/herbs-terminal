@@ -80,6 +80,8 @@ void herb_drop_read_paths(const GValue *value, HerbReceived done, void *data);
 /// GType constants that are macros in C.
 GType herb_type_file_list(void);
 GType herb_type_string(void);
+GType herb_type_int(void);
+GType herb_type_boolean(void);
 
 /// gtk_widget_class_set_css_name etc. aren't needed; widgets get CSS classes. A GtkWidget's GObject pointer.
 static inline GObject *herb_object(gpointer p) { return G_OBJECT(p); }

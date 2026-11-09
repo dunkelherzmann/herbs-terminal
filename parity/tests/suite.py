@@ -985,7 +985,63 @@ def _(c):
     c.until(lambda s: connection(c, s).get("state") == "local" and account["label"] not in c.window(s)["title"],
             "expected exit to return the tab to this computer", timeout=15)
 
-for fid, what in (("S6", "Shared connection and keepalive"), ("S8", "Host-key questions in the terminal"),
+HOST_SILENT_FOR = 30  # seconds the test host stays silent; the rule removes itself after that
+
+def silence_test_host(c, account):
+    """Makes the test host stop answering the test account (as when it's switched off): firewall rules on the host
+    drop everything sent on that account's SSH connections from this computer (found from its sshd processes and the
+    session's SSH_CLIENT, so the other machines' runs, which share the account, carry on), and remove themselves
+    after HOST_SILENT_FOR seconds. Typed into the tab's own session; sudo's password goes in at sudo's prompt, never
+    on a command line or the screen. (The kernel's owner match can't be used: the root listener creates the sockets.)"""
+    user = account["user"]
+    script = ("iptables -N '\"$HTC\"' 2>/dev/null; iptables -F '\"$HTC\"'; iptables -C OUTPUT -j '\"$HTC\"' 2>/dev/null || iptables -I OUTPUT -j '\"$HTC\"'; "
+              f"for port in $(ss -Htnp state established \"( sport = :22 )\" | grep -E \"pid=($(pgrep -d\"|\" -u {user} sshd)),\" "
+              "| awk \"{print \\$4}\" | grep \"^'\"${SSH_CLIENT%% *}\"':\" | sed \"s/.*://\"); do iptables -A '\"$HTC\"' -p tcp --sport 22 --dport $port -j DROP; done; "
+              f"nohup setsid sh -c \"sleep {HOST_SILENT_FOR}; iptables -D OUTPUT -j '\"$HTC\"'; iptables -F '\"$HTC\"'; iptables -X '\"$HTC\"'\" >/dev/null 2>&1 &")
+    # A chain of its own per client, so runs from different machines don't clear each other's rules.
+    c.type("HTC=HT$(echo ${SSH_CLIENT%% *} | tr -d .:); sudo -k; sudo sh -c '" + script + "'" + c.app.enter, settle=1.5)
+    c.until(lambda s: "password" in c.text(s).lower().split("sudo -k")[-1], "expected sudo to ask for the password", timeout=10)
+    c.type(account["password"] + c.app.enter, settle=0.5)
+    return time.time()
+
+@test("S6", "Keepalive ends a session whose host has gone away")
+def _(c):
+    account, s = connect_test_host(c)
+    expect_connected(c, account, s)
+    started = silence_test_host(c, account)
+    try:
+        # The spec says about 15 s (ServerAlive every 5 s, two misses); allow some slack, never the TCP timeout.
+        c.until(lambda s: connection(c, s).get("state") != "connected", "expected the session to end once the host stopped answering",
+                timeout=25)
+        c.expect(time.time() - started < 25, "expected the dead session to end within about 15 seconds")
+        c.until(lambda s: account["label"] not in c.window(s)["title"], "expected the title back on this computer", timeout=8)
+    finally:
+        time.sleep(max(0, HOST_SILENT_FOR + 2 - (time.time() - started)))
+
+@test("Z4", "A host that goes away is an error, never a crash")
+def _(c):
+    account, s = connect_test_host(c)
+    expect_connected(c, account, s)
+    c.command("toggle-explorer", settle=2)
+    c.until(lambda s: c.tab(s).get("explorer", {}).get("remote"), "expected the host's files", timeout=15)
+    started = silence_test_host_from_explorer(c, account)
+    try:
+        c.bridge.call("explorer-go", path="/etc")
+        # The app keeps answering while the explorer waits on a host that's gone, and ends up reporting it.
+        c.until(lambda s: connection(c, s).get("state") != "connected" or c.tab(s)["explorer"].get("status"),
+                "expected the explorer or the session to report the lost host", timeout=45)
+        c.expect(c.state() is not None, "expected the app to keep answering")
+    finally:
+        time.sleep(max(0, HOST_SILENT_FOR + 2 - (time.time() - started)))
+
+def silence_test_host_from_explorer(c, account):
+    """silence_test_host, typed in the terminal while the explorer shows."""
+    c.command("toggle-explorer", settle=1)
+    started = silence_test_host(c, account)
+    c.command("toggle-explorer", settle=1)
+    return started
+
+for fid, what in (("S6", "Shared connection (ControlMaster)"), ("S8", "Host-key questions in the terminal"),
                   ("S9", "Your own ssh configuration")):
     manual(fid, what, "needs the user's own ssh setup or a dropped link; not automated yet")
 
@@ -2068,6 +2124,18 @@ def _(c):
     leaked = [i + 1 for i, (a, b) in enumerate(zip(before, after)) if "herbs" in b[len(a):] or "nobody@" in b[len(a):]]
     c.expect(not leaked, f"the login was typed into MultiExec terminal(s) {leaked} too")
 
+@test("U5", "With MultiExec on and a tab connected, connecting a new tab works and nothing crashes")
+def _(c):
+    account, s = connect_test_host(c)
+    expect_connected(c, account, s)
+    c.command("multiexec", settle=1.5)
+    c.command("new-tab", settle=1.5)
+    account, s = connect_test_host(c)
+    c.expect(c.app.alive(), "the app crashed while the second tab connected")
+    expect_connected(c, account, s)
+    states = [t.get("connection", {}).get("state") for t in c.tabs()]
+    c.expect(states == ["connected", "connected"], f"expected both tabs connected, saw {states}")
+
 @test("U6", "Run Command on Hosts window")
 def _(c):
     c.command("run-on-hosts", settle=1.5)
@@ -2271,6 +2339,6 @@ def _(c):
 
 manual("Y4", "Reduce Motion", "window resizing isn't animated on Windows; the slower fade with animations off is visual")
 manual("Y5", "Shared identifiers", "covered by parity/check.sh")
-for fid in ("Z1", "Z2", "Z3", "Z4"):
+for fid in ("Z1", "Z2", "Z3"):
     manual(fid, "Safety", "needs damaged files or a dropped connection (fault injection, not automated yet)")
 manual("Z5", "Self-contained", "checked by each platform's packaging script")

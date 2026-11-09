@@ -7,7 +7,10 @@ enum SSHControl {
     /// Sockets live in a short private folder: a Unix socket path must stay under 104 bytes, and ssh adds a
     /// 17-character temporary suffix to the 40-character %C hash while it sets the master up. A folder under
     /// ~/Library/Caches is too long for that.
-    static let directory: URL = privateDirectory(base: "/tmp/herbs-\(getuid())")
+    /// A feature-test copy gets one of its own (random: inside the Flatpak every copy has the same process id), so it never reuses a connection another copy, or the
+    /// user's own app, left open (ControlPersist), and a test can't pass on someone else's login.
+    static let directory: URL = privateDirectory(base: CommandLine.arguments.contains("--parity-scene")
+        ? "/tmp/herbs-\(getuid())-t\(UInt32.random(in: 0...UInt32.max))" : "/tmp/herbs-\(getuid())")
 
     /// %C hashes host, port and user, so the path length doesn't depend on the destination.
     static var controlPath: String { directory.path + "/cm-%C" }
@@ -59,7 +62,11 @@ enum SSHControl {
         process.standardInput = FileHandle.nullDevice
         guard (try? process.run()) != nil else { return logins }
         let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        process.waitUntilExit()
+        // ssh has closed its output, so it's exiting: reap it directly. waitUntilExit spins Foundation's run loop on
+        // the calling (main) thread until Foundation notices the exit, and on Linux, with a session already open, it
+        // never did, so the window stopped responding.
+        var status: Int32 = 0
+        while waitpid(process.processIdentifier, &status, 0) == -1 && errno == EINTR {}
         var resolvedUser = user, resolvedHost: String?
         for line in text.split(separator: "\n") {
             let parts = line.split(separator: " ", maxSplits: 1).map(String.init)

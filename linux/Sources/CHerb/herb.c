@@ -470,6 +470,8 @@ void herb_drop_read_paths(const GValue *value, HerbReceived done, void *data) {
 
 GType herb_type_file_list(void) { return GDK_TYPE_FILE_LIST; }
 GType herb_type_string(void) { return G_TYPE_STRING; }
+GType herb_type_int(void) { return G_TYPE_INT; }
+GType herb_type_boolean(void) { return G_TYPE_BOOLEAN; }
 
 PangoAttrList *herb_attrs(int weight, double points) {
     PangoAttrList *list = pango_attr_list_new();
