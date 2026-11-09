@@ -44,6 +44,10 @@ enum TestBridge {
             response["ok"] = false
             response["error"] = "\(error)"
         }
+        // An answer that isn't valid JSON is reported as an error instead of never arriving.
+        if !JSONSerialization.isValidJSONObject(response) {
+            response = ["id": id, "ok": false, "error": "the answer isn't valid JSON: " + String(describing: response["result"] ?? "").prefix(600)]
+        }
         if let out = try? JSONSerialization.data(withJSONObject: response, options: [.sortedKeys]) {
             let temporary = folder + "/response.tmp"
             _ = FileManager.default.createFile(atPath: temporary, contents: out)
@@ -70,7 +74,7 @@ enum TestBridge {
             return explorer.bridgeGo(request["path"] as? String ?? "")
         case "info":
             // The newest Get Info window: edits, then Apply / Revert / Close, then what it shows.
-            guard let info = FileInfoWindow.newest, info.bridgeState["open"] as? Bool == true else { return ["open": false] }
+            guard let info = FileInfoWindow.newest else { return ["open": false] }
             info.bridge(request)
             return info.bridgeState
         case "editor":

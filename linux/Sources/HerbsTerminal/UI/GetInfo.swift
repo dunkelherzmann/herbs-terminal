@@ -28,14 +28,17 @@ final class FileInfoWindow {
     private let executeHeading: Widget
 
     /// The newest window still open, for the feature tests' bridge.
-    private(set) static weak var newest: FileInfoWindow?
+    private(set) static var newest: FileInfoWindow?
     private var closed = false
 
     static func show(_ source: FileInfoSource, parent: Widget?) {
         let info = FileInfoWindow(source: source, parent: parent)
         info.window.owner = info
         newest = info
-        info.window.onClose = { [weak info] in info?.closed = true }
+        info.window.onClose = { [weak info] in
+            info?.closed = true
+            if newest === info { newest = nil }
+        }
         info.window.present()
         Task { await info.load() }
     }
@@ -235,7 +238,7 @@ final class FileInfoWindow {
     var bridgeState: [String: Any] {
         ["open": !closed, "title": "\(source.title) Info", "names": items.map(\.name), "folders": items.filter(\.isFolder).map(\.name),
          "location": items.first?.location ?? "", "size": items.first?.size.map { Int($0) as Any } ?? NSNull(), "modified": items.first?.modified != nil,
-         "octal": text(of: octal), "symbolic": String(cString: gtk_label_get_text(c(symbolic))), "owner": text(of: owner), "group": text(of: group),
+         "octal": { let digits = String(mode, radix: 8); return digits.count >= 3 ? digits : String(repeating: "0", count: 3 - digits.count) + digits }(), "symbolic": String(cString: gtk_label_get_text(c(symbolic))), "owner": text(of: owner), "group": text(of: group),
          "recursive": isActive(recursive), "hasFolders": hasFolders, "macFlags": false, "busy": busy,
          "message": String(cString: gtk_label_get_text(c(message))), "changed": !change.isEmpty]
     }

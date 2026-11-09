@@ -7,7 +7,7 @@ What the Linux version still needs before it can ship with as few bugs as possib
 - [x] **Main Menu matches the Mac's in-window menus** (#70). It holds the same menus, submenus, order and shortcuts (Edit, Shell and Window included), and no command is reachable only somewhere else; W19 checks it. (§2, §14, enhancements.md) *Asked 2026-11-09.*
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 15:29)
+## Feature test results (2026-11-09 15:37)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
