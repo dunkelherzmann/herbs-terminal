@@ -4,3 +4,4 @@ dist/
 
 # Craft Anything / REA evidence (local paths and machine details; never tracked)
 .investigation/
+__pycache__/
