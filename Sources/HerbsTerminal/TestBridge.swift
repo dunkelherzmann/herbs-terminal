@@ -103,6 +103,16 @@ enum TestBridge {
             // Files dropped on the focused terminal, through the same code a drop from Finder runs.
             try workspace.selected.focusedShell.view.drop(paths: request["paths"] as? [String] ?? [])
             return true
+        case "clipboard": return PrivatePasteboard.contents
+        case "clipboard-set":
+            // Text, or files as Finder puts them there.
+            PrivatePasteboard.board.clearContents()
+            if let files = request["files"] as? [String] {
+                PrivatePasteboard.board.writeObjects(files.map { URL(fileURLWithPath: $0) as NSURL })
+            } else {
+                PrivatePasteboard.board.setString(request["text"] as? String ?? "", forType: .string)
+            }
+            return true
         case "quit":
             quitting = true
             return true

@@ -60,6 +60,8 @@ final class LaunchDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         // A parity check runs while the user works: its window opens without taking focus.
         if !ParityScene.isActive { NSApp.activate(ignoringOtherApps: true) }
+        // A parity copy never uses the user's clipboard.
+        if ParityScene.isActive { PrivatePasteboard.install() }
         TestBridge.start()
     }
 

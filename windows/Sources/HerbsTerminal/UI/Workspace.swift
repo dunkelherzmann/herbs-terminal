@@ -360,6 +360,14 @@ final class Workspace: WindowObject {
         base.storeBytes(of: info.bmiHeader, as: BITMAPINFOHEADER.self)
         let lines = GetDIBits(dc, bitmap, 0, UINT(height), base + headerSize, &info, UINT(DIB_RGB_COLORS))
         GlobalUnlock(memory)
+        if TestClipboard.isActive {
+            // The parity copy keeps its picture off the user's clipboard; the tests only need to know it was made.
+            GlobalFree(memory)
+            guard lines == height else { return false }
+            TestClipboard.clear()
+            TestClipboard.image = true
+            return true
+        }
         guard lines == height, OpenClipboard(hwnd) else { GlobalFree(memory); return false }
         EmptyClipboard()
         let placed = SetClipboardData(UINT(CF_DIB), memory) != nil
