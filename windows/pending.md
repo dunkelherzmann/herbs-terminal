@@ -36,7 +36,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] **11. Find in Terminal** (§2), the terminal's right-click menu, Paste Escaped Text (#58).
 - [x] **12. Named profiles** (§3) (#59): New Tab with Profile, Use Profile, editing profiles in Settings.
 - [x] **13. Session restore** (§2) and the size badge while resizing (#60).
-- [ ] **14. Following an `ssh` typed in a local tab** (§4), and the explorer following that host. SSH sessions run inside the local shell, so Disconnect returns the tab to it (feature test S4).
+- [x] **14. Following an `ssh` typed in a local tab** (§4), and the explorer following that host. SSH sessions run inside the local shell, so Disconnect returns the tab to it (feature test S4). (#61)
 - [ ] **15. Tailcat peers** (§8): pairing, sharing, connecting through Tailcat, the Lock / Unlock button.
 - [ ] **16. Accessibility** (§9): UI Automation names for the toolbar, tabs and terminal.
 - [ ] **17. Dark mode for Settings and dialogs** (done in #43), mouse reporting for full-screen programs, IME composition.
@@ -52,15 +52,9 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 06:33)
+## Feature test results (2026-11-09 07:10)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
-
-### Broken (1)
-
-A test ran and the feature didn't do what the Mac version does.
-
-- [ ] **S4** Exit or Disconnect returns the tab, title and explorer to this computer. (§4): Disconnect returns the tab and title to this computer: expected the tab back on this computer (saw: 1 window(s), tabs ['Terminal 1', 'Terminal 2'], 1 pane(s), title 'herbs-test@192.168.1.241' '', dialogs [], last lines…
 
 ### Missing (5)
 
@@ -72,7 +66,7 @@ The command isn't there, or it's greyed out.
 - [ ] **E14** Search files (Find). (§5): Find files: `explorer.find` is not there
 - [ ] **C1** Add a peer: name, username, secret address, One-time or Persistent; addresses protected like logins. (§8): Tailcat Peers: add a peer: no `tailcat` command
 
-### Not checked automatically (71)
+### Not checked automatically (70)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -90,7 +84,6 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **R10** Settings ▸ Window: columns × rows for new windows (default 100 × 30), size badge toggle, Apply to… (§3): Settings opens; its Window page isn't read by the bridge yet
 - [ ] **R11** Settings ▸ Colors: color scheme, presets, import and removal. (§3): Settings opens; its Colors page isn't read by the bridge yet
 - [ ] **R12** Light and dark follow the system, for the whole app (dialogs and Settings included). (§3): visual: needs pictures in light and dark mode
-- [ ] **S3** Typing `ssh user@host` or `ssh alias` in a local shell is followed like Connect via SSH (resolved… (§4): needs the user's own ssh setup or a dropped link; not automated yet
 - [ ] **S6** Shared connection (ControlMaster) so the explorer and transfers reuse the shell's login; keepalive… (§4): needs the user's own ssh setup or a dropped link; not automated yet
 - [ ] **S8** Host-key questions, one-time codes and retries asked in the terminal. (§4): needs the user's own ssh setup or a dropped link; not automated yet
 - [ ] **S9** Your own `~/.ssh/config`, agent, keys and jump hosts are used. (§4): needs the user's own ssh setup or a dropped link; not automated yet

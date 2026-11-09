@@ -47,8 +47,8 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     private(set) var location: String?
     /// The folder beside the title: the shell's current folder, with the home folder as "~".
     var subtitle: String {
-        guard let location else { return "" }
-        if remote != nil { return location }
+        // This PC's folder means nothing while the shell is on a host.
+        guard let location, remote == nil else { return "" }
         return ShellLocation.display(location, home: ParityScene.isActive ? ParityScene.home : (ProcessInfo.processInfo.environment["USERPROFILE"] ?? ""))
     }
     /// The tab's number ("Terminal 2"), the lowest free one when it opened.
@@ -140,42 +140,102 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         }
     }
 
-    /// The SSH login this tab runs, if it is an SSH tab. The password stays in memory only, for Reconnect.
+    /// The host this tab's shell is connected to through ssh, while that ssh runs; nil in a local shell. As on the
+    /// Mac and Linux, ssh runs inside the tab's own shell: Connect via SSH types a launcher there, and an `ssh`
+    /// typed there is followed the same way. When ssh ends, the tab is back at its shell.
     private(set) var remote: RemoteEndpoint?
+    /// The password the login used, when it came from Connect via SSH or a saved login (for the explorer's own
+    /// channel and Run Command on Hosts). Kept in memory only.
     private(set) var remotePassword: String?
-    private var awaitingReconnect = false
+    private(set) var connectedAt: Date?
+    /// Tells the workspace the tab's connection started or ended (the explorer follows it).
+    var onRemoteChange: ((TerminalPane) -> Void)?
+    /// The login Connect via SSH just typed a launcher for, until its ssh shows up.
+    private var expected: (endpoint: RemoteEndpoint, password: String?)?
+    /// The ssh process the tab follows.
+    private var sshProcess: DWORD?
+    private var launcherPath: String?
+    /// Whether the shell has written anything yet (its prompt), and how long ago it last did.
+    private var hasOutput = false
+    private var lastOutput = Date.distantPast
+    private var lastOutputAge: TimeInterval { Date().timeIntervalSince(lastOutput) }
 
-    /// Runs ssh to `endpoint` as this tab's process. A password goes to ssh through the askpass broker, once;
-    /// without one (or when it's refused) ssh asks in the terminal, and keys from ssh-agent work as usual.
-    func startSSH(_ endpoint: RemoteEndpoint, password: String?) {
-        remote = endpoint
-        remotePassword = password
-        title = endpoint.label
-        onTitleChange?(self)
-        guard let commandLine = SSH.commandLine(endpoint) else {
+    /// Connect via SSH: types the path of a private launcher into this tab's shell (see `SSHLauncher`). A saved
+    /// password reaches ssh only through the password helper; without one ssh asks in the terminal, and keys from
+    /// ssh-agent work as usual.
+    func connectSSH(_ endpoint: RemoteEndpoint, password: String?, waited: Int = 0) {
+        // A new tab's shell draws its prompt first, so the launcher knows how much of the screen its line takes.
+        if !hasOutput, waited < 50 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.connectSSH(endpoint, password: password, waited: waited + 1) }
+            return
+        }
+        if waited > 0, waited < 50, lastOutputAge < 0.3 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.connectSSH(endpoint, password: password, waited: waited + 1) }
+            return
+        }
+        guard let path = SSHLauncher.write(endpoint, password: password, lines: { text in
+            // The rows the typed line fills after the prompt, so the launcher can clear exactly those.
+            let column = self.terminal.getCursorLocation().x
+            return (column + text.count) / max(1, self.terminal.cols) + 1
+        }, shell: dropQuoting) else {
             terminal.feed(text: "\u{1b}[31mWindows' OpenSSH client isn't installed. Add it in Settings ▸ System ▸ Optional features ▸ OpenSSH Client.\u{1b}[0m\r\n")
             invalidate()
             return
         }
-        var environment: [String: String] = [:]
-        if let password, !password.isEmpty, let broker = AskpassBroker.shared {
-            environment = broker.environment(token: broker.issue(password, for: endpoint.passwordLogins))
-        }
-        terminal.feed(text: "Connecting to \(endpoint.label)…\r\n")
-        start(commandLine: commandLine, environment: environment)
-        connectedAt = Date()
+        expected = (endpoint, password)
+        launcherPath = path
+        // Typed by the app, so MultiExec doesn't send it to the other terminals.
+        sendQuietly(Array((SSHLauncher.typed(path, for: dropQuoting) + "\r").utf8))
+        if let hwnd { SetTimer(hwnd, Self.programTimer, 300, nil) } // Notice the ssh soon.
     }
 
-    /// Whether this tab is an SSH session that is still running.
-    var isConnected: Bool { remote != nil && !awaitingReconnect && isRunning }
-    private var disconnecting = false
-    private(set) var connectedAt: Date?
+    /// Whether this tab's shell is in an SSH session.
+    var isConnected: Bool { remote != nil && sshProcess != nil }
 
-    /// Ends the SSH session; the tab stays open and Enter reconnects.
+    /// Ends the SSH session; the tab is back at its own shell.
     func disconnect() {
-        guard remote != nil, isRunning else { return }
-        disconnecting = true
-        session?.close()
+        guard let sshProcess, let process = OpenProcess(DWORD(PROCESS_TERMINATE), false, sshProcess) else { return }
+        TerminateProcess(process, 0)
+        CloseHandle(process)
+        followSSH()
+    }
+
+    /// Follows the ssh running under the shell: a new one connects the tab (to the login Connect via SSH started, or
+    /// to where a typed ssh goes, resolved with `ssh -G`), and its end returns the tab to this PC.
+    private func followSSH() {
+        guard let session, !session.hasExited else { return }
+        let found = ShellLocation.sshUnder(session.processID)
+        if let found {
+            guard found.pid != sshProcess else { return }
+            sshProcess = found.pid
+            if let expected {
+                self.expected = nil
+                // The launcher has done its part; it goes now even if the session is cut short later.
+                if let launcherPath { try? FileManager.default.removeItem(atPath: launcherPath); self.launcherPath = nil }
+                setRemote(expected.endpoint, password: expected.password)
+            } else if let endpoint = ShellLocation.resolveSSH(found.commandLine) {
+                // A typed ssh: a saved login for the same account gives the explorer its password.
+                let saved = CredentialStore.shared?.logins.first {
+                    $0.host == endpoint.host && $0.port == endpoint.port && $0.username == endpoint.username
+                }
+                setRemote(endpoint, password: saved?.password.isEmpty == false ? saved?.password : nil)
+            }
+        } else if sshProcess != nil {
+            sshProcess = nil
+            setRemote(nil, password: nil)
+        }
+    }
+
+    private func setRemote(_ endpoint: RemoteEndpoint?, password: String?) {
+        guard endpoint != remote || password != remotePassword else { return }
+        remote = endpoint
+        remotePassword = password
+        connectedAt = endpoint == nil ? nil : Date()
+        // As on the Mac and Linux, an SSH tab is titled with the account it connected to.
+        if let endpoint { title = endpoint.label } else { title = ""; composeLocalTitle() }
+        onRemoteChange?(self)
+        onTitleChange?(self)
+        if let hwnd { SetTimer(hwnd, Self.programTimer, 1000, nil) }
     }
 
     // MARK: Shell menu commands
@@ -209,35 +269,10 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         invalidate()
     }
 
-    private func reconnect() {
-        guard let remote else { return }
-        awaitingReconnect = false
-        session?.close()
-        session = nil
-        terminal.feed(text: "\r\n")
-        startSSH(remote, password: remotePassword)
-    }
-
-    /// The process ended. A shell that exits closes its tab; an SSH session that ends with an error stays
-    /// open with its last output, so the reason can be read, and Enter reconnects.
+    /// The shell ended: the pane closes, then its tab, as on the Mac.
     private func processEnded() {
-        let code = session?.exitCode ?? 0
-        connectedAt = nil
-        if let remote, disconnecting {
-            disconnecting = false
-            awaitingReconnect = true
-            terminal.feed(text: "\r\n\u{1b}[7m Disconnected from \(remote.label). Press Enter to reconnect, or Ctrl+Shift+W to close the tab. \u{1b}[0m\r\n")
-            invalidate()
-            onTitleChange?(self)
-            return
-        }
-        if let remote, code != 0 {
-            awaitingReconnect = true
-            onTitleChange?(self)
-            terminal.feed(text: "\r\n\u{1b}[7m Connection to \(remote.label) ended (exit code \(code)). Press Enter to reconnect, or Ctrl+Shift+W to close the tab. \u{1b}[0m\r\n")
-            invalidate()
-            return
-        }
+        sshProcess = nil
+        if remote != nil { setRemote(nil, password: nil) }
         onExit?(self)
     }
 
@@ -250,7 +285,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         hwnd = nil
     }
 
-    var isRunning: Bool { !awaitingReconnect && (session.map { !$0.hasExited } ?? false) }
+    var isRunning: Bool { session.map { !$0.hasExited } ?? false }
 
     // MARK: Appearance
 
@@ -368,6 +403,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
             invalidate()
             return 0
         case WM_TIMER where wParam == Self.programTimer:
+            followSSH()
             refreshForegroundProgram()
             return 0
         case WM_TIMER:
@@ -477,6 +513,8 @@ final class TerminalPane: WindowObject, TerminalDelegate {
 
     private func drainOutput() {
         guard let bytes = session?.takeOutput(), !bytes.isEmpty else { return }
+        hasOutput = true
+        lastOutput = Date()
         let before = liveTop
         terminal.feed(byteArray: bytes)
         // Keep scrolled-back text still while new output arrives.
@@ -506,10 +544,6 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     // MARK: Input
 
     func send(_ bytes: [UInt8]) {
-        if awaitingReconnect {
-            if bytes == [13] { reconnect() }
-            return
-        }
         if scrollOffset != 0 { scrollOffset = 0; invalidate() }
         session?.write(bytes)
         broadcast?(bytes)
@@ -521,7 +555,6 @@ final class TerminalPane: WindowObject, TerminalDelegate {
 
     /// Typing that MultiExec forwards from another terminal.
     func sendQuietly(_ bytes: [UInt8]) {
-        guard !awaitingReconnect else { return }
         if scrollOffset != 0 { scrollOffset = 0; invalidate() }
         session?.write(bytes)
     }
@@ -1064,7 +1097,8 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     // MARK: Title and location
 
     private func setLocation(_ folder: String?) {
-        guard let folder, folder != location else { return }
+        // A remote shell's folders are the host's, not this PC's.
+        guard remote == nil, let folder, folder != location else { return }
         location = folder
         onTitleChange?(self)
     }
