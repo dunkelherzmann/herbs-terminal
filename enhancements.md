@@ -56,6 +56,6 @@ A box is ticked once the change has shipped. A request that covers several platf
   - [ ] Linux: in #74, tested (L12, L13); not yet released.
   - [ ] Windows: in #74, tested (L12, L13); not yet released.
 - [ ] **The only tab left becomes Terminal 1.** Closing tabs until a single terminal tab is left renumbers it "Terminal 1", so the next new tab is Terminal 2. A tab you renamed keeps its name. *Requested 2026-11-09 · Mac, Linux, Windows.*
-  - [ ] Mac
-  - [ ] Linux
-  - [ ] Windows
+  - [ ] Mac: in #76, tested (feature test T2); not yet released.
+  - [ ] Linux: in #76, tested (T2); not yet released.
+  - [ ] Windows: in #76, tested (T2); not yet released.
