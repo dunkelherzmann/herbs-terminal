@@ -60,6 +60,12 @@ enum Host {
     /// user's own Flatpak folder is named.
     static var helperCommand: [String] {
         guard isFlatpak else { return [Bundle.main.executablePath ?? CommandLine.arguments[0]] }
+        // A test copy runs from a build folder, not the installed app, and its helpers must be that build too
+        // (they were the installed version, so the tests checked old helper code).
+        if CommandLine.arguments.contains("--parity-scene"),
+           let build = ProcessInfo.processInfo.environment["HERBS_PARITY_HELPER"], !build.isEmpty {
+            return build.split(separator: " ").map(String.init)
+        }
         let userFlatpaks = ProcessInfo.processInfo.environment["FLATPAK_USER_DIR"]
             ?? FileManager.default.homeDirectoryForCurrentUser.path + "/.local/share/flatpak"
         return ["env", "FLATPAK_USER_DIR=" + userFlatpaks, "flatpak", "run", "--command=herbs-terminal", appID]

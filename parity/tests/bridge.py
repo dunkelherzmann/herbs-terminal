@@ -124,11 +124,27 @@ class LinuxApp(App):
         # The scene's /bin/sh is bash on many distributions; bracketed paste would hold typed newlines.
         with open("/tmp/herbs-parity/.inputrc", "w") as f:
             f.write("set enable-bracketed-paste off\n")
+        os.makedirs("/tmp/herbs-parity-app", exist_ok=True)
         command = ["flatpak", "build", "--with-appdir", "--socket=wayland", "--share=ipc", "--device=all",
                    "--filesystem=host", "--filesystem=/tmp", "--talk-name=org.freedesktop.Flatpak",
                    "--talk-name=org.a11y.Bus", "--filesystem=xdg-run/at-spi", "--env=HERBS_PARITY=1",
+                   "--env=HERBS_PARITY_HELPER=/bin/sh " + self.helper(),
                    self.build, "herbs-terminal", "--parity-scene", "main", "--test-bridge"]
         self.process = subprocess.Popen(command, stdout=open("/tmp/herbs-tests-app.log", "a"), stderr=subprocess.STDOUT)
+
+    def helper(self):
+        """ssh on the host runs the app's helpers (askpass, the Tailcat proxy). For a test copy they must be this build,
+        not the installed app. Unlike `flatpak run`, `flatpak build` passes on neither the environment nor the
+        terminal, so this wrapper hands over the helper's variables and points its error output at the terminal."""
+        path = "/tmp/herbs-parity-app/helper.sh"
+        with open(path, "w") as f:
+            f.write("#!/bin/sh\n"
+                    "envs=$(env | grep -E '^(HERBSTERMINAL|SSH_ASKPASS|DISPLAY)[A-Z_]*=' | sed 's/^/--env=/')\n"
+                    # The scene's shell has a HOME of its own, where flatpak would find no runtimes.
+                    "export FLATPAK_USER_DIR=" + os.path.expanduser("~/.local/share/flatpak") + "\n"
+                    "if (exec 2>/dev/tty) 2>/dev/null; then exec 2>/dev/tty; fi\n"
+                    f"exec flatpak build --with-appdir --share=network --filesystem=/tmp --filesystem=host $envs {self.build} herbs-terminal \"$@\"\n")
+        return path
 
     def stop(self):
         if self.process:

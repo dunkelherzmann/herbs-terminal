@@ -380,6 +380,8 @@ enum TailcatProxy {
         proxy.standardError = FileHandle.nullDevice
         guard (try? proxy.run()) != nil else { return 1 }
         defer { if proxy.isRunning { proxy.terminate() } }
+        // ssh ends its ProxyCommand with SIGHUP, which skips the defer above and left tailcat running for good.
+        endsWithThisProcess(proxy.processIdentifier)
 
         // tailcat needs a moment to start listening.
         var fd: Int32 = -1
@@ -406,6 +408,19 @@ enum TailcatProxy {
         guard fd >= 0 else { return false }
         close(fd)
         return true
+    }
+
+    nonisolated(unsafe) private static var child: pid_t = 0
+
+    /// When this process is told to end, `pid` ends with it.
+    private static func endsWithThisProcess(_ pid: pid_t) {
+        child = pid
+        for signal in [SIGHUP, SIGTERM, SIGINT] {
+            _ = Foundation.signal(signal) { number in
+                if TailcatProxy.child > 0 { kill(TailcatProxy.child, SIGTERM) }
+                _exit(128 + number)
+            }
+        }
     }
 
     private static func handshake(_ fd: Int32, name: [UInt8], port: UInt16) -> Bool {

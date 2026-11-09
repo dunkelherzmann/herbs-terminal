@@ -4,8 +4,10 @@
 #   parity/tests/tailcat-host.sh start   # two shares, their addresses into each test machine's private config
 #   parity/tests/tailcat-host.sh stop    # ends them and deletes the addresses everywhere
 #
-# One share serves the machine's SSH port (C3 connects through it); the other serves only port 9, where nothing
-# listens, so a peer is reached but nothing answers SSH (C4). Each run uses fresh ephemeral keys, so an address is
+# One share passes each connection to the machine's SSH server at its own network address (C3 connects through it;
+# the SSH server allows the test account's password only from the local network, and a share's plain port proxying
+# would arrive from 127.0.0.1); the other takes a connection on any port and
+# hangs up without a byte (tailcat's exec service running /bin/true), so a peer is reached but nothing answers SSH (C4). Each run uses fresh ephemeral keys, so an address is
 # useless once the run ends. The addresses are secrets: they're written only to ~/.config/herbs-terminal/test-tailcat
 # and test-tailcat-nossh (mode 600) on the Mac, the Linux machine and the Windows PC, and never printed.
 # Needs PARITY_LINUX_HOST; PARITY_WINDOWS_HOST is optional.
@@ -30,8 +32,10 @@ start)
         mkdir -p ~/.cache/herbs-tailcat && cd ~/.cache/herbs-tailcat || exit 4
         for pid in $(cat ssh.pid nossh.pid 2>/dev/null); do kill "$pid" 2>/dev/null; done
         rm -f ssh.addr nossh.addr
-        TAILCAT_ADDR_FILE=$PWD/ssh.addr nohup "$T" serve --key=new 22 >ssh.log 2>&1 </dev/null & echo $! > ssh.pid
-        TAILCAT_ADDR_FILE=$PWD/nossh.addr nohup "$T" serve --key=new 9 >nossh.log 2>&1 </dev/null & echo $! > nossh.pid
+        LAN=$(ip -4 -o addr show scope global | awk "{split(\$4, a, \"/\"); print a[1]; exit}")
+        [ -n "$LAN" ] || exit 6
+        TAILCAT_ADDR_FILE=$PWD/ssh.addr nohup "$T" serve --key=new -- nc -q 1 "$LAN" 22 >ssh.log 2>&1 </dev/null & echo $! > ssh.pid
+        TAILCAT_ADDR_FILE=$PWD/nossh.addr nohup "$T" serve --key=new -- /bin/true >nossh.log 2>&1 </dev/null & echo $! > nossh.pid
         for i in $(seq 1 120); do [ -s ssh.addr ] && [ -s nossh.addr ] && break; sleep 0.5; done
         [ -s ssh.addr ] && [ -s nossh.addr ] || exit 5
         tr -d "\n" < ssh.addr; echo; tr -d "\n" < nossh.addr; echo') || { echo "tailcat shares didn't start on $linux" >&2; exit 1; }

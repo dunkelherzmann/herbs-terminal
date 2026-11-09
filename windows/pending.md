@@ -56,16 +56,9 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 23:33)
+## Feature test results (2026-11-09 23:58)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
-
-### Broken (2)
-
-A test ran and the feature didn't do what the Mac version does.
-
-- [ ] **C3** Connect: shell and explorer through Tailcat, address never in arguments or history. (§8): Connect through Tailcat: the shell, and the address nowhere on screen: expected a login through Tailcat; the terminal shows: ['herbs-test@tailcat-testhost: Permission denied (publickey).                                …
-- [ ] **C4** Clear message when nothing answers SSH on the peer. (§8): A peer reached through Tailcat where nothing answers SSH says so clearly: expected the terminal to say the peer was reached but nothing answered SSH (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title…
 
 ### Not checked automatically (38)
 
