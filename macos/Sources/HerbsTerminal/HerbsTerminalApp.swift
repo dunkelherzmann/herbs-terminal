@@ -62,6 +62,7 @@ final class LaunchDelegate: NSObject, NSApplicationDelegate {
         if !ParityScene.isActive { NSApp.activate(ignoringOtherApps: true) }
         // A parity copy never uses the user's clipboard.
         if ParityScene.isActive { PrivatePasteboard.install() }
+        InWindowMenu.start()
         TestDesktop.start()
         TestBridge.start()
     }

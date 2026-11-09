@@ -279,12 +279,12 @@ enum SwiftTermPalette {
                                            (73, 46, 225), (211, 56, 211), (51, 187, 200), (203, 204, 205)]
 }
 
-/// Menu-bar commands with macOS Terminal's shortcuts: View ▸ Bigger / Smaller / Default,
-/// Edit ▸ Clear to Start / Clear Scrollback, and a Shell menu for tabs, SSH, reset and secure entry.
+/// The commands, with macOS Terminal's shortcuts: View ▸ Bigger / Smaller / Default, Edit ▸ Clear to Start /
+/// Clear Scrollback, and a Shell menu for tabs, SSH, reset and secure entry. SwiftUI builds the full menu from them;
+/// `InWindowMenu` keeps it out of the macOS menu bar and sends it the shortcuts, and the Main Menu in the toolbar shows
+/// the same items (`EditMenuItems`, `ShellMenuItems`, `TabMenuItems`).
 struct TerminalCommands: Commands {
     @FocusedValue(\.workspace) private var workspace
-    @ObservedObject private var secureInput = SecureInput.shared
-    @ObservedObject private var profiles = TerminalProfile.shared
 
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
@@ -292,74 +292,14 @@ struct TerminalCommands: Commands {
         }
         CommandGroup(after: .pasteboard) {
             Divider()
-            Button("Clear to Start") { workspace?.selected.focusedShell.view.clearToStart() }
-                .keyboardShortcut("k").disabled(workspace == nil)
-            Button("Clear Scrollback") { workspace?.selected.focusedShell.view.clearHistory() }
-                .keyboardShortcut("k", modifiers: [.command, .option]).disabled(workspace == nil)
+            EditMenuItems(workspace: workspace, standard: false)
         }
         CommandGroup(before: .windowList) {
-            ForEach(1..<10) { number in
-                // Not disabled by tab count: menu commands aren't re-evaluated when tabs open or close,
-                // which left ⌘2… disabled after new tabs were added.
-                Button(number == 9 ? "Show Last Tab" : "Show Tab \(number)") { workspace?.selectTab(number: number - 1) }
-                    .keyboardShortcut(KeyEquivalent(Character(String(number))))
-                    .disabled(workspace == nil)
-            }
+            TabMenuItems(workspace: workspace)
             Divider()
         }
         CommandMenu("Shell") {
-            Button("New Tab") { workspace?.add() }.keyboardShortcut("t").disabled(workspace == nil)
-            Button("Export Session…") { workspace?.exportSession() }.keyboardShortcut("s").disabled(workspace == nil)
-            Button("Take Screenshot") { workspace?.takeScreenshot() }
-                .keyboardShortcut("s", modifiers: [.command, .shift]).disabled(workspace == nil)
-            Button("Split Vertically") { workspace?.split(.horizontal) }
-                .keyboardShortcut("d").disabled(workspace == nil)
-            Button("Split Horizontally") { workspace?.split(.vertical) }
-                .keyboardShortcut("d", modifiers: [.command, .shift]).disabled(workspace == nil)
-            Button("Close Pane") { workspace?.closePane() }
-                .keyboardShortcut("w", modifiers: [.command, .option]).disabled(workspace == nil)
-            Button("Select Next Pane") { workspace?.focusPane(offset: 1) }
-                .keyboardShortcut(.rightArrow, modifiers: [.command, .option]).disabled(workspace == nil)
-            Button("Select Previous Pane") { workspace?.focusPane(offset: -1) }
-                .keyboardShortcut(.leftArrow, modifiers: [.command, .option]).disabled(workspace == nil)
-            Divider()
-            Toggle("MultiExec", isOn: Binding(get: { workspace?.multiExec ?? false }, set: { workspace?.multiExec = $0 }))
-                .keyboardShortcut("m", modifiers: [.command, .shift]).disabled(workspace == nil)
-            Button("Run Command on Hosts…") { workspace?.panel = .multiHost }.disabled(workspace == nil)
-            Menu("New Tab with Profile") {
-                ForEach(profiles.profiles) { profile in
-                    Button(profile.name) { workspace?.add(profile: profile.id) }
-                }
-            }
-            .disabled(workspace == nil)
-            Menu("Use Profile") {
-                ForEach(profiles.profiles) { profile in
-                    Toggle(profile.name, isOn: Binding(
-                        get: { workspace.map { TerminalProfile.shared.name(of: $0.selected.shell.profileID) == profile.name } ?? false },
-                        set: { if $0 { workspace?.useProfile(profile.id) } }))
-                }
-            }
-            .disabled(workspace == nil)
-            Button("New Remote Connection…") { workspace?.showingSSHConnect = true }
-                .keyboardShortcut("k", modifiers: [.command, .shift]).disabled(workspace == nil)
-            Button("Disconnect") { workspace?.disconnect() }
-                .disabled({ if case .connected = workspace?.selected.state.connection { false } else { true } }())
-            Divider()
-            Button("Show Previous Tab") { workspace?.selectTab(offset: -1) }
-                .keyboardShortcut("[", modifiers: [.command, .shift]).disabled(workspace == nil)
-            Button("Show Next Tab") { workspace?.selectTab(offset: 1) }
-                .keyboardShortcut("]", modifiers: [.command, .shift]).disabled(workspace == nil)
-            Button("Rename Tab…") { if let workspace { workspace.rename(workspace.selected) } }
-                .keyboardShortcut("i", modifiers: [.command, .shift]).disabled(workspace == nil)
-            Button("Move Tab Left") { workspace?.moveSelected(by: -1) }.disabled(workspace == nil)
-            Button("Move Tab Right") { workspace?.moveSelected(by: 1) }.disabled(workspace == nil)
-            Divider()
-            Button("Reset") { workspace?.selected.focusedShell.view.reset(hard: false) }
-                .keyboardShortcut("r", modifiers: [.command, .option]).disabled(workspace == nil)
-            Button("Hard Reset") { workspace?.selected.focusedShell.view.reset(hard: true) }
-                .keyboardShortcut("r", modifiers: [.command, .option, .control]).disabled(workspace == nil)
-            Divider()
-            Toggle("Secure Keyboard Entry", isOn: $secureInput.enabled)
+            ShellMenuItems(workspace: workspace)
         }
         CommandGroup(before: .toolbar) {
             Button("Bigger") { workspace?.zoom(1) }.keyboardShortcut("+")
@@ -370,6 +310,110 @@ struct TerminalCommands: Commands {
                 .disabled(workspace == nil)
             Divider()
         }
+    }
+}
+
+/// Edit: with `standard`, Undo, Redo, Cut, Copy, Paste and Select All first (the Main Menu's Edit submenu; the menu
+/// bar's Edit menu has its own), then Clear to Start and Clear Scrollback.
+struct EditMenuItems: View {
+    let workspace: Workspace?
+    let standard: Bool
+
+    var body: some View {
+        if standard {
+            Button("Undo") { send("undo:") }.keyboardShortcut("z")
+            Button("Redo") { send("redo:") }.keyboardShortcut("z", modifiers: [.command, .shift])
+            Divider()
+            Button("Cut") { send("cut:") }.keyboardShortcut("x")
+            Button("Copy") { send("copy:") }.keyboardShortcut("c")
+            Button("Paste") { send("paste:") }.keyboardShortcut("v")
+            Button("Select All") { send("selectAll:") }.keyboardShortcut("a")
+            Divider()
+        }
+        Button("Clear to Start") { workspace?.selected.focusedShell.view.clearToStart() }
+            .keyboardShortcut("k").disabled(workspace == nil)
+        Button("Clear Scrollback") { workspace?.selected.focusedShell.view.clearHistory() }
+            .keyboardShortcut("k", modifiers: [.command, .option]).disabled(workspace == nil)
+    }
+
+    /// The standard edit actions go to whatever has the focus, as the menu bar's Edit menu does.
+    private func send(_ action: String) { NSApp.sendAction(Selector(action), to: nil, from: nil) }
+}
+
+/// Window: Show Tab 1–8 and Show Last Tab (⌘1–⌘9).
+struct TabMenuItems: View {
+    let workspace: Workspace?
+
+    var body: some View {
+        ForEach(1..<10) { number in
+            // Not disabled by tab count: menu commands aren't re-evaluated when tabs open or close,
+            // which left ⌘2… disabled after new tabs were added.
+            Button(number == 9 ? "Show Last Tab" : "Show Tab \(number)") { workspace?.selectTab(number: number - 1) }
+                .keyboardShortcut(KeyEquivalent(Character(String(number))))
+                .disabled(workspace == nil)
+        }
+    }
+}
+
+/// The Shell menu: tabs, panes, MultiExec, profiles, SSH, reset and secure entry.
+struct ShellMenuItems: View {
+    let workspace: Workspace?
+    @ObservedObject private var secureInput = SecureInput.shared
+    @ObservedObject private var profiles = TerminalProfile.shared
+
+    var body: some View {
+        Button("New Tab") { workspace?.add() }.keyboardShortcut("t").disabled(workspace == nil)
+        Button("Export Session…") { workspace?.exportSession() }.keyboardShortcut("s").disabled(workspace == nil)
+        Button("Take Screenshot") { workspace?.takeScreenshot() }
+            .keyboardShortcut("s", modifiers: [.command, .shift]).disabled(workspace == nil)
+        Button("Split Vertically") { workspace?.split(.horizontal) }
+            .keyboardShortcut("d").disabled(workspace == nil)
+        Button("Split Horizontally") { workspace?.split(.vertical) }
+            .keyboardShortcut("d", modifiers: [.command, .shift]).disabled(workspace == nil)
+        Button("Close Pane") { workspace?.closePane() }
+            .keyboardShortcut("w", modifiers: [.command, .option]).disabled(workspace == nil)
+        Button("Select Next Pane") { workspace?.focusPane(offset: 1) }
+            .keyboardShortcut(.rightArrow, modifiers: [.command, .option]).disabled(workspace == nil)
+        Button("Select Previous Pane") { workspace?.focusPane(offset: -1) }
+            .keyboardShortcut(.leftArrow, modifiers: [.command, .option]).disabled(workspace == nil)
+        Divider()
+        Toggle("MultiExec", isOn: Binding(get: { workspace?.multiExec ?? false }, set: { workspace?.multiExec = $0 }))
+            .keyboardShortcut("m", modifiers: [.command, .shift]).disabled(workspace == nil)
+        Button("Run Command on Hosts…") { workspace?.panel = .multiHost }.disabled(workspace == nil)
+        Menu("New Tab with Profile") {
+            ForEach(profiles.profiles) { profile in
+                Button(profile.name) { workspace?.add(profile: profile.id) }
+            }
+        }
+        .disabled(workspace == nil)
+        Menu("Use Profile") {
+            ForEach(profiles.profiles) { profile in
+                Toggle(profile.name, isOn: Binding(
+                    get: { workspace.map { TerminalProfile.shared.name(of: $0.selected.shell.profileID) == profile.name } ?? false },
+                    set: { if $0 { workspace?.useProfile(profile.id) } }))
+            }
+        }
+        .disabled(workspace == nil)
+        Button("New Remote Connection…") { workspace?.showingSSHConnect = true }
+            .keyboardShortcut("k", modifiers: [.command, .shift]).disabled(workspace == nil)
+        Button("Disconnect") { workspace?.disconnect() }
+            .disabled({ if case .connected = workspace?.selected.state.connection { false } else { true } }())
+        Divider()
+        Button("Show Previous Tab") { workspace?.selectTab(offset: -1) }
+            .keyboardShortcut("[", modifiers: [.command, .shift]).disabled(workspace == nil)
+        Button("Show Next Tab") { workspace?.selectTab(offset: 1) }
+            .keyboardShortcut("]", modifiers: [.command, .shift]).disabled(workspace == nil)
+        Button("Rename Tab…") { if let workspace { workspace.rename(workspace.selected) } }
+            .keyboardShortcut("i", modifiers: [.command, .shift]).disabled(workspace == nil)
+        Button("Move Tab Left") { workspace?.moveSelected(by: -1) }.disabled(workspace == nil)
+        Button("Move Tab Right") { workspace?.moveSelected(by: 1) }.disabled(workspace == nil)
+        Divider()
+        Button("Reset") { workspace?.selected.focusedShell.view.reset(hard: false) }
+            .keyboardShortcut("r", modifiers: [.command, .option]).disabled(workspace == nil)
+        Button("Hard Reset") { workspace?.selected.focusedShell.view.reset(hard: true) }
+            .keyboardShortcut("r", modifiers: [.command, .option, .control]).disabled(workspace == nil)
+        Divider()
+        Toggle("Secure Keyboard Entry", isOn: $secureInput.enabled)
     }
 }
 

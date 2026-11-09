@@ -279,6 +279,22 @@ def _(c):
     c.until(lambda s: [t["name"] for t in c.tabs(s)] == ["Terminal 1", "Terminal 2"] and c.tab(s)["name"] == "Terminal 2",
             "expected tabs Terminal 1 and Terminal 2, with the new one selected")
 
+@test("W19", "Every menu in the window; shortcuts still reach the commands")
+def _(c):
+    if c.platform != "mac":
+        raise Outcome("unverified", "this version has no system menu bar; its Main Menu is compared with the Mac's by hand")
+    menus = c.bridge.call("menus")
+    if menus["bar"] != ["Herb's Terminal"]:
+        raise Outcome("broken", f"the macOS menu bar shows {menus['bar']}, expected only the app menu")
+    for title in ("Edit", "Shell", "Window"):
+        if title not in menus["full"]:
+            raise Outcome("broken", f"shortcuts can't reach the {title} menu ({menus['full']})")
+    # The test copy never takes focus, so a command can't act on a window here (the same holds with the menu bar
+    # shown); this checks that ⌘T reaches the hidden Shell menu. Running it in a focused window is checked by hand.
+    if not c.bridge.call("shortcut", key="t"):
+        raise Outcome("broken", "⌘T didn't reach the hidden Shell menu")
+
+
 manual("W2", "Connection details while connected", "checked as S10")
 
 @test("W3", "The title follows the folder and the program")
