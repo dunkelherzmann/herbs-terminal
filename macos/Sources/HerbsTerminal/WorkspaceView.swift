@@ -854,8 +854,21 @@ private struct ActiveWorkspace: View {
                 ThemeMenu(profileID: tab.shell.profileID)
                 Button("Toggle Full Screen") { NSApp.keyWindow?.toggleFullScreen(nil) }.help("Fill the screen with this window.")
                 Divider()
+                // Every menu is here rather than in the macOS menu bar, which keeps only the app menu.
+                Menu("Edit") { EditMenuItems(workspace: workspace, standard: true) }
+                Menu("Shell") { ShellMenuItems(workspace: workspace) }
+                Menu("Window") {
+                    Button("Minimize") { NSApp.keyWindow?.miniaturize(nil) }.keyboardShortcut("m")
+                    Button("Zoom") { NSApp.keyWindow?.zoom(nil) }
+                    Divider()
+                    TabMenuItems(workspace: workspace)
+                }
+                Divider()
                 SettingsLink { Text("Settings…") }.help("Font, size, cursor, window size and color themes (⌘,).")
                 Button("About Herb's Terminal") { AboutPanel.show() }
+                Divider()
+                Button("Hide Herb's Terminal") { NSApp.hide(nil) }.keyboardShortcut("h")
+                Button("Quit Herb's Terminal") { NSApp.terminate(nil) }.keyboardShortcut("q")
             }
         }
         .task(id: tab.id) {

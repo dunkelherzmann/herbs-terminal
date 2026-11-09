@@ -26,6 +26,7 @@ When the Mac gains a feature, add it here with the next free id in its group.
 - **W16** Main Menu: Toggle Full Screen, Settings…, About (author and GitHub link).
 - **W17** Hover hints on every control after about half a second, also in the background; screen readers get the same text.
 - **W18** New Window.
+- **W19** Every menu in the window: on the Mac the system menu bar holds only the app menu, the Main Menu has Edit, Shell and Window submenus, Hide and Quit, and every shortcut still works.
 
 ## T: Tabs
 

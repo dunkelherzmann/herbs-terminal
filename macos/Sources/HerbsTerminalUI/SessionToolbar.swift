@@ -97,7 +97,7 @@ public struct SessionToolbar<Actions: View>: View {
                         .menuStyle(.borderlessButton)
                         .menuIndicator(.hidden)
                         .fixedSize()
-                        .hint("Main Menu\nTabs, windows, zoom, themes, appearance and settings.").accessibilityLabel("Main Menu").accessibilityIdentifier("toolbar.mainMenu")
+                        .hint("Main Menu\nEvery command: tabs, windows, zoom, themes, Edit, Shell, Window, settings and Quit.").accessibilityLabel("Main Menu").accessibilityIdentifier("toolbar.mainMenu")
                 }
                 .padding(.leading, gap)
             }

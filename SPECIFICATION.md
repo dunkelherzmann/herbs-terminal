@@ -57,7 +57,16 @@ It covers the everyday features of the stock macOS Terminal and Ptyxis. It adds:
     - Color preset: the theme list.
     - Import iTerm2 Color Preset….
     - Restore Defaults.
-  - Toggle Full Screen, Settings…, and About, which shows the author (dunkelherzmann) and a link to the project on GitHub.
+  - Toggle Full Screen.
+  - **Edit:** Undo, Redo, Cut, Copy, Paste, Select All, Clear to Start (⌘K), Clear Scrollback (⌥⌘K).
+  - **Shell:** every Shell command (section 2's tabs, panes, MultiExec, profiles, connections, Reset, Secure Keyboard
+    Entry), with the shortcuts listed there.
+  - **Window:** Minimize (⌘M), Zoom, Show Tab 1–8 and Show Last Tab (⌘1–⌘9).
+  - Settings…, and About, which shows the author (dunkelherzmann) and a link to the project on GitHub.
+  - Hide Herb's Terminal (⌘H) and Quit Herb's Terminal (⌘Q).
+- **Every menu is in the window.** The macOS menu bar shows only the app menu (About, Settings…, Services, Hide, Quit),
+  which macOS always shows; every other menu is in the Main Menu, so on a wide screen no command needs a trip to the
+  top of the screen. Every shortcut works as before, Cut, Copy and Paste in text fields included.
 - **Hover hints:** every control shows a short bubble saying what it is and what it does. It appears after about half a second, in the titlebar too, and while the app is in the background. Screen readers get the same description.
 
 ### Tabs

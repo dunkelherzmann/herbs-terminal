@@ -116,6 +116,26 @@ enum TestBridge {
         case "quit":
             quitting = true
             return true
+        case "menus": return InWindowMenu.report
+        case "shortcut":
+            // A key with ⌘ (and any of shift, option, control), sent the way AppKit sends one: through the in-window
+            // menus, since the macOS menu bar holds only the app menu.
+            let key = request["key"] as? String ?? ""
+            let codes: [String: UInt16] = ["t": 17, "k": 40, "d": 2, "s": 1, "n": 45, "0": 29]
+            var flags: NSEvent.ModifierFlags = [.command]
+            for name in request["modifiers"] as? [String] ?? [] {
+                switch name {
+                case "shift": flags.insert(.shift)
+                case "option": flags.insert(.option)
+                case "control": flags.insert(.control)
+                default: break
+                }
+            }
+            guard let code = codes[key], let event = NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: NSApp.keyWindow?.windowNumber ?? 0, context: nil, characters: key,
+                charactersIgnoringModifiers: key, isARepeat: false, keyCode: code) else { throw Failure(description: "unknown key") }
+            return InWindowMenu.route(event)
         default: throw Failure(description: "unknown op")
         }
     }
