@@ -105,6 +105,12 @@ enum TestBridge {
             guard let pane = try workspace.activePane?.hwnd else { throw Failure(description: "no terminal") }
             TestScript.drop(request["paths"] as? [String] ?? [], on: pane)
             return true
+        case "clipboard": return TestClipboard.contents
+        case "clipboard-set":
+            // Text, or files as File Explorer's Copy puts them there.
+            TestClipboard.clear()
+            if let files = request["files"] as? [String] { TestClipboard.files = (files, false) } else { TestClipboard.text = request["text"] as? String ?? "" }
+            return true
         case "include": throw Failure(description: "MultiExec isn't in the Windows version")
         case "quit": PostQuitMessage(0); return true
         default: throw Failure(description: "unknown op")

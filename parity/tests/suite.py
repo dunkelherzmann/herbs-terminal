@@ -285,8 +285,6 @@ def _(c):
 @test("W7", "Take Screenshot copies the window")
 def _(c):
     c.probe("take-screenshot")
-    if c.platform == "mac":
-        c.unverified("not run on the Mac: it would replace what's on your clipboard")
     c.command("take-screenshot", settle=1.5)
     has = c.app.clipboard_has_image()
     if has is None:
@@ -472,13 +470,33 @@ manual("P6", "The first pane owns the SSH connection", NEEDS_SSH)
 
 # ---------------------------------------------------------------- B: Terminal behavior
 
+def check_copy_paste(c, run):
+    """Copy, Paste and Paste Escaped Text through `run(name)`, on the app's own clipboard (never the user's)."""
+    mark = c.say("COPYME")
+    c.until(lambda s: mark in c.text(s), "expected the marker to print")
+    run("select-all"); run("copy")
+    copied = c.app.clipboard()["text"]
+    c.expect(mark in copied, f"expected Copy to put the selected text on the clipboard (it has {copied[-80:]!r})")
+    # A command on the clipboard, written so the word only appears once the shell runs it.
+    c.app.set_clipboard(text='echo PA""STED' if c.app.shell == "posix" else "echo PA^STED")
+    run("paste")
+    c.type(c.app.enter, settle=1.2)
+    c.until(lambda s: "PASTED" in c.text(s), "expected Paste to type the clipboard's command")
+    if c.app.shell != "posix":
+        return
+    c.app.set_clipboard(text="it's $HOME; a b")
+    c.type("printf '%s\\n' ", settle=0.4)
+    run("paste-escaped")
+    c.type(c.app.enter, settle=1.2)
+    c.until(lambda s: "it's $HOME; a b" in c.text(s).splitlines(), "expected Paste Escaped Text to keep the text literal")
+
 @test("B1", "Right-click menu: Copy, Paste, Paste Escaped Text, Select All, Find")
 def _(c):
     c.expect_menu("Copy", "Paste", "Paste Escaped Text", "Select All", "Find…")
-    c.choose("Select All")
+    titles = {"select-all": "Select All", "copy": "Copy", "paste": "Paste", "paste-escaped": "Paste Escaped Text"}
+    check_copy_paste(c, lambda name: c.choose(titles[name]))
     c.choose("Find…")
-    c.unverified("the items are there and Select All and Find… run; Copy and Paste aren't chosen, since they'd use "
-                 "the system clipboard, and the bridge doesn't report a selection or the find bar")
+    c.unverified("Copy, Paste, Paste Escaped Text and Select All work; Find… runs, but the bridge doesn't report the find bar yet")
 
 @test("B2", "Right-click menu: Clear to Start, Clear Scrollback, Reset")
 def _(c):
@@ -564,7 +582,7 @@ def _(c):
 @test("B9", "Copy, Paste and Paste Escaped Text")
 def _(c):
     c.probe("copy", "paste", "paste-escaped", "select-all")
-    c.unverified("the commands are there; not run, since they'd use the system clipboard")
+    check_copy_paste(c, c.command)
 
 @test("B10", "Clear to Start and Clear Scrollback")
 def _(c):
@@ -781,7 +799,25 @@ def _(c):
     c.command("explorer.redo", settle=2)
     c.until(lambda s: "note.txt" not in items(c, s), "expected Redo to move it again")
 
-manual("E9", "System file clipboard", "would use the system clipboard")
+@test("E9", "System file clipboard, both ways")
+def _(c):
+    explorer_at_home(c)
+    c.until(lambda s: "note.txt" in items(c, s), "expected note.txt in the list")
+    safe(c)
+    # Out: the explorer's Copy puts the file on the clipboard as files, for the system's file manager.
+    c.bridge.call("explorer-select", names=["note.txt"])
+    c.command("explorer.copy", settle=1)
+    note = os.path.join(c.app.home, "note.txt")
+    files = c.app.clipboard()["files"]
+    c.expect(any(os.path.normcase(f) == os.path.normcase(note) for f in files), f"expected note.txt on the clipboard as a file (it has {files})")
+    # In: a file the file manager copied pastes into the explorer.
+    other = os.path.join(c.app.home, "sub", "from-files.txt")
+    os.makedirs(os.path.dirname(other), exist_ok=True)
+    with open(other, "w") as f:
+        f.write("from the file manager\n")
+    c.app.set_clipboard(files=[other])
+    c.command("explorer.paste", settle=2)
+    c.until(lambda s: "from-files.txt" in items(c, s), "expected the copied file to paste into the explorer")
 @test("E10", "Host: new folder, rename and delete")
 def _(c):
     account, s = connect_test_host(c)

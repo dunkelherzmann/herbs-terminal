@@ -3,11 +3,11 @@
 What the Linux version still needs before it can ship with as few bugs as possible: everything a feature test found broken or missing, and every feature no automatic test covers yet. Fix broken items first, one pull request each, and tick an item with its PR number once it is fixed and its test passes. `bugs.md` and `enhancements.md` stay the record of requests and releases.
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 03:01)
+## Feature test results (2026-11-09 03:32)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Not checked automatically (83)
+### Not checked automatically (81)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -19,11 +19,10 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **T11** Session restore: tabs with folder, panes, explorer folder and name reopen at launch (on by… (§2): the test scene never saves or restores a session
 - [ ] **P5** Focused pane outlined; Zoom, Clear, Reset and Find act on it. (§2): visual: shown in the window's picture, not reported by the bridge
 - [ ] **P6** The tab's SSH connection and explorer belong to its first pane; the next pane takes over when it… (§2): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
-- [ ] **B1** Right-click menu: Copy, Paste, Paste Escaped Text, Select All, Find. (§2): the items are there and Select All and Find… run; Copy and Paste aren't chosen, since they'd use the system clipboard, and the bridge doesn't report a selection or the find bar
+- [ ] **B1** Right-click menu: Copy, Paste, Paste Escaped Text, Select All, Find. (§2): Copy, Paste, Paste Escaped Text and Select All work; Find… runs, but the bridge doesn't report the find bar yet
 - [ ] **B6** Bell: sound, flash, both or none; flash at most twice a second, gentle with Reduce Motion. (§2): sound and flash can't be observed by the bridge
 - [ ] **B7** Size badge (columns × rows) while resizing. (§2): needs a window resize by the pointer
 - [ ] **B8** Find in Terminal (scrollback search). (§2): the command is there; the search bar and its matches aren't reported by the bridge yet
-- [ ] **B9** Copy and paste; Paste Escaped Text. (§2): the commands are there; not run, since they'd use the system clipboard
 - [ ] **B14** Full color, bold/italic/underline, wide characters, mouse reporting for full-screen programs. (§2): visual: needs the window's picture compared with the Mac's
 - [ ] **R5** iTerm2 `.itermcolors` import (all colors); damaged files rejected; imported presets removable. (§3): needs the system's open dialog
 - [ ] **R7** Settings ▸ Profiles: add, duplicate, rename, delete, choose the default; startup command and start… (§3): Settings opens; its Profiles page isn't read by the bridge yet
@@ -40,7 +39,6 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **E2** Bookmarks (shortcut), kept per host; Remove Bookmark. (§5): needs pointer or keyboard input the test bridge doesn't reach yet
 - [ ] **E3** Back, Forward, Up, Home, Reload, show hidden files; Delete/BackSpace goes back. (§5): going into a folder works; Back, Forward, Up and Home are buttons the bridge doesn't press yet
 - [ ] **E4** Clickable path segments and an editable location (accepts `~` and relative paths). (§5): needs pointer or keyboard input the test bridge doesn't reach yet
-- [ ] **E9** System file clipboard works both ways (Finder / file managers / File Explorer). (§5): would use the system clipboard
 - [ ] **E11** Pasting local files into a host uploads them; host items pasted locally download. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **E14** Search files (Find). (§5): the command is there; the filter field isn't driven by the bridge yet
 - [ ] **E16** Open with Administrator Mode… on an item. (§5): needs a sudo password (not automated)

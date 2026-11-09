@@ -1576,9 +1576,10 @@ let WM_APP_DEFERRED = Int32(WM_APP) + 3
 enum ShellClipboard {
     private static let dropEffect = withWide("Preferred DropEffect") { RegisterClipboardFormatW($0) }
 
-    static var hasFiles: Bool { IsClipboardFormatAvailable(UINT(CF_HDROP)) }
+    static var hasFiles: Bool { TestClipboard.isActive ? TestClipboard.files != nil : IsClipboardFormatAvailable(UINT(CF_HDROP)) }
 
     static func put(_ paths: [String], move: Bool, owner: HWND?) {
+        if TestClipboard.isActive { TestClipboard.clear(); TestClipboard.files = (paths, move); return }
         guard OpenClipboard(owner) else { return }
         defer { CloseClipboard() }
         EmptyClipboard()
@@ -1603,6 +1604,7 @@ enum ShellClipboard {
 
     /// The files on the clipboard and whether they were cut.
     static func get(owner: HWND?) -> ([String], Bool)? {
+        if TestClipboard.isActive { return TestClipboard.files.map { ($0.paths, $0.move) } }
         guard OpenClipboard(owner) else { return nil }
         defer { CloseClipboard() }
         guard let data = GetClipboardData(UINT(CF_HDROP)) else { return nil }
@@ -1624,6 +1626,7 @@ enum ShellClipboard {
     }
 
     static func clear(owner: HWND?) {
+        if TestClipboard.isActive { TestClipboard.clear(); return }
         guard OpenClipboard(owner) else { return }
         EmptyClipboard()
         CloseClipboard()

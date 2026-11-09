@@ -117,8 +117,23 @@ func createWindow(_ object: WindowObject, className: String, title: String = "",
     }
 }
 
+/// The parity copy's own clipboard. Feature tests copy, paste and take screenshots, and that must never touch
+/// what the user has on the Windows clipboard, so in a parity copy text, files and pictures stay here instead.
+enum TestClipboard {
+    nonisolated(unsafe) static var text: String?
+    nonisolated(unsafe) static var files: (paths: [String], move: Bool)?
+    nonisolated(unsafe) static var image = false
+    static var isActive: Bool { ParityScene.isActive }
+
+    static func clear() { text = nil; files = nil; image = false }
+
+    /// What the bridge reports: the text, file paths, and whether a picture is there.
+    static var contents: [String: Any] { ["text": text ?? "", "files": files?.paths ?? [], "image": image] }
+}
+
 /// The clipboard's text, or nil.
 func clipboardText(_ owner: HWND?) -> String? {
+    if TestClipboard.isActive { return TestClipboard.text }
     guard OpenClipboard(owner) else { return nil }
     defer { CloseClipboard() }
     guard let data = GetClipboardData(UINT(CF_UNICODETEXT)), let locked = GlobalLock(data) else { return nil }
@@ -128,6 +143,7 @@ func clipboardText(_ owner: HWND?) -> String? {
 
 /// Puts `text` on the clipboard.
 func setClipboardText(_ text: String, owner: HWND?) {
+    if TestClipboard.isActive { TestClipboard.clear(); TestClipboard.text = text; return }
     guard OpenClipboard(owner) else { return }
     defer { CloseClipboard() }
     EmptyClipboard()

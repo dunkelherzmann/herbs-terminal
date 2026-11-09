@@ -90,8 +90,21 @@ class App:
         except BridgeError:
             return False
 
+    # The app's clipboard. The Mac and Windows test copies keep a private one of their own (never the user's),
+    # which the bridge reads and fills; Linux runs in its own headless session, whose clipboard the runner reads.
+    def clipboard(self):
+        """{"text": ..., "files": [paths], "image": bool}"""
+        return self.bridge.call("clipboard")
+
+    def set_clipboard(self, text=None, files=None):
+        """Puts text, or files as the system's file manager copies them, on the app's clipboard."""
+        if files is not None:
+            self.bridge.call("clipboard-set", files=files)
+        else:
+            self.bridge.call("clipboard-set", text=text)
+
     def clipboard_has_image(self):
-        return None  # unknown on this platform
+        return self.clipboard()["image"]
 
 
 class LinuxApp(App):
@@ -127,9 +140,25 @@ class LinuxApp(App):
         subprocess.run("pkill -f 'herbs-terminal --parity-scene' ; sleep 0.5", shell=True)
         self.process = None
 
-    def clipboard_has_image(self):
-        types = subprocess.run(["wl-paste", "--list-types"], capture_output=True, text=True).stdout.split()
-        return "image/png" in types
+    def clipboard(self):
+        def paste(*arguments):
+            return subprocess.run(["wl-paste", "--no-newline", *arguments], capture_output=True, text=True, timeout=5).stdout
+        types = paste("--list-types").split()
+        files = []
+        if "text/uri-list" in types:
+            from urllib.parse import unquote, urlparse
+            files = [unquote(urlparse(line).path) for line in paste("--type", "text/uri-list").splitlines() if line.startswith("file:")]
+        text = paste("--type", "text/plain;charset=utf-8") if any(t.startswith("text/plain") for t in types) else ""
+        return {"text": text, "files": files, "image": "image/png" in types}
+
+    def set_clipboard(self, text=None, files=None):
+        # wl-copy stays in the background to serve the clipboard, as a clipboard owner does.
+        if files is not None:
+            from urllib.parse import quote
+            uris = "".join(f"file://{quote(path)}\r\n" for path in files)
+            subprocess.run(["wl-copy", "--type", "text/uri-list", "--", uris], timeout=5)
+        else:
+            subprocess.run(["wl-copy", "--", text], timeout=5)
 
 
 class MacApp(App):
@@ -197,10 +226,6 @@ class WindowsApp(App):
             subprocess.run(["taskkill", "/PID", str(self.process.pid), "/T", "/F"], capture_output=True)
             self.process = None
 
-    def clipboard_has_image(self):
-        script = "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::ContainsImage()"
-        out = subprocess.run(["powershell", "-NoProfile", "-STA", "-Command", script], capture_output=True, text=True).stdout
-        return out.strip() == "True"
 
 
 def for_platform(name, repo, exe=None):
