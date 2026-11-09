@@ -86,6 +86,10 @@ enum TestBridge {
             guard let explorer = try workspace.activePane?.explorer else { throw Failure(description: "no explorer") }
             _ = explorer.perform(named: "filter=" + (request["text"] as? String ?? ""))
             return explorer.bridgeState["items"] ?? []
+        case "editor":
+            guard let editor = try workspace.activeEditor else { throw Failure(description: "no editor") }
+            editor.bridge(request["action"] as? String ?? "", text: request["text"] as? String ?? "")
+            return editor.bridgeState
         case "explorer-upload":
             // Upload with the files given instead of picked in the open dialog.
             guard let explorer = try workspace.activePane?.explorer, explorer.isRemote else { throw Failure(description: "no host explorer") }
@@ -435,7 +439,7 @@ enum TestBridge {
                         entry["kind"] = "editor"
                         entry["layout"] = "editor"
                         entry["panes"] = [[String: Any]]()
-                        entry["editor"] = ["name": tab.tabName, "edited": tab.title.hasPrefix("•"), "text": editor.bridgeText]
+                        entry["editor"] = editor.bridgeState
                     }
                     return entry
                 }

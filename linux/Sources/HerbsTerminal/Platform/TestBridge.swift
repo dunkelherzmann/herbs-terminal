@@ -62,6 +62,10 @@ enum TestBridge {
         case "explorer-go":
             guard let explorer = try workspace.selected.explorer else { throw Failure(description: "no explorer") }
             return explorer.bridgeGo(request["path"] as? String ?? "")
+        case "editor":
+            guard let editor = try workspace.selected.editor else { throw Failure(description: "no editor") }
+            editor.bridge(request["action"] as? String ?? "", text: request["text"] as? String ?? "")
+            return editor.bridgeState
         case "explorer-filter":
             guard let explorer = try workspace.selected.explorer else { throw Failure(description: "no explorer") }
             return explorer.bridgeFilter(request["text"] as? String ?? "")
@@ -270,7 +274,7 @@ enum TestBridge {
                         ]
                         entry["connection"] = bridgeConnection(tab.state.connection)
                         if let explorer = tab.explorer { entry["explorer"] = explorer.bridgeState }
-                        if let editor = tab.editor { entry["editor"] = ["name": editor.source.name, "edited": editor.isEdited, "text": editor.bridgeText] }
+                        if let editor = tab.editor { entry["editor"] = editor.bridgeState }
                         return entry
                     },
                 ]

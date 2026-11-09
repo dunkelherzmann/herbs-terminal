@@ -8,6 +8,7 @@ Each test gets a fresh app (`Context`) and ends in one outcome:
 Tests registered with `manual` don't start the app.
 """
 import os
+import re
 import shutil
 import time
 
@@ -1284,7 +1285,7 @@ def local_tree(c, root):
 
 def upload(c, paths):
     try:
-        result = c.bridge.call("explorer-upload", paths=paths)
+        result = c.bridge.call("explorer-upload", timeout=45, paths=paths)
     except Exception as error:
         if "unknown op" in str(error):
             c.unverified("this platform's test bridge can't upload without the open dialog yet")
@@ -1373,9 +1374,166 @@ def _(c):
     c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() != "cancel"), ["fresh.txt"])
     c.until(lambda s: c.tab(s)["kind"] == "editor", "expected the new file in the editor")
 
-for fid, what in (("D3", "Find and undo"), ("D4", "Wrap Lines"), ("D5", "Status line"), ("D6", "Save"),
-                  ("D7", "Unsaved-changes question"), ("D8", "Changed on disk"), ("D9", "Encodings kept"), ("D10", "Size and binary limits")):
-    manual(fid, f"Text editor: {what}", "the bridge can't type into the editor or read its status yet")
+def editor(c, action=None, text=""):
+    """The editor tab's state, after running an action on it (type, undo, find, save, wrap, start)."""
+    if action is None:
+        return c.tab().get("editor", {})
+    try:
+        return c.bridge.call("editor", action=action, text=text)
+    except Exception as error:
+        if "unknown op" in str(error):
+            c.unverified("the bridge can't type into the editor or read its status yet")
+        raise
+
+def open_in_editor(c, name, data):
+    """Writes a file in the scene's folder and opens it in the text editor from the explorer."""
+    with open(os.path.join(c.app.home, name), "wb") as f:
+        f.write(data)
+    explorer_at_home(c, files=False)
+    c.until(lambda s: name in items(c, s), f"expected {name} in the list")
+    c.bridge.call("explorer-select", names=[name])
+    c.command("explorer.edit", settle=1.5)
+    c.until(lambda s: c.tab(s).get("kind") == "editor", f"expected {name} in the editor")
+    editor(c, "start")
+    return c.until(lambda s: c.tab(s).get("editor", {}).get("loaded", True) and c.tab(s)["editor"].get("text") is not None,
+                   "expected the file loaded")["windows"][0]
+
+def file_bytes(c, name):
+    with open(os.path.join(c.app.home, name), "rb") as f:
+        return f.read()
+
+STATUS = re.compile(r"Line (\d+), Column (\d+) · (\d+) lines? · (.+) · (LF|CRLF)$")
+
+def status_of(c, s=None):
+    found = STATUS.match(c.tab(s).get("editor", {}).get("status", ""))
+    return found.groups() if found else None
+
+@test("D3", "Text editor: monospaced font, undo, Find")
+def _(c):
+    open_in_editor(c, "notes.txt", b"alpha\nbeta\ngamma\n")
+    c.expect(editor(c).get("monospaced") is True, "expected a monospaced font")
+    editor(c, "type", "XYZ")
+    c.until(lambda s: c.tab(s)["editor"]["text"].startswith("XYZalpha"), "expected the typed text at the start")
+    editor(c, "undo")
+    c.until(lambda s: c.tab(s)["editor"]["text"] == "alpha\nbeta\ngamma\n", "expected Undo to take the typing back")
+    editor(c, "find", "BETA")
+    c.until(lambda s: c.tab(s)["editor"].get("finding"), "expected the find bar")
+    # The Mac's find bar is AppKit's, which the bridge opens but doesn't type into; Linux and Windows search here.
+    if c.platform != "mac":
+        c.until(lambda s: c.tab(s)["editor"].get("selection", "").lower() == "beta", "expected Find to select the match, ignoring case")
+
+@test("D4", "Text editor: Wrap Lines")
+def _(c):
+    open_in_editor(c, "wide.txt", b"x" * 400 + b"\n")
+    before = editor(c).get("wrap")
+    editor(c, "wrap")
+    c.until(lambda s: c.tab(s)["editor"].get("wrap") == (not before), "expected Wrap Lines to switch")
+    editor(c, "wrap")
+    c.until(lambda s: c.tab(s)["editor"].get("wrap") == before, "expected Wrap Lines to switch back")
+
+@test("D5", "Text editor: status line")
+def _(c):
+    open_in_editor(c, "lines.txt", b"one\ntwo\nthree")
+    s = c.until(lambda s: status_of(c, s), "expected a status line with line, column, line count, encoding and endings")
+    line, column, count, encoding, endings = status_of(c, s)
+    c.expect((line, column, count, endings) == ("1", "1", "3", "LF"), f"expected Line 1, Column 1, 3 lines, LF; saw {c.tab(s)['editor']['status']!r}")
+    c.expect("UTF-8" in encoding, f"expected UTF-8, saw {encoding!r}")
+    editor(c, "type", "ab")
+    c.until(lambda s: (status_of(c, s) or ())[:2] == ("1", "3"), "expected the column to follow the caret")
+
+@test("D5", "Text editor: CRLF line endings shown")
+def _(c):
+    open_in_editor(c, "crlf.txt", b"one\r\ntwo\r\n")
+    c.until(lambda s: (status_of(c, s) or ("",) * 5)[4] == "CRLF", "expected CRLF in the status line")
+
+@test("D6", "Text editor: Save, and the dot on the tab while unsaved")
+def _(c):
+    open_in_editor(c, "save.txt", b"hello\n")
+    editor(c, "type", "x")
+    s = c.until(lambda s: c.tab(s)["editor"].get("edited"), "expected the editor to show unsaved changes")
+    c.expect("•" in c.tab(s)["name"], f"expected a dot on the tab, saw {c.tab(s)['name']!r}")
+    editor(c, "save")
+    s = c.until(lambda s: not c.tab(s)["editor"].get("edited"), "expected Save to clear the unsaved mark")
+    c.expect("•" not in c.tab(s)["name"], f"expected the dot gone, saw {c.tab(s)['name']!r}")
+    c.expect(file_bytes(c, "save.txt") == b"xhello\n", f"expected the file saved, it holds {file_bytes(c, 'save.txt')!r}")
+
+@test("D7", "Text editor: closing with unsaved changes asks first")
+def _(c):
+    open_in_editor(c, "close.txt", b"hello\n")
+    editor(c, "type", "x")
+    c.until(lambda s: c.tab(s)["editor"].get("edited"), "expected unsaved changes")
+    c.command("close-tab", settle=1.2)
+    s = c.until(lambda s: s.get("dialogs"), "expected a question before the changes are lost")
+    responses = s["dialogs"][0]["responses"]
+    c.expect(any("don" in r.lower() for r in responses) and any(r.lower() == "cancel" for r in responses),
+             f"expected Don't Save and Cancel, saw {responses}")
+    c.answer(next(r for r in responses if r.lower() == "cancel"))
+    c.until(lambda s: c.tab(s).get("kind") == "editor" and c.tab(s)["editor"].get("edited"), "expected Cancel to keep the tab and its changes")
+    c.expect(file_bytes(c, "close.txt") == b"hello\n", "expected the file untouched")
+
+@test("D8", "Text editor: a file changed elsewhere asks before it's replaced")
+def _(c):
+    open_in_editor(c, "changed.txt", b"mine\n")
+    time.sleep(1.1)
+    with open(os.path.join(c.app.home, "changed.txt"), "wb") as f:
+        f.write(b"theirs\n")
+    later = time.time() + 5
+    os.utime(os.path.join(c.app.home, "changed.txt"), (later, later))
+    editor(c, "type", "x")
+    editor(c, "save")
+    s = c.until(lambda s: s.get("dialogs"), "expected a question about the file changed since it was opened")
+    c.expect("changed" in s["dialogs"][0]["heading"].lower(), f"expected the question to say the file changed, saw {s['dialogs'][0]['heading']!r}")
+    c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() == "cancel"))
+    time.sleep(1)
+    c.expect(file_bytes(c, "changed.txt") == b"theirs\n", "expected Cancel to leave the other change in place")
+
+@test("D9", "Text editor: keeps UTF-16 and CRLF")
+def _(c):
+    original = "\ufeffeins\r\nzwei\r\n".encode("utf-16-le")
+    open_in_editor(c, "wide16.txt", original)
+    editor(c, "type", "x")
+    editor(c, "save")
+    c.until(lambda s: not c.tab(s)["editor"].get("edited"), "expected the save to finish")
+    saved = file_bytes(c, "wide16.txt")
+    c.expect(saved == "\ufeffxeins\r\nzwei\r\n".encode("utf-16-le"), f"expected UTF-16 with its BOM and CRLF kept, saw {saved[:40]!r}")
+
+@test("D9", "Text editor: keeps Latin-1 and the file's permissions")
+def _(c):
+    open_in_editor(c, "latin.txt", b"caf\xe9\n")
+    path = os.path.join(c.app.home, "latin.txt")
+    if c.platform != "windows":
+        os.chmod(path, 0o640)
+    editor(c, "type", "x")
+    editor(c, "save")
+    c.until(lambda s: not c.tab(s)["editor"].get("edited"), "expected the save to finish")
+    c.expect(file_bytes(c, "latin.txt") == b"xcaf\xe9\n", f"expected Latin-1 kept, saw {file_bytes(c, 'latin.txt')!r}")
+    if c.platform != "windows":
+        c.expect(os.stat(path).st_mode & 0o777 == 0o640, f"expected the permissions kept, saw {oct(os.stat(path).st_mode & 0o777)}")
+
+def refused(c, name, data, words):
+    with open(os.path.join(c.app.home, name), "wb") as f:
+        f.write(data)
+    explorer_at_home(c, files=False)
+    c.until(lambda s: name in items(c, s), f"expected {name} in the list")
+    c.bridge.call("explorer-select", names=[name])
+    try:
+        c.command("explorer.edit", settle=2)
+    except Outcome:
+        raise
+    s = c.until(lambda s: s.get("dialogs"), f"expected a message that {name} can't be edited", timeout=15)
+    dialog = s["dialogs"][0]
+    seen = (dialog.get("heading", "") + " " + dialog.get("text", "")).lower()
+    c.answer(dialog["responses"][0])
+    c.until(lambda s: c.tab(s).get("kind") != "editor", "expected no editor tab left open")
+    return seen
+
+@test("D10", "Text editor: refuses files over 20 MB")
+def _(c):
+    refused(c, "huge.txt", b"a" * (21 * 1024 * 1024), ("mb",))
+
+@test("D10", "Text editor: refuses binary files")
+def _(c):
+    refused(c, "blob.txt", bytes(range(256)) * 64, ("text",))
 for fid in ("G1", "G2", "G3", "G5", "G6"):
     manual(fid, "Get Info", "the Get Info window isn't driven by the bridge yet")
 manual("G4", "Hidden and Locked", "Mac only")

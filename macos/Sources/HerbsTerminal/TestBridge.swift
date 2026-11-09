@@ -71,6 +71,10 @@ enum TestBridge {
             guard let explorer = try workspace.selected.state.explorerBridge else { return "unsupported" }
             explorer.select(request["names"] as? [String] ?? [])
             return explorer.selected()
+        case "editor":
+            guard let editor = try workspace.selected.editor else { throw Failure(description: "no editor") }
+            editor.bridge(request["action"] as? String ?? "", text: request["text"] as? String ?? "")
+            return editor.bridgeState
         case "explorer-upload":
             guard let upload = try workspace.selected.state.explorerBridge?.upload else { return "unsupported" }
             upload(request["paths"] as? [String] ?? [])
@@ -324,7 +328,7 @@ enum TestBridge {
                             explorer["selected"] = bridge.selected()
                         }
                         entry["explorer"] = explorer
-                        if let editor = tab.editor { entry["editor"] = ["name": editor.source.name, "edited": editor.isEdited, "text": editor.bridgeText] }
+                        if let editor = tab.editor { entry["editor"] = editor.bridgeState }
                         return entry
                     },
                 ]

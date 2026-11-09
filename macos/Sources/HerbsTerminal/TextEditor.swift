@@ -348,4 +348,28 @@ struct EditorPane: NSViewRepresentable {
 extension TextEditorModel {
     /// Feature tests: the text being edited.
     var bridgeText: String { textView.string }
+
+    /// Feature tests: what the editor shows, and the selected text.
+    var bridgeState: [String: Any] {
+        let text = textView.string as NSString
+        let range = textView.selectedRange()
+        return ["name": source.name, "edited": isEdited, "text": textView.string, "wrap": wrapButton.state == .on,
+                "status": status.stringValue, "monospaced": textView.font?.isFixedPitch ?? false,
+                "finding": scrollView.isFindBarVisible, "loaded": loaded,
+                "selection": NSMaxRange(range) <= text.length ? text.substring(with: range) : ""]
+    }
+
+    /// Feature tests: types (as the keyboard does, so it's undoable), undoes, opens Find, saves or toggles Wrap
+    /// Lines. Find here is AppKit's own find bar, which the bridge opens but doesn't type into.
+    func bridge(_ action: String, text: String) {
+        switch action {
+        case "type": textView.insertText(text, replacementRange: textView.selectedRange())
+        case "undo": textView.undoManager?.undo()
+        case "find": find()
+        case "save": save()
+        case "wrap": wrapButton.performClick(nil)
+        case "start": textView.setSelectedRange(NSRange(location: 0, length: 0))
+        default: break
+        }
+    }
 }

@@ -233,4 +233,33 @@ extension TextEditor {
         defer { g_free(text) }
         return String(cString: text)
     }
+
+    /// Feature tests: what the editor shows, and the selected text.
+    var bridgeState: [String: Any] {
+        var start = GtkTextIter(), end = GtkTextIter()
+        gtk_text_buffer_get_selection_bounds(c(buffer), &start, &end)
+        let selection = takeString(gtk_text_buffer_get_text(c(buffer), &start, &end, 1)) ?? ""
+        return ["name": source.name, "edited": isEdited, "text": bridgeText, "wrap": isActive(wrap),
+                "status": String(cString: gtk_label_get_text(c(status))), "monospaced": gtk_text_view_get_monospace(c(textView)) != 0,
+                "finding": gtk_widget_get_visible(findBar) != 0, "loaded": loaded, "selection": selection]
+    }
+
+    /// Feature tests: types (as the keyboard does, so it's undoable), undoes, finds, saves or toggles Wrap Lines.
+    func bridge(_ action: String, text: String) {
+        switch action {
+        case "type":
+            gtk_text_buffer_begin_user_action(c(buffer))
+            _ = gtk_text_buffer_insert_interactive_at_cursor(c(buffer), text, -1, 1)
+            gtk_text_buffer_end_user_action(c(buffer))
+        case "undo": gtk_text_buffer_undo(c(buffer))
+        case "find": find(); setText(findEntry, text) // search-changed finds the first match.
+        case "save": save()
+        case "wrap": gtk_check_button_set_active(c(wrap), isActive(wrap) ? 0 : 1)
+        case "start":
+            var start = GtkTextIter()
+            gtk_text_buffer_get_start_iter(c(buffer), &start)
+            gtk_text_buffer_place_cursor(c(buffer), &start)
+        default: break
+        }
+    }
 }

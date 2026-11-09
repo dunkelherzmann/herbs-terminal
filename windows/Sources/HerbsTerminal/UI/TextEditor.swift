@@ -604,6 +604,41 @@ private enum RE {
 }
 
 extension TextEditorPane {
+    /// Feature tests: what the editor shows, and the selected text.
+    var bridgeState: [String: Any] {
+        var selection = CHARRANGE()
+        _ = withUnsafeMutablePointer(to: &selection) { SendMessageW(edit, RE.exGetSelection, 0, LPARAM(Int(bitPattern: $0))) }
+        let all = Array(bridgeText.replacingOccurrences(of: "\n", with: "\r").utf16)
+        let lower = max(0, min(Int(selection.cpMin), all.count)), upper = max(lower, min(Int(selection.cpMax), all.count))
+        // The text's font: TMPF_FIXED_PITCH is set for variable-pitch fonts (its name is the wrong way round).
+        var monospaced = false
+        if let edit, let dc = GetDC(edit) {
+            let old = SelectObject(dc, HGDIOBJ(bitPattern: Int(SendMessageW(edit, UINT(WM_GETFONT), 0, 0))))
+            var metrics = TEXTMETRICW()
+            if GetTextMetricsW(dc, &metrics) { monospaced = metrics.tmPitchAndFamily & UInt8(TMPF_FIXED_PITCH) == 0 }
+            SelectObject(dc, old)
+            ReleaseDC(edit, dc)
+        }
+        return ["name": source.name, "edited": isEdited, "text": bridgeText, "wrap": wraps, "status": status,
+                "monospaced": monospaced, "finding": findVisible, "loaded": loaded,
+                "selection": String(decoding: all[lower..<upper], as: UTF16.self).replacingOccurrences(of: "\r", with: "\n")]
+    }
+
+    /// Feature tests: types (undoably, as the keyboard does), undoes, finds, saves or toggles Wrap Lines.
+    func bridge(_ action: String, text: String) {
+        switch action {
+        case "type": type(text)
+        case "undo": SendMessageW(edit, UINT(EM_UNDO), 0, 0)
+        case "find": perform(named: "find=" + text)
+        case "save": perform(named: "save")
+        case "wrap": perform(named: "wrap")
+        case "start":
+            var start = CHARRANGE(cpMin: 0, cpMax: 0)
+            _ = withUnsafeMutablePointer(to: &start) { SendMessageW(edit, RE.exSetSelection, 0, LPARAM(Int(bitPattern: $0))) }
+        default: break
+        }
+    }
+
     /// Feature tests: the text being edited.
     var bridgeText: String {
         guard let edit else { return "" }
