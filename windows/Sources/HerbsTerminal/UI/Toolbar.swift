@@ -30,6 +30,8 @@ final class WindowChrome {
         var explorerShowing = false
         /// The tab's files can be browsed (this PC's for now; a host's come with SFTP).
         var explorerAvailable = true
+        /// MultiExec is on: its button is highlighted.
+        var multiExecOn = false
 
         func isUnavailable(_ item: Item) -> Bool {
             WindowChrome.unavailable.contains(item) || (item == .explorer && !explorerAvailable)
@@ -37,7 +39,7 @@ final class WindowChrome {
     }
 
     /// The parts of the toolbar not yet in the Windows version: drawn as on the Mac and Linux, but dimmed.
-    nonisolated static let unavailable: Set<Item> = [.multiExec, .peers, .search]
+    nonisolated static let unavailable: Set<Item> = [.peers, .search]
 
     private(set) var rects: [Item: RECT] = [:]
     var hover: Item?
@@ -208,7 +210,7 @@ final class WindowChrome {
         for (item, glyph) in glyphs {
             guard let rect = rects[item] else { continue }
             let unavailable = state.isUnavailable(item)
-            let isActive = item == .connect && state.connected != nil
+            let isActive = (item == .connect && state.connected != nil) || (item == .multiExec && state.multiExecOn)
             var background = isActive ? blend(colors.background, colors.accent, 0.18) : colors.glyphRest
             if unavailable { background = blend(colors.background, colors.text, 0.03) }
             if !unavailable {
@@ -306,7 +308,9 @@ final class WindowChrome {
             if state.explorerShowing { return "Show Terminal (Ctrl+Shift+X)\nReplace the file explorer with this tab's shell." }
             if !state.explorerAvailable { return "Show File Explorer (Ctrl+Shift+X)\nNot available in this tab." }
             return "Show File Explorer (Ctrl+Shift+X)\nBrowse files on the host this tab is connected to."
-        case .multiExec: return "MultiExec (Ctrl+Shift+M)" + notYet
+        case .multiExec:
+            return state.multiExecOn ? "Exit MultiExec (Ctrl+Shift+M)\nBack to one tab at a time; typing goes to the current tab only."
+                                     : "MultiExec (Ctrl+Shift+M)\nShow every tab side by side and type into all of them at once."
         case .peers: return "Tailcat Peers" + notYet
         case .search: return "Search Terminal (Ctrl+Shift+F)" + notYet
         case .title:

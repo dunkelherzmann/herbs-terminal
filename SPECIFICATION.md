@@ -551,6 +551,8 @@ The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In 
 
 - **Split panes** work as in section 2: Split Vertically (Ctrl+Shift+E) and Split Horizontally (Ctrl+Shift+O) in the Main Menu's Shell submenu, equal shares with a one-pixel hairline between panes, Close Pane (Ctrl+Alt+W) and `exit`, Select Next / Previous Pane (Ctrl+Alt+→ / ←), and the focused pane outlined in Windows' accent color. A new pane starts in the current pane's folder when that's on this PC. Clear, Reset, Export Session and the window title follow the focused pane. One difference: an SSH tab's session is its first pane's own program (Windows' ssh), so closing that pane ends the session; the next pane takes over the tab's number and name.
 
+- **MultiExec** works as in section 7: the toolbar button (highlighted while on), Ctrl+Shift+M or the Shell submenu shows every terminal of the window, split panes included, in a grid under an orange bar ("MultiExec: typing goes to N of M terminals" with New Tab, Connect via SSH…, Include All, Close All and Exit MultiExec). Each terminal has a caption with an include checkbox, its number and its tab's name or host ("3. Terminal 2 (pane 2)"); the bar's buttons and checkboxes are standard Windows controls with hover hints. Typing, pasting and dropping into an included terminal goes to every included terminal; text the app types and the emulator's replies stay in their own terminal. Alt+1–Alt+9 pick a terminal by number, Ctrl+Shift+W closes only the active terminal, and Esc on the bar leaves MultiExec (in a terminal, Esc goes to the program, as on the Mac). Close All asks first and leaves MultiExec with one new terminal; editor tabs stay.
+
 ### Files
 
 - **The explorer** shows this PC's files in a local tab and the host's files in an SSH tab: the toolbar's folder button or Ctrl+Shift+X switches between the tab's shell and its explorer, which keeps its folder while hidden.
@@ -584,7 +586,7 @@ The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In 
 
 ### Not yet on Windows
 
-MultiExec and Run Command on Hosts; Find in Terminal; named profiles; session restore; following an `ssh` typed in a local tab; Tailcat peers; Paste Escaped Text. Their toolbar buttons and menu commands are shown dimmed.
+Run Command on Hosts; Find in Terminal; named profiles; session restore; following an `ssh` typed in a local tab; Tailcat peers; Paste Escaped Text. Their toolbar buttons and menu commands are shown dimmed.
 
 ## References
 

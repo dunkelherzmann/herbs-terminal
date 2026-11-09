@@ -31,7 +31,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] **7. Undo and Redo** in the explorer (§5), and bookmarks per host (#54).
 - [x] **8. Split panes** (§2) (#55): Split Vertically / Horizontally, Close Pane, Next / Previous Pane, the focused
       pane outline.
-- [ ] **9. MultiExec** (§7): every terminal in a grid, typing into all of them, include / leave out.
+- [x] **9. MultiExec** (§7) (#56): every terminal in a grid, typing into all of them, include / leave out.
 - [ ] **10. Run Command on Hosts** (§7).
 - [ ] **11. Find in Terminal** (§2), the terminal's right-click menu, Paste Escaped Text.
 - [ ] **12. Named profiles** (§3): New Tab with Profile, Use Profile, editing profiles in Settings.
@@ -52,7 +52,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 04:46)
+## Feature test results (2026-11-09 04:59)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
@@ -62,11 +62,10 @@ A test ran and the feature didn't do what the Mac version does.
 
 - [ ] **S4** Exit or Disconnect returns the tab, title and explorer to this computer. (§4): Disconnect returns the tab and title to this computer: expected the tab back on this computer (saw: 1 window(s), tabs ['Terminal 1', 'Terminal 2'], 1 pane(s), title 'herbs-test@192.168.1.241' '', dialogs [], last lines…
 
-### Missing (23)
+### Missing (17)
 
 The command isn't there, or it's greyed out.
 
-- [ ] **W9** MultiExec button (toggle). (§2): MultiExec button: `multiexec` is greyed out
 - [ ] **W10** Tailcat Peers button. (§2): Tailcat Peers: no `tailcat` command
 - [ ] **W11** Search button: searches files in the explorer, the scrollback otherwise. (§2): Search: `find` is not there
 - [ ] **W13** Main Menu: Find in Terminal…. (§2): Find in Terminal: `find-in-terminal` is greyed out
@@ -77,16 +76,11 @@ The command isn't there, or it's greyed out.
 - [ ] **B8** Find in Terminal (scrollback search). (§2): Find in Terminal: `find-in-terminal` is greyed out
 - [ ] **B9** Copy and paste; Paste Escaped Text. (§2): Copy, Paste and Paste Escaped Text: `paste-escaped` is not there
 - [ ] **M1** Shell menu: New Tab, Export Session, Take Screenshot, New Tab with Profile, Use Profile. (§2): Menu commands: new-tab, export-session, take-screenshot, new-tab-profile, use-profile: `new-tab-profile` is greyed out
-- [ ] **M3** Shell menu: MultiExec, Run Command on Hosts…. (§2): Menu commands: multiexec, run-on-hosts: `multiexec` is greyed out
+- [ ] **M3** Shell menu: MultiExec, Run Command on Hosts…. (§2): Menu commands: multiexec, run-on-hosts: `run-on-hosts` is greyed out
 - [ ] **R1** Named profiles; each tab uses one; new tabs keep the current tab's profile. (§3): Named profiles: `new-tab-profile` is greyed out
 - [ ] **E6** File Actions menu: Upload, Download, Undo, Redo, Cut, Copy, Paste, Delete, Select All, Find. (§5): File Actions commands: `explorer.find` is not there
 - [ ] **E13** New Folder, New File (free "untitled" name), Rename; undoable locally, rename undoable on a host. (§5): New Folder and Rename: no `explorer.rename` command
 - [ ] **E14** Search files (Find). (§5): Find files: `explorer.find` is not there
-- [ ] **U1** MultiExec grid of every terminal in the window, each with number, title and include checkbox. (§7): Every terminal joins the grid, included: `split-vertical` is greyed out
-- [ ] **U2** Typing or pasting into an included terminal goes to all included ones. (§7): Typing reaches every included terminal once; an excluded one is left out: `split-vertical` is greyed out
-- [ ] **U3** Pick terminal by number, close only the active one, Esc leaves. (§7): Leave MultiExec: `split-vertical` is greyed out
-- [ ] **U4** Bar: count of receivers, New Tab, Connect via SSH, Include All, Close All (asks), Exit MultiExec. (§7): Close All: `split-vertical` is greyed out
-- [ ] **U5** Only your own input is broadcast. (§7): Text the app types isn't broadcast: `split-vertical` is greyed out; Connecting in a new tab while MultiExec is on types only into that tab: `split-vertical` is greyed out
 - [ ] **U6** Run Command on Hosts: targets are selected saved logins and the live connection, own ssh channel… (§7): Run Command on Hosts window: `run-on-hosts` is greyed out
 - [ ] **C1** Add a peer: name, username, secret address, One-time or Persistent; addresses protected like logins. (§8): Tailcat Peers: add a peer: no `tailcat` command
 
