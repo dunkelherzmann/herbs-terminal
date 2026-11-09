@@ -721,7 +721,62 @@ def _(c):
     c.only("mac", reason="exempt on Linux and Windows (SPECIFICATION.md §11)")
     c.probe("secure-keyboard-entry")
 
-manual("B14", "Colors, styles, wide characters, mouse reporting", "visual: needs the window's picture compared with the Mac's")
+manual("B14", "Colors, styles, wide characters", "visual: needs the window's picture compared with the Mac's")
+
+
+def mouse(c, kind, column, row, **extra):
+    result = c.bridge.call("mouse", kind=kind, column=column, row=row, **extra)
+    if result == "unsupported":
+        c.unverified("this platform's test bridge can't send mouse events yet")
+    time.sleep(0.3)
+    return result
+
+
+# Turns on SGR mouse reporting on the host, reads one press (ends in M) and one release (ends in m), turns it off
+# and prints them with the escape shown as ^[.
+MOUSE_READER = (r"""printf '\033[?1000h\033[?1006h'; IFS= read -rs -d M a; IFS= read -rs -d m b; """
+                r"""printf '\033[?1000l\033[?1006l'; printf 'GO''T%s|%s\n' "$a" "$b" | cat -v""")
+
+
+@test("B14", "Mouse reporting: a full-screen program gets clicks, the wheel, and Shift+drag still selects")
+def _(c):
+    if c.platform != "windows":
+        c.unverified("this platform's test bridge can't send mouse events yet")
+    account, s = connect_test_host(c)
+    expect_connected(c, account, s)
+    c.type(MOUSE_READER + "\r", settle=1.5)
+    # Shift+drag selects instead of reporting, as on the Mac.
+    mouse(c, "down", 2, 0, shift=True)
+    mouse(c, "move", 9, 0, shift=True, held=True)
+    result = mouse(c, "up", 9, 0, shift=True)
+    c.expect(result["selection"].strip(), "Shift+drag didn't select while the program tracks the mouse")
+    mouse(c, "down", 5, 2)
+    mouse(c, "up", 5, 2)
+    s = c.until(lambda s: "GOT" in c.text(s), "the program didn't get the click")
+    line = next(l for l in c.text(s).splitlines() if l.startswith("GOT"))
+    c.expect(line.strip() == "GOT^[[<0;6;3|^[[<0;6;3", f"the click was reported as {line.strip()!r}, not at column 6, row 3")
+    # The wheel: button 64 (up) with SGR reporting.
+    c.type(MOUSE_READER.replace("-d m b", "-d M b") + "\r", settle=1.5)
+    mouse(c, "wheel", 3, 1, delta=40)
+    mouse(c, "wheel", 3, 1, delta=-40)
+    s = c.until(lambda s: sum(l.startswith("GOT") for l in c.text(s).splitlines()) >= 2, "the program didn't get the wheel")
+    line = [l for l in c.text(s).splitlines() if l.startswith("GOT")][-1]
+    c.expect(line.strip() == "GOT^[[<64;4;2|^[[<65;4;2", f"the wheel was reported as {line.strip()!r}")
+
+
+@test("B15", "Input methods compose at the cursor and type their result")
+def _(c):
+    if c.platform != "windows":
+        c.unverified("this platform's test bridge can't drive an input method yet")
+    c.type("echo ", settle=0.5)
+    result = c.bridge.call("ime", text="\u4f60\u597d")
+    c.expect(result.get("window"), "the terminal has no input context for input methods")
+    window, cursor = result["window"], result["cursor"]
+    c.expect(abs(window[0] - cursor[0]) <= 1 and abs(window[1] - cursor[1]) <= 1,
+             f"the composition window is at {window}, not at the cursor {cursor}")
+    c.until(lambda s: "echo \u4f60\u597d" in c.text(s), "the input method's result wasn't typed")
+    c.type(c.app.enter, settle=1)
+    c.until(lambda s: any(l.strip() == "\u4f60\u597d" for l in c.text(s).splitlines()), "the shell didn't get the composed text")
 
 # ---------------------------------------------------------------- M: Menus
 

@@ -250,7 +250,9 @@ final class Workspace: ObservableObject {
     /// Everything the terminal holds: the scrollback and the screen (the main screen even while a
     /// full-screen program such as vim shows its own), without the empty lines below the last output.
     static func sessionText(_ shell: LocalShell) -> String {
+        // SwiftTerm keeps the empty cell after a wide (CJK) character as a NUL; the text has none.
         var lines = String(decoding: shell.view.getTerminal().getBufferAsData(kind: .normal), as: UTF8.self)
+            .replacingOccurrences(of: "\u{0}", with: "")
             .components(separatedBy: "\n")
         while let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty { lines.removeLast() }
         return lines.joined(separator: "\n") + "\n"

@@ -43,7 +43,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] **14. Following an `ssh` typed in a local tab** (§4), and the explorer following that host. SSH sessions run inside the local shell, so Disconnect returns the tab to it (feature test S4). (#61)
 - [x] **15. Tailcat peers** (§8) (#63): pairing, sharing, connecting through Tailcat, the Lock / Unlock button.
 - [x] **16. Accessibility** (§9): UI Automation names, hover texts and states for the toolbar, tabs, window buttons and the explorer's bar and places; the terminal's text through the Text pattern, with new output announced; the visual bell (feature tests Y1, Y2, Y4).
-- [ ] **17. Dark mode for Settings and dialogs** (done in #43), mouse reporting for full-screen programs, IME composition.
+- [x] **17. Dark mode for Settings and dialogs** (done in #43), mouse reporting for full-screen programs, IME composition (feature tests B14, B15).
 - [ ] **18. App icon, MSIX installer and code signing** (§1).
 
 ## Done
@@ -56,7 +56,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 10:48)
+## Feature test results (2026-11-09 11:26)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 

@@ -71,4 +71,13 @@ int herb_uia_text_get_object(void *hwnd, uintptr_t wParam, intptr_t lParam, intp
 /// Call from the terminal window's WM_DESTROY.
 void herb_uia_text_destroyed(void *hwnd);
 
+// MARK: Input methods (herb_ime.c)
+
+/// Places the input method's composition window at (x, y) in client pixels, the top of the cursor's cell, and its
+/// candidate list below that line, in the terminal's font. Returns 0 when the window has no input context.
+int herb_ime_place(void *hwnd, int x, int y, int lineHeight, const uint16_t *face, int fontHeight);
+
+/// The composition window's place, for the feature tests. Returns 0 when there is none.
+int herb_ime_position(void *hwnd, int *x, int *y);
+
 #endif

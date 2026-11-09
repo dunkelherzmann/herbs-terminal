@@ -11,7 +11,7 @@ What the Mac version still needs before it can ship with as few bugs as possible
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Not checked automatically (94)
+### Not checked automatically (95)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -28,6 +28,7 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **B7** Size badge (columns × rows) while resizing. (§2): this platform's test bridge can't resize the window yet
 - [ ] **B8** Find in Terminal (scrollback search). (§2): the command is there; this platform's bridge doesn't report the find bar and its matches yet
 - [ ] **B14** Full color, bold/italic/underline, wide characters, mouse reporting for full-screen programs. (§2): visual: needs the window's picture compared with the Mac's
+- [ ] **B15** Typing with an input method (Chinese, Japanese, Korean): composition at the cursor, in the… (§2): no test yet
 - [ ] **R1** Named profiles; each tab uses one; new tabs keep the current tab's profile. (§3): this platform's test bridge can't make or choose profiles yet
 - [ ] **R5** iTerm2 `.itermcolors` import (all colors); damaged files rejected; imported presets removable. (§3): needs the system's open dialog
 - [ ] **R7** Settings ▸ Profiles: add, duplicate, rename, delete, choose the default; startup command and start… (§3): Settings opens; its Profiles page isn't read by the bridge yet
