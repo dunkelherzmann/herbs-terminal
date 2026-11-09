@@ -2124,6 +2124,18 @@ def _(c):
     leaked = [i + 1 for i, (a, b) in enumerate(zip(before, after)) if "herbs" in b[len(a):] or "nobody@" in b[len(a):]]
     c.expect(not leaked, f"the login was typed into MultiExec terminal(s) {leaked} too")
 
+@test("U5", "With MultiExec on and a tab connected, connecting a new tab works and nothing crashes")
+def _(c):
+    account, s = connect_test_host(c)
+    expect_connected(c, account, s)
+    c.command("multiexec", settle=1.5)
+    c.command("new-tab", settle=1.5)
+    account, s = connect_test_host(c)
+    c.expect(c.app.alive(), "the app crashed while the second tab connected")
+    expect_connected(c, account, s)
+    states = [t.get("connection", {}).get("state") for t in c.tabs()]
+    c.expect(states == ["connected", "connected"], f"expected both tabs connected, saw {states}")
+
 @test("U6", "Run Command on Hosts window")
 def _(c):
     c.command("run-on-hosts", settle=1.5)

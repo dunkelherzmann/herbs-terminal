@@ -7,9 +7,15 @@ What the Linux version still needs before it can ship with as few bugs as possib
 - [x] **Main Menu matches the Mac's in-window menus** (#70). It holds the same menus, submenus, order and shortcuts (Edit, Shell and Window included), and no command is reachable only somewhere else; W19 checks it. (§2, §14, enhancements.md) *Asked 2026-11-09.*
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 18:42)
+## Feature test results (2026-11-09 18:48)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
+
+### Broken (1)
+
+A test ran and the feature didn't do what the Mac version does.
+
+- [ ] **U5** Only your own input is broadcast. (§7): With MultiExec on and a tab connected, connecting a new tab works and nothing crashes: the app stopped answering (no answer to connect in 10 s (did the app quit?))
 
 ### Not checked automatically (53)
 
