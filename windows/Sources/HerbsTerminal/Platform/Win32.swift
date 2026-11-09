@@ -1,4 +1,5 @@
 import Foundation
+import CHerbUIA
 import WinSDK
 
 // Small conveniences over the Win32 API: wide strings, colors, DPI and window-object lookup.
@@ -110,10 +111,30 @@ func createWindow(_ object: WindowObject, className: String, title: String = "",
                   x: Int32 = CW_USEDEFAULT, y: Int32 = CW_USEDEFAULT, width: Int32 = CW_USEDEFAULT, height: Int32 = CW_USEDEFAULT,
                   parent: HWND? = nil) -> HWND? {
     let pointer = Unmanaged.passUnretained(object as AnyObject).toOpaque()
-    return withWide(className) { cls in
+    let window = withWide(className) { cls in
         withWide(title) { text in
             CreateWindowExW(exStyle, cls, text, style, x, y, width, height, parent, nil, GetModuleHandleW(nil), pointer)
         }
+    }
+    // Before it's shown, so it never appears on the desktop the user is working on.
+    if parent == nil, let window { TestDesktop.place(window) }
+    return window
+}
+
+/// The feature tests' own virtual desktop, "Herb's Terminal tests" (made once on the test PC), so test windows open
+/// there in the foreground and never on the desktop in use. Only a parity copy started with `--test-desktop`
+/// uses it; without that desktop, windows stay where they open.
+enum TestDesktop {
+    static let isActive = ParityScene.isActive && CommandLine.arguments.contains("--test-desktop")
+    static let name = "Herb's Terminal tests"
+    nonisolated(unsafe) private static var placed = Set<Int>()
+    /// How many windows went to the test desktop, and how many couldn't (the bridge reports both).
+    nonisolated(unsafe) private(set) static var moved = 0, failed = 0
+
+    static func place(_ window: HWND) {
+        guard isActive, !placed.contains(Int(bitPattern: window)) else { return }
+        placed.insert(Int(bitPattern: window))
+        if withWide(name, { herb_move_to_named_desktop(UnsafeMutableRawPointer(window), $0) }) != 0 { moved += 1 } else { failed += 1 }
     }
 }
 

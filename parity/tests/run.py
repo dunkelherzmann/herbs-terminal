@@ -68,6 +68,19 @@ def run_one(app, body):
     if status != "broken" and not app.alive():
         status, detail = "broken", "the app crashed or quit during the test"
     try:
+        # Windows reports whether its windows went to the test desktop; a failure there is said, not hidden.
+        desktop = app.bridge.call("state", timeout=3).get("testDesktop") or {}
+        if desktop and not getattr(run_one, "reported", False):
+            run_one.reported = True
+            print(f"DESKTOP    test desktop {'on' if desktop.get('active') else 'off'}: {desktop.get('moved', 0)} window(s) moved, "
+                  f"{desktop.get('failed', 0)} failed", flush=True)
+        if desktop.get("failed"):
+            print(f"WARNING    {desktop['failed']} window(s) couldn't move to the test desktop; they opened on the one in use", flush=True)
+        elif desktop.get("active") and not desktop.get("moved"):
+            print("WARNING    no window moved to the test desktop (is there a desktop named \"Herb's Terminal tests\"?)", flush=True)
+    except Exception:
+        pass
+    try:
         app.stop()
     except Exception:
         pass
