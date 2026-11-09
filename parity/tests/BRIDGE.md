@@ -18,3 +18,5 @@ Read this before writing a feature test; each point cost a rerun once.
   anything done to the host must be scoped to this client's own connections (`silence_test_host` matches the
   session's `SSH_CLIENT` address and uses a chain of its own), and must undo itself on a timer on the host.
   The kernel's owner match doesn't see the account: the root listener creates the sockets.
+
+**Linux helpers in test copies.** ssh on the host runs the app's helpers (askpass, the Tailcat proxy). The installed app's helper command is `flatpak run org.herbsterminal.app`, which would run the installed version, so a test copy takes `HERBS_PARITY_HELPER` instead: a wrapper (`bridge.py`, `helper()`) that runs the build with `flatpak build`. Unlike `flatpak run`, `flatpak build` passes on neither the environment nor /dev/tty, and the scene shell's HOME hides the user's runtimes, so the wrapper adds `--env=` for the helper's variables, points its error output at the terminal and sets `FLATPAK_USER_DIR`.
