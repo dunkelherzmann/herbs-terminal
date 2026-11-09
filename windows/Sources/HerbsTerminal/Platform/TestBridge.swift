@@ -108,6 +108,20 @@ enum TestBridge {
             // The file (or folder) the next Open or Save dialog answers with, without showing it.
             chosenFile = request["path"] as? String
             return true
+        case "saved-passwords":
+            // The toolbar's Saved Passwords menu: what it offers, or (with "choose") run one of its entries.
+            let store = CredentialStore.shared ?? CredentialStore.unavailable()
+            if let choice = request["choose"] as? String {
+                let workspace = try workspace
+                MainThread.async { SavedPasswordsMenu.run(choice, in: workspace) }
+                return true
+            }
+            return SavedPasswordsMenu.entries(store).map { ["title": $0.title, "help": $0.help, "action": $0.action] }
+        case "passwords":
+            // The Manage Passwords window: an action (select, new, edit, delete) with an optional row number.
+            guard let window = ManagePasswordsWindow.bridgeWindow else { return ["open": false] }
+            if let action = request["action"] as? String { window.bridge(action, request["value"]) }
+            return window.bridgeState
         case "logins":
             // The Manage Logins window: an action (select, check, new, edit, delete, import, export) with an
             // optional row number, then what it shows.
@@ -343,6 +357,10 @@ enum TestBridge {
         case "find":
             // The toolbar's Search: Find in the explorer while it shows, the terminal's find bar otherwise.
             if run { workspace.perform(MenuCommand.findInTerminal.rawValue) }
+            return run ? "ran" : "enabled"
+        case "manage-passwords":
+            // Saved Passwords ▸ Manage Passwords…
+            if run { MainThread.async { ManagePasswordsWindow.show(owner: workspace.hwnd) } }
             return run ? "ran" : "enabled"
         case "close-all":
             // MultiExec ▸ Close All (it asks first).

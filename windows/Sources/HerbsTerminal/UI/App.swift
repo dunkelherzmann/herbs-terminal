@@ -17,6 +17,7 @@ enum App {
         registerClass(SettingsWindow.className, background: GetSysColorBrush(COLOR_WINDOW))
         registerClass(FormDialog.className, background: GetSysColorBrush(COLOR_WINDOW))
         registerClass(ManageLoginsWindow.className, background: GetSysColorBrush(COLOR_WINDOW))
+        registerClass(ManagePasswordsWindow.className, background: GetSysColorBrush(COLOR_WINDOW))
         registerClass(ExplorerPane.className, style: UINT(CS_DBLCLKS))
         registerClass(TextEditorPane.className)
         registerClass(GetInfoWindow.className, background: GetSysColorBrush(COLOR_WINDOW))
