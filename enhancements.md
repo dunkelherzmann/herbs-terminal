@@ -59,7 +59,7 @@ A box is ticked once the change has shipped. A request that covers several platf
   - [x] Mac: in #76, tested (feature test T2); released in 1.0.231.
   - [x] Linux: in #76, tested (T2); released in 1.0.231.
   - [x] Windows: in #76, tested (T2); released in 1.0.231.
-- [ ] **Saved Passwords becomes Snippets.** The same feature, renamed so it suits commands and other text too: the button, menu and window read Snippets and Manage Snippets, and the Password field and column read Snippets. *Requested 2026-11-09 · Mac, Linux, Windows.*
-  - [ ] Mac: in #78, tested (L12, L13); not yet released.
-  - [ ] Linux: in #78, tested (L12, L13); not yet released.
-  - [ ] Windows: in #78, tested (L12, L13, Y1); not yet released.
+- [x] **Saved Passwords becomes Snippets.** The same feature, renamed so it suits commands and other text too: the button, menu and window read Snippets and Manage Snippets, and the Password field and column read Snippets. *Requested 2026-11-09 · Mac, Linux, Windows.*
+  - [x] Mac: in #78, tested (L12, L13); released in 1.0.235.
+  - [x] Linux: in #78, tested (L12, L13); released in 1.0.235.
+  - [x] Windows: in #78, tested (L12, L13, Y1); released in 1.0.235.
