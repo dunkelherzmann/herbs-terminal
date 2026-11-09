@@ -3,7 +3,7 @@
 What the Mac version still needs before it can ship with as few bugs as possible: everything a feature test found broken or missing, and every feature no automatic test covers yet. Fix broken items first, one pull request each, and tick an item with its PR number once it is fixed and its test passes. `bugs.md` and `enhancements.md` stay the record of requests and releases.
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 04:13)
+## Feature test results (2026-11-09 04:31)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
@@ -36,7 +36,7 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **S8** Host-key questions, one-time codes and retries asked in the terminal. (§4): needs the user's own ssh setup or a dropped link; not automated yet
 - [ ] **S9** Your own `~/.ssh/config`, agent, keys and jump hosts are used. (§4): needs the user's own ssh setup or a dropped link; not automated yet
 - [ ] **E1** Places: Home, the user folders, Computer, Trash, mounted devices; on a host Home and File System. (§5): checked in the accessibility tree by parity/check.sh; the bridge doesn't report places
-- [ ] **E2** Bookmarks (shortcut), kept per host; Remove Bookmark. (§5): needs pointer or keyboard input the test bridge doesn't reach yet
+- [ ] **E2** Bookmarks (shortcut), kept per host; Remove Bookmark. (§5): this platform's test bridge can't drive the explorer yet
 - [ ] **E3** Back, Forward, Up, Home, Reload, show hidden files; Delete/BackSpace goes back. (§5): this platform's test bridge can't drive the explorer yet
 - [ ] **E4** Clickable path segments and an editable location (accepts `~` and relative paths). (§5): needs pointer or keyboard input the test bridge doesn't reach yet
 - [ ] **E5** Double-click or Return opens; links to folders open as folders. (§5): this platform's test bridge can't drive the explorer yet

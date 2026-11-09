@@ -747,7 +747,23 @@ def safe(c):
         raise Outcome("error", f"refused: the explorer is at {path}, outside the scene's folder")
 
 manual("E1", "Places", "checked in the accessibility tree by parity/check.sh; the bridge doesn't report places")
-manual("E2", "Bookmarks", NEEDS_GUI)
+@test("E2", "Bookmarks: add and remove a folder")
+def _(c):
+    explorer_at_home(c)
+    c.until(lambda s: "sub/" in items(c, s) or "sub" in items(c, s), "expected the folder sub in the list")
+    sub = c.app.home.rstrip("/\\") + ("/sub" if c.platform != "windows" else "\\sub")
+    def bookmark_sub():
+        c.bridge.call("explorer-go", path=c.app.home)
+        c.until(lambda s: "sub/" in items(c, s) or "sub" in items(c, s), "expected the folder sub in the list")
+        c.bridge.call("explorer-select", names=["sub"])
+        c.command("explorer.bookmark-selected", settle=0.8)
+        c.bridge.call("explorer-go", path=sub)
+    bookmark_sub()
+    c.until(lambda s: c.tab(s)["explorer"]["path"].rstrip("/\\").endswith("sub") and c.tab(s)["explorer"].get("bookmarked") is True,
+            "expected sub to be bookmarked")
+    bookmark_sub()
+    c.until(lambda s: c.tab(s)["explorer"]["path"].rstrip("/\\").endswith("sub") and c.tab(s)["explorer"].get("bookmarked") is False,
+            "expected Remove Bookmark to take sub out")
 
 @test("E3", "Navigate: go into a folder and back")
 def _(c):
@@ -798,6 +814,72 @@ def _(c):
     c.until(lambda s: "note.txt" in items(c, s), "expected Undo to bring note.txt back")
     c.command("explorer.redo", settle=2)
     c.until(lambda s: "note.txt" not in items(c, s), "expected Redo to move it again")
+
+@test("E8", "Undo and Redo a copy")
+def _(c):
+    explorer_at_home(c)
+    c.until(lambda s: "note.txt" in items(c, s), "expected note.txt in the list")
+    safe(c)
+    c.bridge.call("explorer-select", names=["note.txt"])
+    c.command("explorer.copy", settle=0.6)
+    c.command("explorer.paste", settle=2)
+    c.until(lambda s: "note copy.txt" in items(c, s), "expected the copy, note copy.txt")
+    c.command("explorer.undo", settle=2)
+    c.until(lambda s: "note copy.txt" not in items(c, s) and "note.txt" in items(c, s), "expected Undo to remove the copy")
+    c.command("explorer.redo", settle=2)
+    c.until(lambda s: "note copy.txt" in items(c, s), "expected Redo to bring the copy back")
+
+@test("E8", "Undo and Redo a move")
+def _(c):
+    explorer_at_home(c)
+    c.until(lambda s: "note.txt" in items(c, s), "expected note.txt in the list")
+    safe(c)
+    sub = c.app.home.rstrip("/\\") + ("/sub" if c.platform != "windows" else "\\sub")
+    c.bridge.call("explorer-select", names=["note.txt"])
+    c.command("explorer.cut", settle=0.6)
+    c.bridge.call("explorer-go", path=sub)
+    c.command("explorer.paste", settle=2)
+    c.until(lambda s: "note.txt" in items(c, s), "expected note.txt moved into sub")
+    c.command("explorer.undo", settle=2)
+    c.until(lambda s: "note.txt" not in items(c, s), "expected Undo to move note.txt back out of sub")
+    c.command("explorer.redo", settle=2)
+    c.until(lambda s: "note.txt" in items(c, s), "expected Redo to move it into sub again")
+
+@test("E8", "Host: Undo and Redo a move")
+def _(c):
+    account, s = connect_test_host(c)
+    expect_connected(c, account, s)
+    c.command("toggle-explorer", settle=2)
+    home = f"/home/{account['user']}"
+    if c.bridge.call("explorer-go", path=home) == "unsupported":
+        c.unverified("this platform's test bridge can't drive the explorer yet")
+    c.until(lambda s: c.tab(s).get("explorer", {}).get("remote"), "expected the host's files", timeout=15)
+    stamp = int(time.time())
+    moved, box = f"undo-item-{stamp}", f"undo-box-{stamp}"
+    for name in (moved, box):
+        c.command("explorer.new-folder", settle=1.2)
+        s = c.until(lambda s: s.get("dialogs"), "expected the New Folder dialog")
+        c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() != "cancel"), [name])
+        c.until(lambda s: any(i.rstrip("/") == name for i in items(c, s)), "expected the new folder on the host", timeout=10)
+    try:
+        c.bridge.call("explorer-select", names=[moved + "/", moved])
+        c.command("explorer.cut", settle=0.6)
+        c.bridge.call("explorer-go", path=f"{home}/{box}")
+        c.until(lambda s: c.tab(s)["explorer"]["path"].rstrip("/").endswith(box), "expected to be in the box folder", timeout=10)
+        c.command("explorer.paste", settle=2)
+        c.until(lambda s: any(i.rstrip("/") == moved for i in items(c, s)), "expected the folder moved into the box", timeout=10)
+        c.command("explorer.undo", settle=2)
+        c.until(lambda s: not any(i.rstrip("/") == moved for i in items(c, s)), "expected Undo to move it back out", timeout=10)
+        c.command("explorer.redo", settle=2)
+        c.until(lambda s: any(i.rstrip("/") == moved for i in items(c, s)), "expected Redo to move it in again", timeout=10)
+    finally:
+        # Leave the test account as it was.
+        c.bridge.call("explorer-go", path=home)
+        time.sleep(1.5)
+        c.bridge.call("explorer-select", names=[box + "/", box, moved + "/", moved])
+        c.command("explorer.delete", settle=1.2)
+        for d in c.state().get("dialogs", []):
+            c.answer(next(r for r in d["responses"] if r.lower() not in ("cancel",)))
 
 @test("E9", "System file clipboard, both ways")
 def _(c):

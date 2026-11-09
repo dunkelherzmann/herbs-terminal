@@ -41,6 +41,9 @@ final class ExplorerPane: WindowObject {
     private var statusIsError = false
     /// A rename waiting for the in-place edit box to close.
     private var pendingRename: (row: Int, name: String)?
+    /// Undo and Redo, as on the Mac and Linux: copies, moves, renames, new items and Move to Recycle Bin on this
+    /// PC; moves and renames on a host.
+    let undoLog = ExplorerUndo()
 
     /// Asks the workspace to open a new tab whose shell starts in a folder.
     var onOpenInTerminal: ((String) -> Void)?
@@ -56,13 +59,13 @@ final class ExplorerPane: WindowObject {
     }
 
     private enum BarItem: Hashable {
-        case back, forward, up, home, admin, actions
+        case back, forward, up, home, bookmark, admin, actions
     }
 
     private enum Command: UINT {
         case open = 3100, openInTerminal, openWith, cut, copy, paste, copyPath, rename, delete, deletePermanently
         case properties, showInFileExplorer, newFolder, newFile, showHidden, reload, selectAll, folderProperties
-        case upload, uploadFolder, download, openInEditor
+        case upload, uploadFolder, download, openInEditor, undo, redo, bookmarkSelected
     }
 
     // MARK: Transfers
@@ -127,7 +130,7 @@ final class ExplorerPane: WindowObject {
         if let list { DragAcceptFiles(list, true) }
         transferObserver = transfers.objectWillChange.observe { [weak self] in self?.layout() }
         applyTheme()
-        places = remote == nil ? Self.standardPlaces() : remotePlaces
+        refreshPlaces()
         navigate(to: start, record: false)
     }
 
@@ -217,6 +220,8 @@ final class ExplorerPane: WindowObject {
         if userRemote != nil {
             rects[.admin] = RECT(left: client.right - s(8) - s(64), top: top, right: client.right - s(8) - s(34), bottom: top + s(28))
         }
+        let beside = (rects[.admin] ?? rects[.actions]!).left - s(4)
+        rects[.bookmark] = RECT(left: beside - s(30), top: top, right: beside, bottom: top + s(28))
         return rects
     }
 
@@ -226,7 +231,7 @@ final class ExplorerPane: WindowObject {
         var client = RECT()
         GetClientRect(hwnd, &client)
         let bar = barRects
-        let left = (bar[.home]?.right ?? 0) + s(8), right = ((bar[.admin] ?? bar[.actions])?.left ?? client.right) - s(8)
+        let left = (bar[.home]?.right ?? 0) + s(8), right = (bar[.bookmark]?.left ?? client.right) - s(8)
         MoveWindow(location, left, bannerHeight + (barHeight - s(26)) / 2, max(10, right - left), s(26), true)
         let top = bannerHeight + barHeight
         MoveWindow(list, placesWidth, top, client.right - placesWidth, client.bottom - top - statusHeight - stripHeight, true)
@@ -234,6 +239,41 @@ final class ExplorerPane: WindowObject {
     }
 
     // MARK: Places
+
+    /// Bookmarks, kept separately for each host as on the Mac and Linux (the same store and keys as Linux).
+    private var bookmarks: BookmarkList {
+        if let endpoint = userRemote?.endpoint {
+            return BookmarkList(raw: Preferences.shared.string("remoteExplorerBookmarks") ?? "", scope: "\(endpoint.label):\(endpoint.port)")
+        }
+        return BookmarkList(raw: Preferences.shared.string("explorerBookmarks") ?? "", scope: "")
+    }
+
+    /// Adds `path` to the side pane's Bookmarks, or takes it out.
+    func toggleBookmark(_ path: String) {
+        var list = bookmarks
+        list.toggle(remote == nil ? Self.fullPath(path) : RemotePath.normalize(path))
+        Preferences.shared.set(list.raw, userRemote == nil ? "explorerBookmarks" : "remoteExplorerBookmarks")
+        refreshPlaces()
+    }
+
+    var isBookmarked: Bool { bookmarks.contains(remote == nil ? Self.fullPath(folder) : RemotePath.normalize(folder)) }
+
+    private func refreshPlaces() {
+        var sections = remote == nil ? Self.standardPlaces() : remotePlaces
+        let marks = bookmarks.paths.map { path -> Place in
+            let name = remote == nil ? (path as NSString).lastPathComponent : RemotePath.name(path)
+            return Place(name: name.isEmpty ? path : name, path: path, glyph: "\u{E8B7}")
+        }
+        if !marks.isEmpty { sections.append(("Bookmarks", marks)) }
+        places = sections
+        if let hwnd { InvalidateRect(hwnd, nil, false) }
+    }
+
+    private func bookmarkPlace(at point: POINT) -> Place? {
+        guard let place = placeRects.first(where: { point.x >= $0.0.left && point.x < $0.0.right && point.y >= $0.0.top && point.y < $0.0.bottom })?.1
+        else { return nil }
+        return places.first { $0.section == "Bookmarks" }?.items.contains { $0.path == place.path } == true ? place : nil
+    }
 
     /// Home and the user folders that exist, then This PC and every drive with its label.
     static func standardPlaces() -> [(section: String, items: [Place])] {
@@ -515,6 +555,11 @@ final class ExplorerPane: WindowObject {
 
     private func perform(_ command: Command) {
         let selection = selectedEntries
+        if command == .undo || command == .redo { undoOrRedo(redo: command == .redo); return }
+        if command == .bookmarkSelected {
+            if let entry = selection.first(where: \.isFolder) { toggleBookmark(entry.path) }
+            return
+        }
         if remote != nil, remotePerform(command, selection) { return }
         switch command {
         case .open: selection.forEach(open)
@@ -545,6 +590,7 @@ final class ExplorerPane: WindowObject {
         case .folderProperties: _ = withWide(folder) { SHObjectProperties(hwnd, DWORD(SHOP_FILEPATH), $0, nil) }
         case .openInEditor: for entry in selection where !entry.isFolder { onOpenInEditor?(.local(entry.path)) }
         case .upload, .uploadFolder, .download: break // Host explorers only.
+        case .undo, .redo, .bookmarkSelected: break // Handled before the switch.
         case .showInFileExplorer:
             let argument = selection.first.map { "/select,\(quoteArgument($0.path))" } ?? quoteArgument(folder)
             _ = withWide("explorer.exe") { exe in withWide(argument) { args in ShellExecuteW(hwnd, nil, exe, args, nil, SW_SHOWNORMAL) } }
@@ -572,8 +618,10 @@ final class ExplorerPane: WindowObject {
             return
         }
         let kind: ShellOperation.Kind = move ? .move : .copy
-        let names = ShellOperation.plan(kind, paths, to: target).map { ($0.destination as NSString).lastPathComponent }
+        let plan = ShellOperation.plan(kind, paths, to: target)
+        let names = plan.map { ($0.destination as NSString).lastPathComponent }
         ShellOperation.run(kind, paths, to: target, owner: hwnd)
+        recordCopyOrMove(plan, move: move)
         if move { ShellClipboard.clear(owner: hwnd) }
         reload()
         refill(keepSelection: false, select: Set(names))
@@ -588,6 +636,54 @@ final class ExplorerPane: WindowObject {
                                  buttons: [.init(title: "Cancel", isDefault: true), .init(title: "Delete")]) == 1 else { return }
         }
         ShellOperation.run(permanently ? .deletePermanently : .recycle, selection.map(\.path), owner: hwnd)
+        // Only Move to Recycle Bin can be undone; what's gone is what was recycled (some may have been cancelled).
+        if !permanently {
+            undoLog.record(.recycled(selection.map(\.path).filter { !FileManager.default.fileExists(atPath: $0) }), as: "Move to Recycle Bin")
+        }
+        reload()
+    }
+
+    /// Records a finished copy or move for Undo: the items that reached their new place.
+    private func recordCopyOrMove(_ plan: [(source: String, destination: String)], move: Bool) {
+        let done = plan.filter { FileManager.default.fileExists(atPath: $0.destination) && (!move || !FileManager.default.fileExists(atPath: $0.source)) }
+        if move { undoLog.record(.moved(done.map { ($0.source, $0.destination) }), as: "Move") }
+        else { undoLog.record(.created(done.map(\.destination)), as: "Copy") }
+    }
+
+    /// Undo or Redo the last change in this explorer.
+    private func undoOrRedo(redo: Bool) {
+        guard let step = undoLog.take(redo: redo) else { return }
+        let owner = GetAncestor(hwnd, UINT(GA_ROOT))
+        if case .remoteMoved(let moves) = step.change {
+            guard let remote else { undoLog.finish(step, redo: redo, reverse: nil); return }
+            let back = moves.map { (from: $0.to, to: $0.from) }
+            let reversed = Locked<[(from: String, to: String)]>([])
+            remoteChange({ client in
+                for move in back.reversed() {
+                    guard try client.existing(move.to) == nil else { throw FileIssue("“\(RemotePath.name(move.to))” can't go back: an item with that name is there now.") }
+                    try client.rename(move.from, move.to)
+                    reversed.update { $0.append(move) }
+                }
+            }, select: { Set(back.map { RemotePath.name($0.to) }) }, always: { [weak self] in
+                guard let self else { return }
+                let done = reversed.value
+                if done.count == back.count { self.undoLog.finish(step, redo: redo, reverse: .remoteMoved(done)) }
+                else {
+                    // Partly done: what moved back can be redone, the rest stays to undo.
+                    let left = moves.filter { move in !done.contains { $0.from == move.to } }
+                    self.undoLog.finish(ExplorerUndo.Step(change: .remoteMoved(left), title: step.title), redo: redo, reverse: nil)
+                    if !done.isEmpty { self.undoLog.finish(step, redo: redo, reverse: .remoteMoved(done)) }
+                }
+            })
+            return
+        }
+        do {
+            let reverse = try LocalUndo.revert(step.change, owner: hwnd)
+            undoLog.finish(step, redo: redo, reverse: reverse)
+        } catch {
+            undoLog.finish(step, redo: redo, reverse: nil)
+            FormDialog.tell(owner: owner, title: "\(redo ? undoLog.redoTitle : undoLog.undoTitle) couldn't be done", message: error.localizedDescription)
+        }
         reload()
     }
 
@@ -612,6 +708,7 @@ final class ExplorerPane: WindowObject {
             FormDialog.tell(owner: owner, title: "Couldn't create “\(name)”", message: Self.describe(GetLastError(), folder))
             return
         }
+        undoLog.record(.created([path]), as: isFolder ? "New Folder" : "New File")
         reload()
         if let row = rows.firstIndex(where: { $0.name == name }) { selectRow(row) }
         if !isFolder { onOpenInEditor?(.local(path)) }
@@ -649,7 +746,9 @@ final class ExplorerPane: WindowObject {
                             message: "Choose a different name; nothing is overwritten.")
             return
         }
-        ShellOperation.run(.rename, [entry.path], to: target, owner: hwnd)
+        if ShellOperation.run(.rename, [entry.path], to: target, owner: hwnd) {
+            undoLog.record(.moved([(entry.path, target)]), as: "Rename")
+        }
         reload()
         if let index = rows.firstIndex(where: { $0.name == name }) { selectRow(index) }
     }
@@ -682,7 +781,7 @@ final class ExplorerPane: WindowObject {
             case .success(let found):
                 if let home = found.home {
                     self.remoteHome = home
-                    self.places = self.remotePlaces
+                    self.refreshPlaces()
                 }
                 if record, found.folder != self.folder {
                     self.history.append(self.folder)
@@ -715,7 +814,7 @@ final class ExplorerPane: WindowObject {
 
     /// Runs a change on the host, then lists the folder again (selecting `select`) or shows what went wrong.
     private func remoteChange(_ work: @escaping @Sendable (SFTPClient) throws -> Void, select: @escaping @Sendable () -> Set<String> = { [] },
-                              done: (@MainActor () -> Void)? = nil) {
+                              done: (@MainActor () -> Void)? = nil, always: (@MainActor () -> Void)? = nil) {
         guard let remote else { return }
         status = "Working…"
         statusIsError = false
@@ -729,6 +828,7 @@ final class ExplorerPane: WindowObject {
                 FormDialog.tell(owner: GetAncestor(self.hwnd, UINT(GA_ROOT)), title: "The change couldn't be made", message: error.localizedDescription)
             }
             if case .success = result { done?() }
+            always?()
             guard self.listing == started else { return }
             self.remoteNavigate(to: self.folder, record: false, select: select())
         }
@@ -783,16 +883,25 @@ final class ExplorerPane: WindowObject {
             }
             if move { RemoteClipboard.clear() }
             let names = Locked<Set<String>>([])
+            let moves = Locked<[(from: String, to: String)]>([])
             remoteChange({ client in
                 for path in paths {
                     let name = RemotePath.name(path)
                     // Cut items already in this folder stay where they are.
                     if move, RemotePath.parent(path) == target { continue }
                     let destination = try RemoteFiles.destination(for: name, in: target, client: client)
-                    if move { try client.rename(path, destination) } else { try RemoteFiles.copy(path, to: destination, client: client) }
+                    if move {
+                        try client.rename(path, destination)
+                        moves.update { $0.append((path, destination)) }
+                    } else {
+                        try RemoteFiles.copy(path, to: destination, client: client)
+                    }
                     names.update { $0.insert(RemotePath.name(destination)) }
                 }
-            }, select: { names.value })
+            }, select: { names.value }, always: { [weak self] in
+                // What moved is undoable, even when a later item failed.
+                self?.undoLog.record(.remoteMoved(moves.value), as: "Move")
+            })
         case .delete, .deletePermanently:
             // Hosts have no Recycle Bin: deleting is permanent, so it always asks, with Cancel as the default.
             guard !selection.isEmpty else { return true }
@@ -858,7 +967,7 @@ final class ExplorerPane: WindowObject {
         remoteChange({ client in
             guard try client.existing(to) == nil else { throw FileIssue("An item named “\(name)” already exists here.") }
             try client.rename(from, to)
-        }, select: { [name] })
+        }, select: { [name] }, done: { [weak self] in self?.undoLog.record(.remoteMoved([(from, to)]), as: "Rename") })
     }
 
     private func remoteMenu(at screen: POINT, onItem: Bool, rightAligned: Bool = false) {
@@ -874,9 +983,18 @@ final class ExplorerPane: WindowObject {
         func divider() { AppendMenuW(menu, UINT(MF_SEPARATOR), 0, nil) }
         let selection = selectedEntries
         let canPaste = ShellClipboard.hasFiles || (remote.map { RemoteClipboard.isCurrent && RemoteClipboard.host == $0.endpoint.label } ?? false)
+        if rightAligned {
+            // File Actions holds Undo and Redo, as on the Mac and Linux.
+            item(undoLog.undoTitle + "\tCtrl+Z", .undo, enabled: !undoLog.undoStack.isEmpty)
+            item(undoLog.redoTitle + "\tCtrl+Shift+Z", .redo, enabled: !undoLog.redoStack.isEmpty)
+            divider()
+        }
         if onItem, !selection.isEmpty {
             item("Open\tEnter", .open)
             if !selection.contains(where: \.isFolder) { item("Open in Text Editor", .openInEditor) }
+            if selection.count == 1 && selection[0].isFolder {
+                item(bookmarks.contains(RemotePath.normalize(selection[0].path)) ? "Remove Bookmark" : "Add Bookmark", .bookmarkSelected)
+            }
             divider()
             item("Cut\tCtrl+X", .cut)
             item("Copy\tCtrl+C", .copy)
@@ -1130,12 +1248,14 @@ final class ExplorerPane: WindowObject {
             .forward: "Forward (Alt+→)\nGo forward again after going back.",
             .up: "Up (Alt+↑)\nGo to the folder that holds this one.",
             .home: "Home (Alt+Home)\nGo to your home folder.",
+            .bookmark: isBookmarked ? "Remove Bookmark (Ctrl+D)\nTake this folder out of the side pane's Bookmarks."
+                                    : "Bookmark This Folder (Ctrl+D)\nAdd it to the side pane's Bookmarks.",
             .admin: isAdministrator ? "Leave Administrator Mode\nGo back to working with your own account's access."
                                     : "Administrator Mode\nWork as root with sudo on this host: open and change any file. Asks for the sudo password.",
             .actions: "File Actions\n" + (remote == nil ? "Cut, copy, paste, move to the Recycle Bin, select all, new folder or file, hidden files and reload."
                                                          : "Upload, download, cut, copy, paste, delete, select all, new folder or file, hidden files and reload."),
         ]
-        for (index, item) in [BarItem.back, .forward, .up, .home, .actions, .admin].enumerated() {
+        for (index, item) in [BarItem.back, .forward, .up, .home, .actions, .admin, .bookmark].enumerated() {
             if let rect = barRects[item], let text = bar[item] { entries.append((UINT_PTR(1 + index), rect, text)) }
         }
         if isAdministrator { entries.append((UINT_PTR(50), leaveRect, "Leave Administrator Mode\nGo back to working with your own account's access.")) }
@@ -1190,6 +1310,7 @@ final class ExplorerPane: WindowObject {
             "cut": .cut, "copy": .copy, "paste": .paste, "delete": .delete, "deletePermanently": .deletePermanently,
             "newFolder": .newFolder, "newFile": .newFile, "showHidden": .showHidden, "reload": .reload, "selectAll": .selectAll,
             "open": .open, "edit": .openInEditor, "info": .properties, "reveal": .showInFileExplorer, "openWith": .openWith,
+            "undo": .undo, "redo": .redo, "bookmarkSelected": .bookmarkSelected,
         ]
         guard let command = commands[name] else { return false }
         perform(command)
@@ -1215,7 +1336,10 @@ final class ExplorerPane: WindowObject {
             item("Open\tEnter", .open)
             if !selection.contains(where: \.isFolder) { item("Open in Text Editor", .openInEditor) }
             if selection.count == 1 && !selection[0].isFolder { item("Open With…", .openWith) }
-            if selection.count == 1 && selection[0].isFolder { item("Open in New Terminal Tab", .openInTerminal) }
+            if selection.count == 1 && selection[0].isFolder {
+                item("Open in New Terminal Tab", .openInTerminal)
+                item(bookmarks.contains(Self.fullPath(selection[0].path)) ? "Remove Bookmark" : "Add Bookmark", .bookmarkSelected)
+            }
             divider()
             item("Cut\tCtrl+X", .cut)
             item("Copy\tCtrl+C", .copy)
@@ -1256,6 +1380,8 @@ final class ExplorerPane: WindowObject {
         defer { DestroyMenu(menu) }
         let selection = selectedEntries
         let items: [(String, Command, Bool)] = [
+            (undoLog.undoTitle + "\tCtrl+Z", .undo, !undoLog.undoStack.isEmpty), (undoLog.redoTitle + "\tCtrl+Shift+Z", .redo, !undoLog.redoStack.isEmpty),
+            ("", .reload, false),
             ("Cut\tCtrl+X", .cut, !selection.isEmpty), ("Copy\tCtrl+C", .copy, !selection.isEmpty),
             ("Paste\tCtrl+V", .paste, ShellClipboard.hasFiles), ("Move to Recycle Bin\tDelete", .delete, !selection.isEmpty),
             ("", .reload, false), ("Select All\tCtrl+A", .selectAll, true), ("New Folder\tCtrl+Shift+N", .newFolder, true),
@@ -1324,8 +1450,11 @@ final class ExplorerPane: WindowObject {
             else if letter("H") { perform(.showHidden) }
             else if letter("R") { perform(.reload) }
             else if letter("L") { SetFocus(location); SendMessageW(location, UINT(EM_SETSEL), 0, -1) }
+            else if letter("Z") { perform(.undo) }
+            else if letter("D") { toggleBookmark(folder) }
             else { return false }
         case (true, true, false) where letter("N"): perform(.newFolder)
+        case (true, true, false) where letter("Z"): perform(.redo)
         default: return false
         }
         return true
@@ -1391,10 +1520,11 @@ final class ExplorerPane: WindowObject {
 
         // Location bar buttons.
         let glyphs: [BarItem: String] = [.back: "\u{E72B}", .forward: "\u{E72A}", .up: "\u{E74A}", .home: "\u{E80F}", .actions: "\u{E712}",
+                                         .bookmark: isBookmarked ? "\u{E735}" : "\u{E734}",
                                          .admin: isAdministrator ? "\u{E785}" : "\u{E72E}"]
         let enabled: [BarItem: Bool] = [.back: !history.isEmpty, .forward: !future.isEmpty,
                                         .up: remote == nil ? (folder as NSString).deletingLastPathComponent != folder : folder != "/",
-                                        .home: true, .actions: true, .admin: !enteringAdministrator]
+                                        .home: true, .actions: true, .bookmark: true, .admin: !enteringAdministrator]
         for (item, rect) in barRects {
             if hover == item, enabled[item] == true { roundFill(dc, rect, blend(barBackground, colors.text, 0.1), radius: s(4)) }
             let color = item == .admin && isAdministrator ? colorRef(196, 43, 28) : colors.text
@@ -1466,12 +1596,23 @@ final class ExplorerPane: WindowObject {
                 case .forward: goForward()
                 case .up: goUp()
                 case .home: goHome()
+                case .bookmark: toggleBookmark(folder)
                 case .actions: fileActionsMenu()
                 }
             } else if let place = placeRects.first(where: { point.x >= $0.0.left && point.x < $0.0.right && point.y >= $0.0.top && point.y < $0.0.bottom })?.1 {
                 navigate(to: place.path)
             }
             SetFocus(list)
+            return 0
+        case WM_RBUTTONUP:
+            // A bookmark in the side pane: Remove Bookmark, as on the Mac and Linux.
+            var point = POINT(x: Int32(loWord(lParam)), y: Int32(hiWord(lParam)))
+            guard let place = bookmarkPlace(at: point) else { return nil }
+            let menu = CreatePopupMenu()
+            defer { DestroyMenu(menu) }
+            _ = withWide("Remove Bookmark") { AppendMenuW(menu, UINT(MF_STRING), 1, $0) }
+            ClientToScreen(hwnd, &point)
+            if MainMenu.trackPopup(menu, at: point, owner: hwnd) == 1 { toggleBookmark(place.path) }
             return 0
         case WM_MOUSEMOVE:
             if !trackingMouse {
@@ -1545,7 +1686,9 @@ final class ExplorerPane: WindowObject {
             if remote != nil {
                 upload(paths, into: folder)
             } else {
+                let plan = ShellOperation.plan(.copy, paths, to: folder)
                 ShellOperation.run(.copy, paths, to: folder, owner: hwnd)
+                recordCopyOrMove(plan, move: false)
                 reload()
             }
             return 0
@@ -1788,6 +1931,6 @@ extension ExplorerPane {
     var bridgeState: [String: Any] {
         ["shown": IsWindowVisible(hwnd), "path": folder, "items": rows.map { $0.isFolder ? $0.name + "/" : $0.name },
          "selected": selectedEntries.map(\.name), "hidden": showHidden, "administrator": isAdministrator, "remote": remote != nil,
-         "canUndo": false, "canRedo": false]
+         "bookmarked": isBookmarked, "canUndo": !undoLog.undoStack.isEmpty, "canRedo": !undoLog.redoStack.isEmpty, "undoTitle": undoLog.undoTitle, "redoTitle": undoLog.redoTitle]
     }
 }
