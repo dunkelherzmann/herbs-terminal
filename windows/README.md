@@ -99,4 +99,4 @@ Steps run 1.5 s apart. `--type` sends text straight into the active terminal (`\
 
 ## Roadmap
 
-What's left is in `pending.md`: the app icon, an installer (MSIX) and code signing, and the explorer's Find and in-place Rename.
+What's left is in `pending.md`: the explorer's Find and in-place Rename. The app ships unsigned and without an installer, so Windows SmartScreen may ask once before the first run (More info ▸ Run anyway).

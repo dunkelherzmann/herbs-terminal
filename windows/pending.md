@@ -44,7 +44,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] **15. Tailcat peers** (§8) (#63): pairing, sharing, connecting through Tailcat, the Lock / Unlock button.
 - [x] **16. Accessibility** (§9): UI Automation names, hover texts and states for the toolbar, tabs, window buttons and the explorer's bar and places; the terminal's text through the Text pattern, with new output announced; the visual bell (feature tests Y1, Y2, Y4).
 - [x] **17. Dark mode for Settings and dialogs** (done in #43), mouse reporting for full-screen programs, IME composition (feature tests B14, B15).
-- [ ] **18. App icon, MSIX installer and code signing** (§1).
+- [x] **18. App icon** (§12): done in #35. ~~MSIX installer and code signing~~ dropped: Herbert chose on 2026-11-09 to keep the single portable exe, with no installer and no paid certificate.
 
 ## Done
 
