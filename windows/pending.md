@@ -37,7 +37,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] **12. Named profiles** (§3) (#59): New Tab with Profile, Use Profile, editing profiles in Settings.
 - [x] **13. Session restore** (§2) and the size badge while resizing (#60).
 - [x] **14. Following an `ssh` typed in a local tab** (§4), and the explorer following that host. SSH sessions run inside the local shell, so Disconnect returns the tab to it (feature test S4). (#61)
-- [x] **15. Tailcat peers** (§8) (#62): pairing, sharing, connecting through Tailcat, the Lock / Unlock button.
+- [x] **15. Tailcat peers** (§8) (#63): pairing, sharing, connecting through Tailcat, the Lock / Unlock button.
 - [ ] **16. Accessibility** (§9): UI Automation names for the toolbar, tabs and terminal.
 - [ ] **17. Dark mode for Settings and dialogs** (done in #43), mouse reporting for full-screen programs, IME composition.
 - [ ] **18. App icon, MSIX installer and code signing** (§1).
