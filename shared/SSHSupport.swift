@@ -380,6 +380,8 @@ enum TailcatProxy {
         proxy.standardError = FileHandle.nullDevice
         guard (try? proxy.run()) != nil else { return 1 }
         defer { if proxy.isRunning { proxy.terminate() } }
+        // ssh ends its ProxyCommand with SIGHUP, which skips the defer above and left tailcat running for good.
+        endsWithThisProcess(proxy.processIdentifier)
 
         // tailcat needs a moment to start listening.
         var fd: Int32 = -1
@@ -408,6 +410,19 @@ enum TailcatProxy {
         return true
     }
 
+    nonisolated(unsafe) private static var child: pid_t = 0
+
+    /// When this process is told to end, `pid` ends with it.
+    private static func endsWithThisProcess(_ pid: pid_t) {
+        child = pid
+        for signal in [SIGHUP, SIGTERM, SIGINT] {
+            _ = Foundation.signal(signal) { number in
+                if TailcatProxy.child > 0 { kill(TailcatProxy.child, SIGTERM) }
+                _exit(128 + number)
+            }
+        }
+    }
+
     private static func handshake(_ fd: Int32, name: [UInt8], port: UInt16) -> Bool {
         guard send(fd, [5, 1, 0]), let greeting = receive(fd, 2), greeting == [5, 0] else {
             report("tailcat's local proxy refused the connection."); return false
@@ -434,17 +449,21 @@ enum TailcatProxy {
     /// Copies ssh's standard input to the peer and the peer's replies to standard output until either side closes.
     /// False when the peer hung up without sending a byte: nothing answered on its end.
     static func relay(_ fd: Int32, input: Int32 = STDIN_FILENO, output: Int32 = STDOUT_FILENO) -> Bool {
+        // A write to a peer that has hung up must fail, not end this process (it did, and ssh then printed only
+        // "Connection closed by UNKNOWN port 65535").
+        signal(SIGPIPE, SIG_IGN)
         let done = DispatchSemaphore(value: 0)
         let silent = SilentPeer()
         Thread.detachNewThread {
             _ = pump(from: input, to: fd)
             shutdown(fd, SHUT_WR)
-            done.signal()
         }
         Thread.detachNewThread {
             if pump(from: fd, to: output) == 0 { silent.mark() }
             done.signal()
         }
+        // The session ends when the peer's side does. Waiting for whichever copy ended first let ssh's own banner,
+        // sent at once, end the wait before the peer's silence was seen.
         done.wait()
         return !silent.isMarked
     }
@@ -524,6 +543,13 @@ enum TailcatProxy {
     }
 
     private static func report(_ message: String) {
-        FileHandle.standardError.write(Data(("Herb's Terminal: " + message + "\n").utf8))
+        let line = Data(("Herb's Terminal: " + message + "\n").utf8)
+        FileHandle.standardError.write(line)
+        // With ControlPersist, ssh sends a ProxyCommand's error output nowhere, so the person would see only
+        // "Connection closed by UNKNOWN port 65535": say it on the terminal itself as well.
+        if isatty(STDERR_FILENO) == 0, let terminal = FileHandle(forWritingAtPath: "/dev/tty") {
+            terminal.write(Data("\r\n".utf8) + line.dropLast() + Data("\r\n".utf8))
+            try? terminal.close()
+        }
     }
 }

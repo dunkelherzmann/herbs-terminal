@@ -2326,7 +2326,21 @@ def _(c):
     c.expect(address not in c.text(s), "the Tailcat address is on the screen")
     explorer_follows_with_password(c, account)
 
-manual("C4", "Tailcat", "needs a peer whose SSH service is off")
+@test("C4", "A peer reached through Tailcat where nothing answers SSH says so clearly")
+def _(c):
+    account = ssh_account()
+    path = os.path.expanduser("~/.config/herbs-terminal/test-tailcat-nossh")
+    if not account or not os.path.exists(path):
+        c.unverified("needs a peer whose SSH service is off (parity/tests/tailcat-host.sh shares one for a run)")
+    address = open(path, encoding="utf-8").read().strip()
+    tailcat_window(c)
+    c.bridge.call("tailcat-add", name="nossh", username=account["user"], address=address, persistent=False)
+    c.bridge.call("tailcat-connect", name="nossh")
+    s = c.until(lambda s: "nothing answered ssh" in c.text(s).lower(), "expected the terminal to say the peer was reached but nothing answered SSH",
+                timeout=60)
+    # The message comes just before ssh ends, and the tab notices that a moment later.
+    s = c.until(lambda s: connection(c, s).get("state") != "connected", "expected no connection", timeout=10)
+    c.expect(address not in c.text(s), "the Tailcat address is on the screen")
 manual("C7", "Unlock / Lock", "the Tailcat window isn't driven by the bridge yet")
 def uia_node(nodes, identifier):
     return next((n for n in nodes if n.get("identifier") == identifier), None)

@@ -479,10 +479,12 @@ func sshControlRunReportsTheRealExitStatus() {
 
 @Test(.timeLimit(.minutes(2)))
 func tailcatProxyTellsAPeerThatHangsUpSilentlyFromOneThatAnswers() throws {
-    func relay(peerSends reply: [UInt8]) throws -> Bool {
+    func relay(peerSends reply: [UInt8], sshSpeaksFirst: Bool = false) throws -> Bool {
         var peer: [Int32] = [0, 0], input: [Int32] = [0, 0], output: [Int32] = [0, 0]
         try #require(socketpair(AF_UNIX, SOCK_STREAM, 0, &peer) == 0 && pipe(&input) == 0 && pipe(&output) == 0)
         defer { [peer[0], input[0], input[1], output[0], output[1]].forEach { close($0) } }
+        // A real ssh sends its own banner at once, so the copy towards the peer can end first.
+        if sshSpeaksFirst { _ = Array("SSH-2.0-OpenSSH_10.2\r\n".utf8).withUnsafeBufferPointer { write(input[1], $0.baseAddress, $0.count) }; close(input[1]); input[1] = -1 }
         // The far end answers (or not) and hangs up; ssh's side stays open, as it does while waiting for a banner.
         if !reply.isEmpty { _ = reply.withUnsafeBufferPointer { write(peer[1], $0.baseAddress, $0.count) } }
         close(peer[1])
@@ -490,6 +492,8 @@ func tailcatProxyTellsAPeerThatHangsUpSilentlyFromOneThatAnswers() throws {
     }
     #expect(try relay(peerSends: []) == false)
     #expect(try relay(peerSends: Array("SSH-2.0-OpenSSH_10.2\r\n".utf8)) == true)
+    #expect(try relay(peerSends: [], sshSpeaksFirst: true) == false)
+    #expect(try relay(peerSends: Array("SSH-2.0-OpenSSH_10.2\r\n".utf8), sshSpeaksFirst: true) == true)
 }
 
 @Test(.timeLimit(.minutes(2)))

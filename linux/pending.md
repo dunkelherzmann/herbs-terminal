@@ -7,11 +7,11 @@ What the Linux version still needs before it can ship with as few bugs as possib
 - [x] **Main Menu matches the Mac's in-window menus** (#70). It holds the same menus, submenus, order and shortcuts (Edit, Shell and Window included), and no command is reachable only somewhere else; W19 checks it. (§2, §14, enhancements.md) *Asked 2026-11-09.*
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 21:19)
+## Feature test results (2026-11-09 23:58)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Not checked automatically (49)
+### Not checked automatically (43)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -48,12 +48,6 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **L3** Change the Administrator Password re-encrypts everything; removing it asks. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L4** Plain text needs an explicit choice and a second confirmation. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L7** Opening asks for the Administrator Password; Skip shows plain-text logins with an unlock bar. (§6): needs the logins locked at start, which takes a second launch of the same test copy
-- [ ] **C1** Add a peer: name, username, secret address, One-time or Persistent; addresses protected like logins. (§8): the window opens; this platform's test bridge can't drive it yet
-- [ ] **C2** Ping: Direct or Relayed with latency. (§8): the window opens; this platform's test bridge can't drive it yet
-- [ ] **C3** Connect: shell and explorer through Tailcat, address never in arguments or history. (§8): needs the test host shared over tailcat (~/.config/herbs-terminal/test-tailcat holds its address)
-- [ ] **C4** Clear message when nothing answers SSH on the peer. (§8): needs a peer whose SSH service is off
-- [ ] **C5** Remove a peer. (§8): the window opens; this platform's test bridge can't drive it yet
-- [ ] **C6** Share this computer: `tailcat serve`, one-time or persistent, address with Copy and Stop; checks… (§8): the window opens; this platform's test bridge can't drive it yet
 - [ ] **C7** Unlock… / Lock… button with the vault states. (§8): the Tailcat window isn't driven by the bridge yet
 - [ ] **Y1** Every control has a screen-reader name and hover hint (hint without repeating the name). (§9): this platform's accessibility tree is checked by parity/check.sh, not the feature tests
 - [ ] **Y2** Selected tab announced (and bold); toggles announce on/off; MultiExec checkboxes named. (§9): this platform's accessibility tree is checked by parity/check.sh, not the feature tests

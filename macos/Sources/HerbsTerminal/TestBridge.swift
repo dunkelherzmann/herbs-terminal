@@ -75,6 +75,47 @@ enum TestBridge {
             guard let explorer = try workspace.selected.state.explorerBridge else { return "unsupported" }
             explorer.select(request["names"] as? [String] ?? [])
             return explorer.selected()
+        case "tailcat-state":
+            // The Tailcat Peers window's peers, their routes, and this computer's share.
+            guard try workspace.panel == .tailcat else { throw Failure(description: "the Tailcat Peers window isn't open") }
+            let store = TailcatPeerStore.shared, share = TailcatShare.shared
+            func text(_ route: TailcatRoute?) -> String {
+                switch route ?? .unknown {
+                case .unknown: return ""
+                case .checking: return "Checking…"
+                case .direct(let detail): return "Direct · " + detail
+                case .relayed(let detail): return "Relayed · " + detail
+                case .unreachable(let reason): return "Unreachable · " + reason
+                }
+            }
+            return ["peers": store.peers.map { ["name": $0.name, "username": $0.username, "persistent": $0.persistent,
+                                               "route": text(store.routes[$0.id])] as [String: Any] },
+                    "sharing": share.isSharing, "shareAddress": share.address ?? NSNull(), "error": share.error ?? store.error ?? NSNull(),
+                    "locked": CredentialStore.shared?.isLocked ?? false]
+        case "tailcat-share":
+            Task { await TailcatShare.shared.start(persistent: request["persistent"] as? Bool ?? false) }
+            return true
+        case "tailcat-stop":
+            TailcatShare.shared.stop()
+            return true
+        case "tailcat-add":
+            // Add Peer with the form filled in.
+            do {
+                try TailcatPeerStore.shared.add(name: request["name"] as? String ?? "", username: request["username"] as? String ?? "",
+                                                address: request["address"] as? String ?? "", persistent: request["persistent"] as? Bool ?? false)
+                return true
+            } catch { return false }
+        case "tailcat-ping", "tailcat-connect", "tailcat-remove":
+            let store = TailcatPeerStore.shared
+            guard let peer = store.peers.first(where: { $0.name == request["name"] as? String }) else { throw Failure(description: "no such peer") }
+            switch request["op"] as? String {
+            case "tailcat-ping": Task { await store.ping(peer) }
+            case "tailcat-connect":
+                let workspace = try workspace, endpoint = try store.endpoint(for: peer)
+                DispatchQueue.main.async { workspace.connect(endpoint, password: nil) }
+            default: try store.remove(peer)
+            }
+            return true
         case "hosts-state":
             // Run Command on Hosts: the hosts it offers, what's ticked, and each host's result.
             let workspace = try workspace

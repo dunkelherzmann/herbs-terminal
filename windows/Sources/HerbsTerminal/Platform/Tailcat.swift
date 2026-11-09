@@ -421,7 +421,7 @@ enum TailcatProxy {
                 guard send(SOCKET(raw), Array(buffer[0..<Int(read)])) else { break }
             }
             shutdown(SOCKET(raw), Int32(SD_SEND))
-            done.signal()
+            // Not a signal for `done`: ssh's banner, sent at once, could end the wait before the peer's silence was seen.
         }
         Thread.detachNewThread {
             var buffer = [UInt8](repeating: 0, count: 65536)
@@ -512,6 +512,16 @@ enum TailcatProxy {
     private static func report(_ message: String) {
         var bytes = Array(("Herb's Terminal: " + message + "\r\n").utf8)
         var written: DWORD = 0
-        WriteFile(GetStdHandle(STD_ERROR_HANDLE), &bytes, DWORD(bytes.count), &written, nil)
+        let error = GetStdHandle(STD_ERROR_HANDLE)
+        if error != nil, error != INVALID_HANDLE_VALUE, WriteFile(error, &bytes, DWORD(bytes.count), &written, nil), written > 0 { return }
+        // No usable error output (this helper is a GUI program): write to the terminal's console instead, so the
+        // person sees why instead of only "Connection closed by UNKNOWN port 65535".
+        _ = AttachConsole(DWORD(bitPattern: -1)) // ATTACH_PARENT_PROCESS
+        let console = withWide("CONOUT$") {
+            CreateFileW($0, DWORD(GENERIC_WRITE), DWORD(FILE_SHARE_READ | FILE_SHARE_WRITE), nil, DWORD(OPEN_EXISTING), 0, nil)
+        }
+        guard let console, console != INVALID_HANDLE_VALUE else { return }
+        WriteFile(console, &bytes, DWORD(bytes.count), &written, nil)
+        CloseHandle(console)
     }
 }
