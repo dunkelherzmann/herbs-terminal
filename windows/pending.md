@@ -56,15 +56,9 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 16:11)
+## Feature test results (2026-11-09 16:14)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
-
-### Broken (1)
-
-A test ran and the feature didn't do what the Mac version does.
-
-- [ ] **L10** Export ticked logins (checkbox column with select-all heading), file readable only by you,… (§6): Manage Logins: Export the ticked logins, readable only by you: expected Export (1), saw 'Export…' (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs [], last lines ['$'])
 
 ### Not checked automatically (44)
 

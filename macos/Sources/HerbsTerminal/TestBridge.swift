@@ -37,6 +37,10 @@ enum TestBridge {
             response["ok"] = false
             response["error"] = "\(error)"
         }
+        // An answer that isn't valid JSON is reported as an error instead of never arriving.
+        if !JSONSerialization.isValidJSONObject(response) {
+            response = ["id": id, "ok": false, "error": "the answer isn't valid JSON: " + String(describing: response["result"] ?? "").prefix(600)]
+        }
         if let out = try? JSONSerialization.data(withJSONObject: response, options: [.sortedKeys]) {
             let temporary = folder + "/response.tmp"
             FileManager.default.createFile(atPath: temporary, contents: out)

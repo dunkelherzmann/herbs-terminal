@@ -50,6 +50,10 @@ enum TestBridge {
             response["error"] = "\(error)"
         }
         busy = false
+        // An answer that isn't valid JSON is reported as an error instead of never arriving.
+        if !JSONSerialization.isValidJSONObject(response) {
+            response = ["id": id, "ok": false, "error": "the answer isn't valid JSON: " + String(describing: response["result"] ?? "").prefix(600)]
+        }
         if let out = try? JSONSerialization.data(withJSONObject: response, options: [.sortedKeys]) {
             let temporary = folder + "/response.tmp", final = folder + "/response.json"
             // Written with a handle no child process can inherit (Foundation's would be, by any process started
