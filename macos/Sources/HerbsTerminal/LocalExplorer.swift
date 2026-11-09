@@ -340,6 +340,11 @@ extension LocalExplorer {
                 "bookmark-selected": one.flatMap { url in opensAsFolder(url) ? { toggleBookmark(url.standardizedFileURL.path) } : nil },
                 "hidden": { showHidden.toggle() },
                 "reload": { listing.revision += 1 },
+                // The location bar's buttons run these same lines.
+                "back": history.canGoBack ? { if let p = history.goBack() { directory = URL(fileURLWithPath: p, isDirectory: true) } } : nil,
+                "forward": history.canGoForward ? { if let p = history.goForward() { directory = URL(fileURLWithPath: p, isDirectory: true) } } : nil,
+                "up": path == "/" ? nil : { navigate(to: parentPath(history.current)) },
+                "home": { navigate(to: home) },
             ]
             guard let entry = commands[name] else { return "missing" }
             guard let action = entry else { return "disabled" }

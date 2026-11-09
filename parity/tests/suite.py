@@ -1028,7 +1028,22 @@ def _(c):
     c.until(lambda s: "sub/" in items(c, s) or "sub" in items(c, s), "expected the folder sub in the list")
     c.bridge.call("explorer-go", path=c.app.home.rstrip("/\\") + ("/sub" if c.platform != "windows" else "\\sub"))
     c.until(lambda s: c.tab(s)["explorer"]["path"].rstrip("/\\").endswith("sub"), "expected to be in sub")
-    c.unverified("going into a folder works; Back, Forward, Up and Home are buttons the bridge doesn't press yet")
+    def at(target):
+        return lambda s: c.tab(s)["explorer"]["path"].rstrip("/\\").lower() == target.rstrip("/\\").lower()
+    home, sub = c.app.home, c.app.home.rstrip("/\\") + ("/sub" if c.platform != "windows" else "\\sub")
+    for name in ("explorer.back", "explorer.forward", "explorer.up", "explorer.home"):
+        if c.bridge.call("probe", name=name) in ("missing", "unsupported"):
+            c.unverified("going into a folder works; Back, Forward, Up and Home are buttons the bridge doesn't press yet")
+    c.command("explorer.back", settle=1)
+    c.until(at(home), "expected Back to return to the first folder")
+    c.command("explorer.forward", settle=1)
+    c.until(at(sub), "expected Forward to go into sub again")
+    c.command("explorer.up", settle=1)
+    c.until(at(home), "expected Up to open the folder holding sub")
+    c.bridge.call("explorer-go", path=sub)
+    c.until(at(sub), "expected to be in sub again")
+    c.command("explorer.home", settle=1)
+    c.until(lambda s: c.tab(s)["explorer"]["path"].rstrip("/\\") not in ("", sub.rstrip("/\\")), "expected Home to leave sub for the home folder")
 
 manual("E4", "Path segments and editable location", NEEDS_GUI)
 

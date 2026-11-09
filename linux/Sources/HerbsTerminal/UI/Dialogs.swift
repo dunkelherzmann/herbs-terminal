@@ -29,6 +29,8 @@ enum Dialogs {
     struct OpenDialog { let heading: String; let alert: UnsafeMutablePointer<AdwAlertDialog>; let responses: [String]; let fields: [Widget] }
     static var open: [Int: OpenDialog] = [:]
     private static var pendingFields: [Widget] = []
+    /// The text fields of the next `ask`'s extra content, in order, so the feature tests' bridge can fill them.
+    static func fieldsForNextAsk(_ fields: [Widget]) { pendingFields = fields }
 
     static func ask(_ parent: Widget?, _ heading: String, _ body: String = "", choices: [Choice], defaultID: String? = nil,
                     cancel: String, extra: Widget? = nil, collect: (() -> Void)? = nil) async -> String {

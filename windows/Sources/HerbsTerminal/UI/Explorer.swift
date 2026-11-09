@@ -1474,6 +1474,8 @@ final class ExplorerPane: WindowObject {
         case "toggleAdmin": if isAdministrator { leaveAdministrator() } else { enterAdministrator() }; return true
         case "up": goUp(); return true
         case "back": goBack(); return true
+        case "forward": goForward(); return true
+        case "home": goHome(); return true
         default: break
         }
         let commands: [String: Command] = [

@@ -653,6 +653,7 @@ enum LoginEditor {
                                   classes: ["caption", "dim-label"]))
             if let message { append(content, label(message, classes: ["caption", "error-text"], wrap: true)) }
             after(milliseconds: 80) { gtk_widget_grab_focus(fields[0]) }
+            Dialogs.fieldsForNextAsk(fields)
             let answer = await Dialogs.ask(parent, original == nil ? "New Login" : "Edit Login",
                                            choices: [.init("cancel", "Cancel"), .init("save", "Save", .suggested)], defaultID: "save", cancel: "cancel",
                                            extra: content, collect: { values = fields.map { text(of: $0) } })

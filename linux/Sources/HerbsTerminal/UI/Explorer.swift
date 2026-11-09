@@ -1191,12 +1191,21 @@ extension ExplorerView {
     func bridgeSelect(_ names: [String]) -> [String] { select(Set(names)); return selectedNames }
     func bridgeProbe(_ action: String) -> String {
         if action == "administrator" { return "enabled" }
+        if let button = bridgeButtons[action] { return gtk_widget_get_sensitive(button) != 0 ? "enabled" : "disabled" }
         guard g_action_group_has_action(group, action) != 0 else { return "missing" }
         return g_action_group_get_action_enabled(group, action) != 0 ? "enabled" : "disabled"
     }
+    /// The location bar's buttons, pressed as a person would (greyed-out ones report "disabled").
+    private var bridgeButtons: [String: Widget] { ["back": back, "forward": forward, "up": up, "home": home] }
+
     func bridgeDo(_ action: String) -> String {
         // The lock button: Administrator mode on or off.
         if action == "administrator" { toggleAdministrator(); return "ran" }
+        if let button = bridgeButtons[action] {
+            guard gtk_widget_get_sensitive(button) != 0 else { return "disabled" }
+            _ = gtk_widget_activate(button)
+            return "ran"
+        }
         guard g_action_group_has_action(group, action) != 0 else { return "missing" }
         guard g_action_group_get_action_enabled(group, action) != 0 else { return "disabled" }
         g_action_group_activate_action(group, action, nil)

@@ -7,27 +7,23 @@ What the Mac version still needs before it can ship with as few bugs as possible
 - [x] **Every menu in the window, none in the macOS menu bar.** (#67) All menus and submenus (Shell, Edit, View, Window, Help and the rest) move into the Main Menu in the window, as on Linux and Windows, so nothing needs a trip to the top of a wide screen. The macOS menu bar keeps only the app menu macOS always shows. Every shortcut keeps working, Undo, Cut, Copy, Paste and Select All in text fields included, and every item keeps its hover text and VoiceOver label. Describe the new menu in `SPECIFICATION.md` in the same PR. (§2, enhancements.md) *Asked 2026-11-09.*
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 15:19)
+## Feature test results (2026-11-09 15:27)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Broken (4)
+### Broken (1)
 
 A test ran and the feature didn't do what the Mac version does.
 
-- [ ] **D5** Status line: line, column, line count, encoding, line endings. (§5): Text editor: status line: expected Line 1, Column 1, 3 lines, LF; saw 'Line 3, Column 6 · 3 lines · UTF-8 · LF'; Text editor: CRLF line endings shown: expected CRLF in the status line (saw: 1 window(s), tabs ['Terminal…
-- [ ] **D7** Closing the tab, window or app asks before discarding. (§5): Text editor: closing with unsaved changes asks first: expected Cancel to keep the tab and its changes (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs [], last lines ['$'])
-- [ ] **G3** Owner and group by name or number (looked up on the host). (§5): Get Info: owner and group looked up on the host: expected an unknown owner to be refused with a message (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'herbs-test@192.168.1.241' '/home/herbs-test', dialogs…
-- [ ] **G5** Apply to enclosed items; Apply changes only what was edited; Revert. (§5): Get Info: Revert, and Apply to enclosed items: expected Apply to finish (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'herbs-test@192.168.1.241' '/home/herbs-test', dialogs [], last lines ['Connecting to…
+- [ ] **L11** Double-click edits; Delete key or right-click removes after a confirmation defaulting to Cancel. (§6): Manage Logins: Delete asks first, with Cancel as the default: expected Cancel as the default, saw 'Delete' of ['Delete', 'Cancel']
 
-### Not checked automatically (66)
+### Not checked automatically (60)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
 - [ ] **W2** Connect via SSH button; highlighted while connected, then shows the connection details (account,… (§2): checked as S10
 - [ ] **W6** Export Session button and shortcut: whole scrollback to `<tab> <date time>.txt`. (§2): the command is there; saving goes through the system's save dialog, which the bridge can't fill
 - [ ] **W11** Search button: searches files in the explorer, the scrollback otherwise. (§2): the command runs; whether the search field opens isn't reported by this platform's bridge yet
-- [ ] **W13** Main Menu: Find in Terminal…. (§2): the command runs; whether the search field opens isn't reported by this platform's bridge yet
 - [ ] **W17** Hover hints on every control after about half a second, also in the background; screen readers get… (§2): covered by parity/check.sh (hover texts through the accessibility tree)
 - [ ] **T11** Session restore: tabs with folder, panes, explorer folder and name reopen at launch (on by… (§2): this platform's test bridge can't read or reopen a session yet
 - [ ] **P5** Focused pane outlined; Zoom, Clear, Reset and Find act on it. (§2): visual: shown in the window's picture, not reported by the bridge
@@ -35,7 +31,7 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **B1** Right-click menu: Copy, Paste, Paste Escaped Text, Select All, Find. (§2): Copy, Paste, Paste Escaped Text and Select All work; Find… runs, but this platform's bridge doesn't report the find bar yet
 - [ ] **B6** Bell: sound, flash, both or none; flash at most twice a second, gentle with Reduce Motion. (§2): sound and flash can't be observed by the bridge
 - [ ] **B7** Size badge (columns × rows) while resizing. (§2): this platform's test bridge can't resize the window yet
-- [ ] **B8** Find in Terminal (scrollback search). (§2): the command is there; this platform's bridge doesn't report the find bar and its matches yet
+- [ ] **B8** Find in Terminal (scrollback search). (§2): opening the find bar is checked in W13; typing into it would use the Mac's shared find pasteboard, which the tests leave alone
 - [ ] **B14** Full color, bold/italic/underline, wide characters, mouse reporting for full-screen programs. (§2): this platform's test bridge can't send mouse events yet; visual: needs the window's picture compared with the Mac's
 - [ ] **B15** Typing with an input method (Chinese, Japanese, Korean): composition at the cursor, in the… (§2): this platform's test bridge can't drive an input method yet
 - [ ] **R1** Named profiles; each tab uses one; new tabs keep the current tab's profile. (§3): this platform's test bridge can't make or choose profiles yet
@@ -66,12 +62,7 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **L2** Administrator Password: AES-GCM with PBKDF2 600,000 rounds; locked at start, unlock once per… (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L3** Change the Administrator Password re-encrypts everything; removing it asks. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L4** Plain text needs an explicit choice and a second confirmation. (§6): covered by the unit and self tests of the shared vault code
-- [ ] **L6** Manage Logins window: list with host, port, username, hidden password, encrypted or plain. (§6): the Manage Logins window isn't driven by the bridge yet
 - [ ] **L7** Opening asks for the Administrator Password; Skip shows plain-text logins with an unlock bar. (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **L8** New and Edit form with Show password. (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **L9** Import (CSV, all-or-nothing). (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **L10** Export ticked logins (checkbox column with select-all heading), file readable only by you,… (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **L11** Double-click edits; Delete key or right-click removes after a confirmation defaulting to Cancel. (§6): the Manage Logins window isn't driven by the bridge yet
 - [ ] **U7** Results per host: outcome, exit code, duration, output (64 KB cap, marked truncated). (§7): this platform's test bridge can't drive Run Command on Hosts yet
 - [ ] **C1** Add a peer: name, username, secret address, One-time or Persistent; addresses protected like logins. (§8): the window opens; this platform's test bridge can't drive it yet
 - [ ] **C2** Ping: Direct or Relayed with latency. (§8): the window opens; this platform's test bridge can't drive it yet

@@ -545,7 +545,7 @@ final class ManageLoginsWindow: WindowObject {
 
 /// The Save dialog; returns the chosen path.
 func saveFile(owner: HWND?, title: String, name: String, filter: [(String, String)], defaultExtension: String = "csv") -> String? {
-    if let chosen = TestBridge.takeChosenFile() {
+    if let chosen = MainActor.assumeIsolated({ TestBridge.takeChosenFile() }) {
         var folder: ObjCBool = false
         return FileManager.default.fileExists(atPath: chosen, isDirectory: &folder) && folder.boolValue ? chosen + "\\" + name : chosen
     }

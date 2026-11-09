@@ -7,11 +7,11 @@ What the Linux version still needs before it can ship with as few bugs as possib
 - [x] **Main Menu matches the Mac's in-window menus** (#70). It holds the same menus, submenus, order and shortcuts (Edit, Shell and Window included), and no command is reachable only somewhere else; W19 checks it. (§2, §14, enhancements.md) *Asked 2026-11-09.*
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 15:20)
+## Feature test results (2026-11-09 15:29)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Broken (5)
+### Broken (9)
 
 A test ran and the feature didn't do what the Mac version does.
 
@@ -20,8 +20,12 @@ A test ran and the feature didn't do what the Mac version does.
 - [ ] **G3** Owner and group by name or number (looked up on the host). (§5): Get Info: owner and group looked up on the host: the app stopped answering (no answer to info in 10 s (did the app quit?))
 - [ ] **G5** Apply to enclosed items; Apply changes only what was edited; Revert. (§5): Get Info: Revert, and Apply to enclosed items: the app stopped answering (no answer to info in 10 s (did the app quit?))
 - [ ] **G6** Works on this computer and on hosts. (§5): Get Info on this computer: the app stopped answering (no answer to info in 10 s (did the app quit?))
+- [ ] **L6** Manage Logins window: list with host, port, username, hidden password, encrypted or plain. (§6): Manage Logins: the list shows host, port, username, a hidden password and how it's stored: expected alice@alpha.example in the list (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs…
+- [ ] **L8** New and Edit form with Show password. (§6): Manage Logins: Edit changes a login: expected carol@gamma.example in the list (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs ['New Login'], last lines ['$'])
+- [ ] **L10** Export ticked logins (checkbox column with select-all heading), file readable only by you,… (§6): Manage Logins: Export the ticked logins, readable only by you: expected hank@exp1.example in the list (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs ['New Login'], last lines ['$'])
+- [ ] **L11** Double-click edits; Delete key or right-click removes after a confirmation defaulting to Cancel. (§6): Manage Logins: Delete asks first, with Cancel as the default: expected jack@del.example in the list (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs ['New Login'], last lines ['$'])
 
-### Not checked automatically (61)
+### Not checked automatically (56)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -62,12 +66,7 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **L2** Administrator Password: AES-GCM with PBKDF2 600,000 rounds; locked at start, unlock once per… (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L3** Change the Administrator Password re-encrypts everything; removing it asks. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L4** Plain text needs an explicit choice and a second confirmation. (§6): covered by the unit and self tests of the shared vault code
-- [ ] **L6** Manage Logins window: list with host, port, username, hidden password, encrypted or plain. (§6): the Manage Logins window isn't driven by the bridge yet
 - [ ] **L7** Opening asks for the Administrator Password; Skip shows plain-text logins with an unlock bar. (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **L8** New and Edit form with Show password. (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **L9** Import (CSV, all-or-nothing). (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **L10** Export ticked logins (checkbox column with select-all heading), file readable only by you,… (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **L11** Double-click edits; Delete key or right-click removes after a confirmation defaulting to Cancel. (§6): the Manage Logins window isn't driven by the bridge yet
 - [ ] **U7** Results per host: outcome, exit code, duration, output (64 KB cap, marked truncated). (§7): this platform's test bridge can't drive Run Command on Hosts yet
 - [ ] **C1** Add a peer: name, username, secret address, One-time or Persistent; addresses protected like logins. (§8): the window opens; this platform's test bridge can't drive it yet
 - [ ] **C2** Ping: Direct or Relayed with latency. (§8): the window opens; this platform's test bridge can't drive it yet

@@ -744,6 +744,10 @@ extension RemoteExplorer {
                 "info": names.isEmpty ? nil : { FileInfoWindow.show(viewModel.infoSource(for: names, in: currentPath)) },
                 "bookmark-selected": entries.count == 1 && entries[0].attributes.directory ? { toggleBookmark(remoteJoin(currentPath, entries[0].name)) } : nil,
                 "hidden": { viewModel.showHidden.toggle() },
+                "back": history.canGoBack ? { if let p = history.goBack() { currentPath = p } } : nil,
+                "forward": history.canGoForward ? { if let p = history.goForward() { currentPath = p } } : nil,
+                "up": currentPath == "/" ? nil : { navigate(to: parentPath(history.current)) },
+                "home": { navigate(to: home) },
                 "reload": { Task { await viewModel.load(path: currentPath) } },
             ]
             guard let entry = commands[name] else { return "missing" }
