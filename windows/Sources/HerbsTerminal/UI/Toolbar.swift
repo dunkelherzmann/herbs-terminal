@@ -8,7 +8,7 @@ import WinSDK
 @MainActor
 final class WindowChrome {
     enum Item: Hashable {
-        case menu, newTab, connect, export, screenshot, explorer, multiExec, peers, search, title
+        case menu, newTab, connect, passwords, export, screenshot, explorer, multiExec, peers, search, title
         case minimize, maximize, close
         case tab(Int), tabClose(Int)
 
@@ -35,7 +35,7 @@ final class WindowChrome {
 
         func isUnavailable(_ item: Item) -> Bool {
             // Search finds in the terminal's scrollback; finding files in the explorer isn't in the Windows version yet.
-            WindowChrome.unavailable.contains(item) || (item == .explorer && !explorerAvailable) || (item == .search && explorerShowing)
+            WindowChrome.unavailable.contains(item) || (item == .explorer && !explorerAvailable)
         }
     }
 
@@ -117,7 +117,7 @@ final class WindowChrome {
         let glyphWidth = s(30), glyphHeight = s(28), gap = s(4)
         let glyphTop = (barHeight - glyphHeight) / 2
         var left = s(8)
-        for item in [Item.menu, .newTab, .connect] {
+        for item in [Item.menu, .newTab, .connect, .passwords] {
             rects[item] = RECT(left: left, top: glyphTop, right: left + glyphWidth, bottom: glyphTop + glyphHeight)
             left += glyphWidth + gap
         }
@@ -204,7 +204,7 @@ final class WindowChrome {
 
         // Toolbar glyphs (Segoe Fluent Icons).
         let glyphs: [Item: String] = [
-            .menu: "\u{E700}", .newTab: "\u{E710}", .connect: "\u{E703}", .export: "\u{E72D}",
+            .menu: "\u{E700}", .newTab: "\u{E710}", .connect: "\u{E703}", .passwords: "\u{E72E}", .export: "\u{E72D}",
             .screenshot: state.screenshotCopied ? "\u{E73E}" : "\u{E722}", // CheckMark, Camera
             .explorer: state.explorerShowing ? "\u{E756}" : "\u{E8B7}", .multiExec: "\u{E81E}", .peers: "\u{E716}", .search: "\u{E721}",
         ]
@@ -292,7 +292,6 @@ final class WindowChrome {
 
     /// Hover hints, worded as on the Mac and Linux: what the control is, its shortcut, and what it does.
     static func hint(for item: Item, state: State) -> String? {
-        let notYet = "\nNot in the Windows version yet."
         switch item {
         case .menu: return "Main Menu\nTabs, windows, zoom, themes, appearance and settings."
         case .newTab: return "New Tab (Ctrl+Shift+T)\nOpen another local terminal in this window."
@@ -301,6 +300,7 @@ final class WindowChrome {
                 return "Connected to \(label)\nShow connection details, disconnect, or open a new connection (Ctrl+Shift+K)."
             }
             return "Connect via SSH (Ctrl+Shift+K)\nOpen a remote shell with a saved or new login; the explorer follows that host."
+        case .passwords: return "Saved Passwords\nType a saved password, such as a sudo password, into the terminal."
         case .export: return "Export Session (Ctrl+Shift+S)\nSave everything in this terminal, scrollback included, to a text file."
         case .screenshot:
             if state.screenshotCopied { return "Screenshot copied\nPaste it anywhere with Ctrl+V." }
@@ -314,7 +314,7 @@ final class WindowChrome {
                                      : "MultiExec (Ctrl+Shift+M)\nShow every tab side by side and type into all of them at once."
         case .peers: return "Tailcat Peers\nPair with machines that can't reach each other by IP, and connect through Tailcat."
         case .search:
-            if state.explorerShowing { return "Find Files (Ctrl+Shift+F)" + notYet }
+            if state.explorerShowing { return "Find Files (Ctrl+Shift+F)\nFilter this folder by name." }
             return "Search Terminal (Ctrl+Shift+F)\nFind text in this tab's scrollback."
         case .title:
             return [state.title, state.subtitle].filter { !$0.isEmpty }.joined(separator: " ")
@@ -388,6 +388,7 @@ final class WindowChrome {
         case .maximize: 11
         case .close: 12
         case .screenshot: 13
+        case .passwords: 15 // 14 is the subtitle's (ChromeAccessibility.subtitleTag).
         case .tab(let index): UINT_PTR(100 + index)
         case .tabClose(let index): UINT_PTR(1000 + index)
         }

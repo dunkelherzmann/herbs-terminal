@@ -1913,6 +1913,85 @@ def _(c):
     c.answer(pick(s["dialogs"][0]["responses"], "delete"))
     c.until(lambda s: not any(r["host"] == "del.example" for r in logins(c)["rows"]), "expected Delete to remove the login")
 
+def passwords(c, action=None, value=None):
+    try:
+        request = {} if action is None else {"action": action, "value": value}
+        return c.bridge.call("passwords", **request)
+    except Exception as error:
+        if "unknown op" in str(error):
+            c.unverified("Saved Passwords isn't driven by this platform's bridge yet")
+        raise
+
+def open_passwords(c):
+    """Opens Manage Passwords, choosing plain-text storage if it asks how to keep saved passwords."""
+    c.command("manage-passwords", settle=1.5)
+    if c.state().get("dialogs"):
+        settle_protection(c)
+    c.until(lambda s: passwords(c).get("open"), "expected the Manage Passwords window")
+
+def fill_password(c, name, password, description):
+    """Fills in New or Edit Password and saves: the Mac's form sheet, or the dialog Linux and Windows show."""
+    deadline = time.time() + 8
+    while time.time() < deadline:
+        try:
+            form = c.bridge.call("password-form")
+        except Exception:
+            form = {"open": False}
+        if form.get("open"):
+            c.bridge.call("password-form", name=name, password=password, description=description, action="save")
+            time.sleep(0.8)
+            return
+        dialog = (c.state().get("dialogs") or [None])[0]
+        if dialog and dialog["heading"] in ("New Password", "Edit Password"):
+            c.answer(pick(dialog["responses"], "save"), [name, password, description], heading=dialog["heading"])
+            return
+        if dialog:
+            c.answer(pick(dialog["responses"], "plain"), heading=dialog["heading"])
+        time.sleep(0.5)
+    raise Outcome("broken", "expected the New Password form")
+
+def add_password(c, name, password, description=""):
+    passwords(c, "new")
+    fill_password(c, name, password, description)
+    return c.until(lambda s: any(r["name"] == name for r in passwords(c)["rows"]), f"expected {name} in Manage Passwords")
+
+@test("L12", "Saved Passwords: choosing one types only its password, without Return")
+def _(c):
+    open_passwords(c)
+    add_password(c, "nas sudo", "Typed-Pw-42", "root on the NAS")
+    menu = c.bridge.call("saved-passwords")
+    entry = next((e for e in menu if e["title"] == "nas sudo"), None)
+    c.expect(entry is not None, f"expected nas sudo in the toolbar's menu, saw {[e['title'] for e in menu]}")
+    c.expect(entry["help"] == "root on the NAS", f"expected its description as the hover hint, saw {entry['help']!r}")
+    c.expect(menu[-1]["title"].startswith("Manage Passwords"), "expected Manage Passwords… at the end of the menu")
+    # A prompt that reads a line without echo, like sudo's.
+    c.run("stty -echo; read -r P; stty echo; echo \"GOT:$P:\"", "set /p P=& call echo GOT:%P%:", settle=1.2)
+    c.bridge.call("saved-passwords", choose=entry["action"])
+    time.sleep(1.2)
+    c.expect("GOT:" not in c.text().replace("GOT:$P:", "").replace("GOT:%P%:", ""), "expected no Return after the password")
+    c.type(c.app.enter, settle=1.2)
+    c.until(lambda s: "GOT:Typed-Pw-42:" in c.text(s), "expected the password typed into the terminal")
+
+@test("L13", "Manage Passwords: Edit and Delete, and names that are unique")
+def _(c):
+    open_passwords(c)
+    add_password(c, "db", "pw-one", "database")
+    index = next(i for i, r in enumerate(passwords(c)["rows"]) if r["name"] == "db")
+    row = passwords(c)["rows"][index]
+    c.expect(row["password"].strip("•") == "" and "pw-one" not in str(row), f"expected the password hidden, saw {row}")
+    c.expect(row["stored"] == "Plain text", f"expected Plain text, saw {row['stored']!r}")
+    passwords(c, "edit", index)
+    fill_password(c, "db", "pw-two", "database (changed)")
+    c.until(lambda s: any(r["description"] == "database (changed)" for r in passwords(c)["rows"]), "expected Edit to change the description")
+    c.expect(len(passwords(c)["rows"]) == 1, "expected the edit to replace the entry")
+    passwords(c, "delete", 0)
+    s = c.until(lambda s: s.get("dialogs"), "expected a question before the password is deleted")
+    dialog = s["dialogs"][0]
+    default = dialog["default"] if "default" in dialog else dialog["responses"][0]
+    c.expect(default is None or default.lower() == "cancel", f"expected Cancel (or nothing) as the default, saw {default!r}")
+    c.answer(pick(dialog["responses"], "delete"))
+    c.until(lambda s: not passwords(c)["rows"], "expected Delete to remove it")
+
 # ---------------------------------------------------------------- U: MultiExec and Run Command on Hosts
 
 def multiexec_with(c, panes=3):

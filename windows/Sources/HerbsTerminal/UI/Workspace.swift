@@ -1190,6 +1190,11 @@ final class Workspace: WindowObject {
         case .menu: openMainMenu()
         case .newTab: newTab()
         case .connect: connectButton()
+        case .passwords:
+            // The menu opens under the button, as the Main Menu does.
+            var anchor = POINT(x: chrome.rects[.passwords]?.left ?? 0, y: chrome.rects[.passwords]?.bottom ?? 0)
+            ClientToScreen(hwnd, &anchor)
+            SavedPasswordsMenu.show(for: self, at: anchor)
         case .export: exportSession()
         case .explorer: toggleExplorer()
         case .multiExec: setMultiExec(!multiExec)

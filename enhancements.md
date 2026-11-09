@@ -51,3 +51,7 @@ A box is ticked once the change has shipped. A request that covers several platf
   - [x] Mac (#67)
   - [x] Linux (#70)
   - [x] Windows (#70)
+- [ ] **Saved Passwords: a lock button next to Connect via SSH that types a saved password into the terminal.** Passwords such as sudo passwords are kept in their own vault, separate from the SSH logins but protected by the same Administrator Password. Each has a Name, a Password and a Description. The button lists them by name; clicking one types only its password into the terminal, as if you typed it yourself. *Requested 2026-11-09 · Mac, Linux, Windows.*
+  - [ ] Mac: in #74, tested (feature tests L12, L13; unit tests); not yet released.
+  - [ ] Linux: in #74, tested (L12, L13); not yet released.
+  - [ ] Windows: in #74, tested (L12, L13); not yet released.

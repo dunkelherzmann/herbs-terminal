@@ -6,7 +6,7 @@ public enum SessionLayout {
 
 public struct SessionToolbar<Actions: View>: View {
     @Binding private var layout: SessionLayout
-    private let newTab, connect, multiHost, tailcat, search, exportSession, takeScreenshot: () -> Void
+    private let newTab, connect, savedPasswords, multiHost, tailcat, search, exportSession, takeScreenshot: () -> Void
     private let title, subtitle: String
     private let connectedTo: String?
     private let restoreSize, saveSizeAsDefault: () -> Void
@@ -17,7 +17,7 @@ public struct SessionToolbar<Actions: View>: View {
     private let buttonWidth: CGFloat = 30
 
     public init(layout: Binding<SessionLayout>, title: String = "Terminal", subtitle: String = "~", newTab: @escaping () -> Void,
-                connect: @escaping () -> Void = {}, connectedTo: String? = nil,
+                connect: @escaping () -> Void = {}, connectedTo: String? = nil, savedPasswords: @escaping () -> Void = {},
                 restoreSize: @escaping () -> Void = {}, saveSizeAsDefault: @escaping () -> Void = {}, multiHost: @escaping () -> Void, tailcat: @escaping () -> Void,
                 search: @escaping () -> Void, exportSession: @escaping () -> Void = {}, takeScreenshot: @escaping () -> Void = {},
                 multiHostActive: Bool = false,
@@ -27,6 +27,7 @@ public struct SessionToolbar<Actions: View>: View {
         self.subtitle = subtitle
         self.newTab = newTab
         self.connect = connect
+        self.savedPasswords = savedPasswords
         self.connectedTo = connectedTo
         self.multiHostActive = multiHostActive
         self.restoreSize = restoreSize
@@ -55,7 +56,7 @@ public struct SessionToolbar<Actions: View>: View {
                     Button("Restore Default Size", action: restoreSize)
                     Button("Make Current Size the Default", action: saveSizeAsDefault)
                 }
-                .frame(maxWidth: max(0, geometry.size.width - 508 - 2 * buttonWidth))
+                .frame(maxWidth: max(0, geometry.size.width - 508 - 4 * buttonWidth - 2 * gap))
                 .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
                 .accessibilityIdentifier("toolbar.title")
                 .hint([title, subtitle].joined(separator: " ")
@@ -72,6 +73,8 @@ public struct SessionToolbar<Actions: View>: View {
                         button("toolbar.connect", "Connect via SSH", "network",
                                help: "Connect via SSH (⇧⌘K)\nOpen a remote shell with a saved or new login; the explorer follows that host.", connect)
                     }
+                    button("toolbar.savedPasswords", "Saved Passwords", "lock",
+                           help: "Saved Passwords\nType a saved password, such as a sudo password, into the terminal.", savedPasswords)
                 }
                 Spacer()
                 HStack(spacing: gap) {
