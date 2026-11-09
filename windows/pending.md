@@ -28,7 +28,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
       kept, Save locally and to hosts, unsaved-changes prompts.
 - [x] **5. Get Info on hosts** (#21) (§5): permissions, owner and group, Apply to enclosed items.
 - [x] **6. Administrator mode on hosts** (#22) (§5): SFTP under `sudo` over the tab's connection, the red bar.
-- [ ] **7. Undo and Redo** in the explorer (§5), and bookmarks per host.
+- [x] **7. Undo and Redo** in the explorer (§5), and bookmarks per host (#54).
 - [ ] **8. Split panes** (§2): Split Vertically / Horizontally, Close Pane, Next / Previous Pane, the focused
       pane outline.
 - [ ] **9. MultiExec** (§7): every terminal in a grid, typing into all of them, include / leave out.
@@ -52,7 +52,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 04:09)
+## Feature test results (2026-11-09 04:37)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
@@ -62,7 +62,7 @@ A test ran and the feature didn't do what the Mac version does.
 
 - [ ] **S4** Exit or Disconnect returns the tab, title and explorer to this computer. (§4): Disconnect returns the tab and title to this computer: expected the tab back on this computer (saw: 1 window(s), tabs ['Terminal 1', 'Terminal 2'], 1 pane(s), title 'herbs-test@192.168.1.241' '', dialogs [], last lines…
 
-### Missing (30)
+### Missing (29)
 
 The command isn't there, or it's greyed out.
 
@@ -85,8 +85,7 @@ The command isn't there, or it's greyed out.
 - [ ] **M2** Shell menu: Split Vertically / Horizontally, Close Pane, Next / Previous Pane. (§2): Menu commands: split-vertical, split-horizontal, close-pane, next-pane, previous-pane: `split-vertical` is greyed out
 - [ ] **M3** Shell menu: MultiExec, Run Command on Hosts…. (§2): Menu commands: multiexec, run-on-hosts: `multiexec` is greyed out
 - [ ] **R1** Named profiles; each tab uses one; new tabs keep the current tab's profile. (§3): Named profiles: `new-tab-profile` is greyed out
-- [ ] **E6** File Actions menu: Upload, Download, Undo, Redo, Cut, Copy, Paste, Delete, Select All, Find. (§5): File Actions commands: `explorer.undo` is not there
-- [ ] **E8** Local: Undo and Redo, named after the action. (§5): Undo and Redo a move to Trash: no `explorer.undo` command
+- [ ] **E6** File Actions menu: Upload, Download, Undo, Redo, Cut, Copy, Paste, Delete, Select All, Find. (§5): File Actions commands: `explorer.find` is not there
 - [ ] **E13** New Folder, New File (free "untitled" name), Rename; undoable locally, rename undoable on a host. (§5): New Folder and Rename: no `explorer.rename` command
 - [ ] **E14** Search files (Find). (§5): Find files: `explorer.find` is not there
 - [ ] **U1** MultiExec grid of every terminal in the window, each with number, title and include checkbox. (§7): Every terminal joins the grid, included: `split-vertical` is greyed out
@@ -97,7 +96,7 @@ The command isn't there, or it's greyed out.
 - [ ] **U6** Run Command on Hosts: targets are selected saved logins and the live connection, own ssh channel… (§7): Run Command on Hosts window: `run-on-hosts` is greyed out
 - [ ] **C1** Add a peer: name, username, secret address, One-time or Persistent; addresses protected like logins. (§8): Tailcat Peers: add a peer: no `tailcat` command
 
-### Not checked automatically (75)
+### Not checked automatically (74)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -122,7 +121,6 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **S8** Host-key questions, one-time codes and retries asked in the terminal. (§4): needs the user's own ssh setup or a dropped link; not automated yet
 - [ ] **S9** Your own `~/.ssh/config`, agent, keys and jump hosts are used. (§4): needs the user's own ssh setup or a dropped link; not automated yet
 - [ ] **E1** Places: Home, the user folders, Computer, Trash, mounted devices; on a host Home and File System. (§5): checked in the accessibility tree by parity/check.sh; the bridge doesn't report places
-- [ ] **E2** Bookmarks (shortcut), kept per host; Remove Bookmark. (§5): needs pointer or keyboard input the test bridge doesn't reach yet
 - [ ] **E3** Back, Forward, Up, Home, Reload, show hidden files; Delete/BackSpace goes back. (§5): going into a folder works; Back, Forward, Up and Home are buttons the bridge doesn't press yet
 - [ ] **E4** Clickable path segments and an editable location (accepts `~` and relative paths). (§5): needs pointer or keyboard input the test bridge doesn't reach yet
 - [ ] **E11** Pasting local files into a host uploads them; host items pasted locally download. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
