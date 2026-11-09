@@ -248,10 +248,10 @@ func accessiblePressed(_ widget: Widget, _ pressed: Bool) {
 }
 
 func accessibleSelected(_ widget: Widget, _ selected: Bool) {
-    // Selected is a boolean state (true, false or undefined), not a tristate.
+    // Selected can be undefined, so GTK reads it as an int too (1, 0, or -1 for undefined).
     var value = GValue()
-    g_value_init(&value, herb_type_boolean())
-    g_value_set_boolean(&value, selected ? 1 : 0)
+    g_value_init(&value, herb_type_int())
+    g_value_set_int(&value, selected ? 1 : 0)
     var state = GTK_ACCESSIBLE_STATE_SELECTED
     gtk_accessible_update_state_value(c(widget), 1, &state, &value)
     g_value_unset(&value)
