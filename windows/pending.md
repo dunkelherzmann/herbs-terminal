@@ -56,26 +56,27 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 15:18)
+## Feature test results (2026-11-09 16:07)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Broken (3)
+### Broken (5)
 
 A test ran and the feature didn't do what the Mac version does.
 
-- [ ] **D3** Monospaced font, undo, Find. (§5): Text editor: monospaced font, undo, Find: expected a monospaced font
-- [ ] **G1** Get Info… on one or more items: name, location, kind, size, modified, `ls -l` permissions with… (§5): Get Info: name, location, kind, size, modified, permissions: expected its size (4 bytes) and date, saw size 5
-- [ ] **G5** Apply to enclosed items; Apply changes only what was edited; Revert. (§5): Get Info: Revert, and Apply to enclosed items: expected Apply to finish (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'herbs-test@192.168.1.241' '', dialogs [], last lines ['', 'Last login: Mon Nov  9…
+- [ ] **L6** Manage Logins window: list with host, port, username, hidden password, encrypted or plain. (§6): Manage Logins: the list shows host, port, username, a hidden password and how it's stored: expected alice@alpha.example in the list (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs…
+- [ ] **L8** New and Edit form with Show password. (§6): Manage Logins: Edit changes a login: expected carol@gamma.example in the list (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs ['New Login'], last lines ['$'])
+- [ ] **L9** Import (CSV, all-or-nothing). (§6): Manage Logins: Import a CSV, all or nothing: expected both imported logins (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs ['Create an Administrator Password'], last lines ['$'])
+- [ ] **L10** Export ticked logins (checkbox column with select-all heading), file readable only by you,… (§6): Manage Logins: Export the ticked logins, readable only by you: expected hank@exp1.example in the list (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs ['New Login'], last lines ['$'])
+- [ ] **L11** Double-click edits; Delete key or right-click removes after a confirmation defaulting to Cancel. (§6): Manage Logins: Delete asks first, with Cancel as the default: expected jack@del.example in the list (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs ['New Login'], last lines ['$'])
 
-### Not checked automatically (51)
+### Not checked automatically (44)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
 - [ ] **W2** Connect via SSH button; highlighted while connected, then shows the connection details (account,… (§2): checked as S10
 - [ ] **W6** Export Session button and shortcut: whole scrollback to `<tab> <date time>.txt`. (§2): the command is there; saving goes through the system's save dialog, which the bridge can't fill
 - [ ] **W17** Hover hints on every control after about half a second, also in the background; screen readers get… (§2): covered by parity/check.sh (hover texts through the accessibility tree)
-- [ ] **W19** Every menu in the window: on the Mac the system menu bar holds only the app menu, the Main Menu… (§2): no test yet
 - [ ] **P5** Focused pane outlined; Zoom, Clear, Reset and Find act on it. (§2): visual: shown in the window's picture, not reported by the bridge
 - [ ] **P6** The tab's SSH connection and explorer belong to its first pane; the next pane takes over when it… (§2): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **B6** Bell: sound, flash, both or none; flash at most twice a second, gentle with Reduce Motion. (§2): sound and flash can't be observed by the bridge
@@ -91,27 +92,21 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **S8** Host-key questions, one-time codes and retries asked in the terminal. (§4): needs the user's own ssh setup or a dropped link; not automated yet
 - [ ] **S9** Your own `~/.ssh/config`, agent, keys and jump hosts are used. (§4): needs the user's own ssh setup or a dropped link; not automated yet
 - [ ] **E1** Places: Home, the user folders, Computer, Trash, mounted devices; on a host Home and File System. (§5): checked in the accessibility tree by parity/check.sh; the bridge doesn't report places
-- [ ] **E3** Back, Forward, Up, Home, Reload, show hidden files; Delete/BackSpace goes back. (§5): going into a folder works; Back, Forward, Up and Home are buttons the bridge doesn't press yet
 - [ ] **E4** Clickable path segments and an editable location (accepts `~` and relative paths). (§5): needs pointer or keyboard input the test bridge doesn't reach yet
 - [ ] **E11** Pasting local files into a host uploads them; host items pasted locally download. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **E16** Open with Administrator Mode… on an item. (§5): needs a sudo password (not automated)
 - [ ] **X2** Progress strip with Cancel and Retry; Clear Finished. (§5): needs a transfer slow enough to cancel; not automated yet
-- [ ] **X3** Up to 16 requests in flight. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
-- [ ] **X4** A server silent for 30 s ends the request with an error; Reload works again. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
+- [ ] **X3** Up to 16 requests in flight. (§5): inside the SFTP client, where the bridge can't see its requests; not automated yet
+- [ ] **X4** A server silent for 30 s ends the request with an error; Reload works again. (§5): needs a dropped connection (fault injection, not automated yet)
 - [ ] **X5** Local copy, move and Trash run in the background with a "Copying…" note. (§5): needs a large folder and timing; not automated yet
-- [ ] **X6** Staged uploads (temporary name, exclusive, renamed into place). (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
+- [ ] **X6** Staged uploads (temporary name, exclusive, renamed into place). (§5): inside the SFTP client, where the bridge can't see its requests; not automated yet
 - [ ] **G4** Hidden and Locked (Mac only). (§5): Mac only
 - [ ] **A4** Safe root delete rules. (§5): deleting system folders as root isn't something to try on a real machine
 - [ ] **L1** Login database (host, port, username, password), several logins per host, host names ignore case. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L2** Administrator Password: AES-GCM with PBKDF2 600,000 rounds; locked at start, unlock once per… (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L3** Change the Administrator Password re-encrypts everything; removing it asks. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L4** Plain text needs an explicit choice and a second confirmation. (§6): covered by the unit and self tests of the shared vault code
-- [ ] **L6** Manage Logins window: list with host, port, username, hidden password, encrypted or plain. (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **L7** Opening asks for the Administrator Password; Skip shows plain-text logins with an unlock bar. (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **L8** New and Edit form with Show password. (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **L9** Import (CSV, all-or-nothing). (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **L10** Export ticked logins (checkbox column with select-all heading), file readable only by you,… (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **L11** Double-click edits; Delete key or right-click removes after a confirmation defaulting to Cancel. (§6): the Manage Logins window isn't driven by the bridge yet
+- [ ] **L7** Opening asks for the Administrator Password; Skip shows plain-text logins with an unlock bar. (§6): needs the logins locked at start, which takes a second launch of the same test copy
 - [ ] **C3** Connect: shell and explorer through Tailcat, address never in arguments or history. (§8): needs the test host shared over tailcat (~/.config/herbs-terminal/test-tailcat holds its address)
 - [ ] **C4** Clear message when nothing answers SSH on the peer. (§8): needs a peer whose SSH service is off
 - [ ] **C7** Unlock… / Lock… button with the vault states. (§8): the Tailcat window isn't driven by the bridge yet

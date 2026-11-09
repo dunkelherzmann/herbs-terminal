@@ -288,6 +288,9 @@ struct LocalExplorer: View {
     }
 
     private func navigate(to target: String) {
+        // In the form the location shows (/tmp, not /private/tmp): the visit when `directory` changes then
+        // matches this one instead of adding the same folder twice, which made Back need two presses.
+        let target = URL(fileURLWithPath: target, isDirectory: true).standardizedFileURL.path
         history.visit(target)
         directory = URL(fileURLWithPath: target, isDirectory: true)
     }

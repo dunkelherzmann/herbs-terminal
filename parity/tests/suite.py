@@ -1776,6 +1776,17 @@ def open_logins(c):
             time.sleep(0.8)
     c.until(lambda s: logins(c).get("open"), "expected the Manage Logins window")
 
+PROTECTION = ("administrator password", "plain text")
+
+def settle_protection(c, rounds=4):
+    """Answers the questions about how to keep saved logins (first use), choosing plain text."""
+    for _ in range(rounds):
+        s = c.state()
+        dialog = (s.get("dialogs") or [None])[0]
+        if not dialog or not any(word in dialog["heading"].lower() for word in PROTECTION):
+            return
+        c.answer(pick(dialog["responses"], "plain"), heading=dialog["heading"])
+
 def fill_login(c, host, port, user, password):
     """Fills in New Login or Edit Login and saves: the Mac's form sheet, or the dialog Linux and Windows show."""
     deadline = time.time() + 8
@@ -1789,12 +1800,12 @@ def fill_login(c, host, port, user, password):
             time.sleep(0.8)
             return
         s = c.state()
-        if s.get("dialogs") and "login" in s["dialogs"][0]["heading"].lower():
-            c.answer(pick(s["dialogs"][0]["responses"], "save"), [host, str(port), user, password])
+        dialog = (s.get("dialogs") or [None])[0]
+        if dialog and dialog["heading"] in ("New Login", "Edit Login"):
+            c.answer(pick(dialog["responses"], "save"), [host, str(port), user, password], heading=dialog["heading"])
             return
-        if s.get("dialogs"):
-            # A protection question first (plain-text storage was chosen when the window opened).
-            dialog = s["dialogs"][0]
+        if dialog:
+            # How to keep saved logins, asked on first use.
             c.answer(pick(dialog["responses"], "plain"), heading=dialog["heading"])
         time.sleep(0.5)
     raise Outcome("broken", "expected the New Login form")
@@ -1836,6 +1847,8 @@ def _(c):
         f.write("host,port,username,password\nimp1.example,22,dave,pw1\nimp2.example,2022,erin,\n")
     c.bridge.call("choose-file", path=good)
     logins(c, "import")
+    time.sleep(1)
+    settle_protection(c)
     c.until(lambda s: {"imp1.example", "imp2.example"} <= {r["host"] for r in logins(c)["rows"]}, "expected both imported logins", timeout=10)
     s = c.state()
     if s.get("dialogs"):
