@@ -299,7 +299,9 @@ final class TextEditorModel: NSObject, ObservableObject, NSTextViewDelegate {
         let caret = min(textView.selectedRange().location, text.length)
         let before = text.substring(to: caret)
         let line = before.reduce(1) { $1 == "\n" ? $0 + 1 : $0 }
-        let column = (before as NSString).length - ((before as NSString).range(of: "\n", options: .backwards).upperBound)
+        // Characters since the last line break before the caret (all of them on the first line).
+        let lastBreak = (before as NSString).range(of: "\n", options: .backwards)
+        let column = (before as NSString).length - (lastBreak.location == NSNotFound ? 0 : NSMaxRange(lastBreak))
         let lines = textView.string.reduce(1) { $1 == "\n" ? $0 + 1 : $0 }
         let endings = textView.string.contains("\r\n") ? "CRLF" : "LF"
         status.stringValue = "Line \(line), Column \(column + 1) · \(lines) line\(lines == 1 ? "" : "s") · \(TextCodec.name(of: encoding)) · \(endings)"

@@ -690,6 +690,8 @@ def _(c):
     c.probe("find-in-terminal")
     first, second = c.say("FINDME"), c.say("FINDME")
     c.until(lambda s: c.text(s).count(first) >= 2, "expected the word printed twice")
+    if c.platform == "mac":
+        c.unverified("opening the find bar is checked in W13; typing into it would use the Mac's shared find pasteboard, which the tests leave alone")
     try:
         c.bridge.call("find", text="findme")
     except bridge_module.BridgeError as error:
@@ -1281,9 +1283,10 @@ def local_tree(c, root):
     """A file and a folder tree with a nested folder, in a fresh local folder; returns the paths to upload."""
     shutil.rmtree(root, ignore_errors=True)
     os.makedirs(os.path.join(root, "tree", "deep"))
-    with open(os.path.join(root, "one.txt"), "w", encoding="utf-8") as f: f.write("one\n")
-    with open(os.path.join(root, "tree", "a.txt"), "w", encoding="utf-8") as f: f.write("alpha\n")
-    with open(os.path.join(root, "tree", "deep", "b.txt"), "w", encoding="utf-8") as f: f.write("beta " * 4000)
+    # newline="\n": the same bytes on every platform (Windows would write \r\n).
+    with open(os.path.join(root, "one.txt"), "w", encoding="utf-8", newline="\n") as f: f.write("one\n")
+    with open(os.path.join(root, "tree", "a.txt"), "w", encoding="utf-8", newline="\n") as f: f.write("alpha\n")
+    with open(os.path.join(root, "tree", "deep", "b.txt"), "w", encoding="utf-8", newline="\n") as f: f.write("beta " * 4000)
     return [os.path.join(root, "one.txt"), os.path.join(root, "tree")]
 
 def upload(c, paths):
@@ -1317,8 +1320,8 @@ def _(c):
         c.bridge.call("explorer-download", into=target)
         def same():
             try:
-                return (open(os.path.join(target, "one.txt"), encoding="utf-8").read() == "one\n"
-                        and open(os.path.join(target, "tree", "a.txt"), encoding="utf-8").read() == "alpha\n"
+                return (open(os.path.join(target, "one.txt"), "rb").read() == b"one\n"
+                        and open(os.path.join(target, "tree", "a.txt"), "rb").read() == b"alpha\n"
                         and open(os.path.join(target, "tree", "deep", "b.txt"), encoding="utf-8").read() == "beta " * 4000)
             except OSError:
                 return False
@@ -1635,7 +1638,9 @@ def _(c):
         i = info_on(c, ["tree"])
         c.expect(i["hasFolders"], "expected Apply to enclosed items for a folder")
         info(c, octal="700", recursive=True, action="apply")
-        c.until(lambda s: not info(c).get("busy") and not info(c).get("changed"), "expected Apply to finish", timeout=20)
+        # With Apply to enclosed items ticked there is always something to apply, so wait for the message instead.
+        c.until(lambda s: (lambda i: not i.get("busy") and "applied" in (i.get("message", "") + i.get("notice", "")).lower())(info(c)),
+                "expected Apply to finish with “Changes applied.”", timeout=20)
         info(c, action="close")
         c.bridge.call("explorer-go", path=f"{home}/{name}/tree")
         c.until(lambda s: "a.txt" in names(c, s), "expected the tree's files", timeout=10)
@@ -1724,8 +1729,160 @@ for fid in ("L1", "L2", "L3", "L4"):
 def _(c):
     c.command("connect", settle=2)
     c.until(lambda s: has_dialog(s, "Administrator") or has_window(s, "Administrator"), "expected the Administrator Password explanation")
-for fid in ("L6", "L7", "L8", "L9", "L10", "L11"):
-    manual(fid, "Manage Logins", "the Manage Logins window isn't driven by the bridge yet")
+def logins(c, action=None, value=None):
+    """The Manage Logins window's state, after pressing one of its controls."""
+    try:
+        request = {} if action is None else {"action": action, "value": value}
+        return c.bridge.call("logins", **request)
+    except Exception as error:
+        if "unknown op" in str(error):
+            c.unverified("the Manage Logins window isn't driven by the bridge yet")
+        raise
+
+def pick(responses, *words, avoid=("cancel", "not now", "later")):
+    """The first response containing one of the words (titles or ids), else the first that isn't a way out."""
+    for word in words:
+        for response in responses:
+            if word in response.lower():
+                return response
+    return next(r for r in responses if r.lower() not in avoid)
+
+def open_logins(c):
+    """Opens Manage Logins in the fresh test copy, choosing plain-text storage when it asks how to keep them."""
+    c.command("manage-logins", settle=1.5)
+    for _ in range(4):
+        s = c.state()
+        if logins(c).get("open"):
+            return
+        if s.get("dialogs"):
+            dialog = s["dialogs"][0]
+            c.answer(pick(dialog["responses"], "plain"), heading=dialog["heading"])
+        else:
+            time.sleep(0.8)
+    c.until(lambda s: logins(c).get("open"), "expected the Manage Logins window")
+
+def fill_login(c, host, port, user, password):
+    """Fills in New Login or Edit Login and saves: the Mac's form sheet, or the dialog Linux and Windows show."""
+    deadline = time.time() + 8
+    while time.time() < deadline:
+        try:
+            form = c.bridge.call("login-form")
+        except Exception:
+            form = {"open": False}
+        if form.get("open"):
+            c.bridge.call("login-form", host=host, port=port, username=user, password=password, action="save")
+            time.sleep(0.8)
+            return
+        s = c.state()
+        if s.get("dialogs") and "login" in s["dialogs"][0]["heading"].lower():
+            c.answer(pick(s["dialogs"][0]["responses"], "save"), [host, str(port), user, password])
+            return
+        if s.get("dialogs"):
+            # A protection question first (plain-text storage was chosen when the window opened).
+            dialog = s["dialogs"][0]
+            c.answer(pick(dialog["responses"], "plain"), heading=dialog["heading"])
+        time.sleep(0.5)
+    raise Outcome("broken", "expected the New Login form")
+
+def add_login(c, host, port, user, password):
+    logins(c, "new")
+    fill_login(c, host, port, user, password)
+    return c.until(lambda s: any(r["host"] == host and r["username"] == user for r in logins(c)["rows"]), f"expected {user}@{host} in the list")
+
+@test("L6", "Manage Logins: the list shows host, port, username, a hidden password and how it's stored")
+def _(c):
+    open_logins(c)
+    add_login(c, "alpha.example", 2222, "alice", "s3cret-test")
+    add_login(c, "beta.example", 22, "bob", "")
+    rows = {r["host"]: r for r in logins(c)["rows"]}
+    a, b = rows["alpha.example"], rows["beta.example"]
+    c.expect((a["port"], a["username"]) == (2222, "alice"), f"expected port 2222 and alice, saw {a}")
+    c.expect("s3cret" not in a["password"] and a["password"].strip("•") == "", f"expected the password hidden, saw {a['password']!r}")
+    c.expect("key" in b["password"].lower(), f"expected an empty password to read as SSH keys, saw {b['password']!r}")
+    c.expect(a["stored"] == "Plain text", f"expected Plain text, saw {a['stored']!r}")
+
+manual("L7", "Manage Logins: locked at start", "needs the logins locked at start, which takes a second launch of the same test copy")
+
+@test("L8", "Manage Logins: Edit changes a login")
+def _(c):
+    open_logins(c)
+    add_login(c, "gamma.example", 22, "carol", "pw-one")
+    index = next(i for i, r in enumerate(logins(c)["rows"]) if r["host"] == "gamma.example")
+    logins(c, "edit", index)
+    fill_login(c, "gamma.example", 2200, "carol", "pw-two")
+    c.until(lambda s: any(r["host"] == "gamma.example" and r["port"] == 2200 for r in logins(c)["rows"]), "expected Edit to change the port")
+    c.expect(len([r for r in logins(c)["rows"] if r["host"] == "gamma.example"]) == 1, "expected the edited login to replace the old one")
+
+@test("L9", "Manage Logins: Import a CSV, all or nothing")
+def _(c):
+    open_logins(c)
+    good = os.path.join(c.app.home, "logins_in.csv")
+    with open(good, "w", encoding="utf-8") as f:
+        f.write("host,port,username,password\nimp1.example,22,dave,pw1\nimp2.example,2022,erin,\n")
+    c.bridge.call("choose-file", path=good)
+    logins(c, "import")
+    c.until(lambda s: {"imp1.example", "imp2.example"} <= {r["host"] for r in logins(c)["rows"]}, "expected both imported logins", timeout=10)
+    s = c.state()
+    if s.get("dialogs"):
+        c.answer(s["dialogs"][0]["responses"][0])
+    bad = os.path.join(c.app.home, "logins_bad.csv")
+    with open(bad, "w", encoding="utf-8") as f:
+        f.write("host,port,username,password\nimp3.example,22,frank,pw\nimp4.example,notaport,gina,pw\n")
+    c.bridge.call("choose-file", path=bad)
+    logins(c, "import")
+    s = c.until(lambda s: s.get("dialogs"), "expected a broken CSV to be refused with a message", timeout=10)
+    c.answer(s["dialogs"][0]["responses"][0])
+    c.expect("imp3.example" not in {r["host"] for r in logins(c)["rows"]}, "expected nothing imported from a CSV with a bad row")
+
+@test("L10", "Manage Logins: Export the ticked logins, readable only by you")
+def _(c):
+    open_logins(c)
+    add_login(c, "exp1.example", 22, "hank", "pw-h")
+    add_login(c, "exp2.example", 22, "ivy", "pw-i")
+    rows = logins(c)["rows"]
+    logins(c, "check", next(i for i, r in enumerate(rows) if r["host"] == "exp1.example"))
+    c.until(lambda s: logins(c)["export"].replace("…", "") == "Export (1)", f"expected Export (1), saw {logins(c)['export']!r}")
+    folder = os.path.join(c.app.home, "export-here")
+    os.makedirs(folder, exist_ok=True)
+    c.bridge.call("choose-file", path=folder)
+    logins(c, "export")
+    for _ in range(3):
+        s = c.state()
+        if os.path.exists(os.path.join(folder, "logins_export.csv")):
+            break
+        if s.get("dialogs"):
+            dialog = s["dialogs"][0]
+            c.answer(pick(dialog["responses"], "export", "ok"), heading=dialog["heading"])
+        time.sleep(1)
+    path = os.path.join(folder, "logins_export.csv")
+    c.until(lambda s: os.path.exists(path), "expected logins_export.csv written", timeout=8)
+    text = open(path, encoding="utf-8").read()
+    c.expect("exp1.example" in text and "exp2.example" not in text, f"expected only the ticked login exported, saw {text!r}")
+    if c.platform != "windows":
+        c.expect(os.stat(path).st_mode & 0o777 == 0o600, f"expected the file readable only by you, saw {oct(os.stat(path).st_mode & 0o777)}")
+    if logins(c).get("checkAll") is False:
+        raise Outcome("missing", "the list has no select-all checkbox in its heading")
+    logins(c, "check-all", True)
+    c.until(lambda s: all(r["checked"] for r in logins(c)["rows"]), "expected the heading's checkbox to tick every login")
+
+@test("L11", "Manage Logins: Delete asks first, with Cancel as the default")
+def _(c):
+    open_logins(c)
+    add_login(c, "del.example", 22, "jack", "pw-j")
+    index = next(i for i, r in enumerate(logins(c)["rows"]) if r["host"] == "del.example")
+    logins(c, "delete", index)
+    s = c.until(lambda s: s.get("dialogs"), "expected a question before the login is deleted")
+    dialog = s["dialogs"][0]
+    responses = dialog["responses"]
+    # The default button where the bridge reports it, otherwise the first one (the order they were added in).
+    default = dialog.get("default") or responses[0]
+    c.expect(default.lower() == "cancel", f"expected Cancel as the default, saw {default!r} of {responses}")
+    c.answer(next(r for r in responses if r.lower() == "cancel"))
+    c.expect(any(r["host"] == "del.example" for r in logins(c)["rows"]), "expected Cancel to keep the login")
+    logins(c, "delete", index)
+    s = c.until(lambda s: s.get("dialogs"), "expected the question again")
+    c.answer(pick(s["dialogs"][0]["responses"], "delete"))
+    c.until(lambda s: not any(r["host"] == "del.example" for r in logins(c)["rows"]), "expected Delete to remove the login")
 
 # ---------------------------------------------------------------- U: MultiExec and Run Command on Hosts
 

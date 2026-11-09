@@ -7,11 +7,20 @@ What the Mac version still needs before it can ship with as few bugs as possible
 - [x] **Every menu in the window, none in the macOS menu bar.** (#67) All menus and submenus (Shell, Edit, View, Window, Help and the rest) move into the Main Menu in the window, as on Linux and Windows, so nothing needs a trip to the top of a wide screen. The macOS menu bar keeps only the app menu macOS always shows. Every shortcut keeps working, Undo, Cut, Copy, Paste and Select All in text fields included, and every item keeps its hover text and VoiceOver label. Describe the new menu in `SPECIFICATION.md` in the same PR. (§2, enhancements.md) *Asked 2026-11-09.*
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 15:11)
+## Feature test results (2026-11-09 15:19)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Not checked automatically (81)
+### Broken (4)
+
+A test ran and the feature didn't do what the Mac version does.
+
+- [ ] **D5** Status line: line, column, line count, encoding, line endings. (§5): Text editor: status line: expected Line 1, Column 1, 3 lines, LF; saw 'Line 3, Column 6 · 3 lines · UTF-8 · LF'; Text editor: CRLF line endings shown: expected CRLF in the status line (saw: 1 window(s), tabs ['Terminal…
+- [ ] **D7** Closing the tab, window or app asks before discarding. (§5): Text editor: closing with unsaved changes asks first: expected Cancel to keep the tab and its changes (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs [], last lines ['$'])
+- [ ] **G3** Owner and group by name or number (looked up on the host). (§5): Get Info: owner and group looked up on the host: expected an unknown owner to be refused with a message (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'herbs-test@192.168.1.241' '/home/herbs-test', dialogs…
+- [ ] **G5** Apply to enclosed items; Apply changes only what was edited; Revert. (§5): Get Info: Revert, and Apply to enclosed items: expected Apply to finish (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'herbs-test@192.168.1.241' '/home/herbs-test', dialogs [], last lines ['Connecting to…
+
+### Not checked automatically (66)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -46,27 +55,12 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **E4** Clickable path segments and an editable location (accepts `~` and relative paths). (§5): needs pointer or keyboard input the test bridge doesn't reach yet
 - [ ] **E11** Pasting local files into a host uploads them; host items pasted locally download. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **E16** Open with Administrator Mode… on an item. (§5): needs a sudo password (not automated)
-- [ ] **X1** Upload and download single files and folder trees. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
-- [ ] **X2** Progress strip with Cancel and Retry; Clear Finished. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
+- [ ] **X2** Progress strip with Cancel and Retry; Clear Finished. (§5): needs a transfer slow enough to cancel; not automated yet
 - [ ] **X3** Up to 16 requests in flight. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **X4** A server silent for 30 s ends the request with an error; Reload works again. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **X5** Local copy, move and Trash run in the background with a "Copying…" note. (§5): needs a large folder and timing; not automated yet
 - [ ] **X6** Staged uploads (temporary name, exclusive, renamed into place). (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
-- [ ] **X7** Name clashes get new names; links to folders inside trees are skipped. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
-- [ ] **D3** Monospaced font, undo, Find. (§5): the bridge can't type into the editor or read its status yet
-- [ ] **D4** Wrap Lines. (§5): the bridge can't type into the editor or read its status yet
-- [ ] **D5** Status line: line, column, line count, encoding, line endings. (§5): the bridge can't type into the editor or read its status yet
-- [ ] **D6** Save shortcut and button; • on the tab while unsaved. (§5): the bridge can't type into the editor or read its status yet
-- [ ] **D7** Closing the tab, window or app asks before discarding. (§5): the bridge can't type into the editor or read its status yet
-- [ ] **D8** Changed elsewhere since opened: asks before replacing. (§5): the bridge can't type into the editor or read its status yet
-- [ ] **D9** Keeps encoding (UTF-8, UTF-16, Latin-1), line endings and permissions; links edited at their… (§5): the bridge can't type into the editor or read its status yet
-- [ ] **D10** Refuses files over 20 MB and binary files, with a message. (§5): the bridge can't type into the editor or read its status yet
-- [ ] **G1** Get Info… on one or more items: name, location, kind, size, modified, `ls -l` permissions with… (§5): the Get Info window isn't driven by the bridge yet
-- [ ] **G2** Read / write / execute for owner, group, others; set-UID, set-GID, sticky; octal field in step. (§5): the Get Info window isn't driven by the bridge yet
-- [ ] **G3** Owner and group by name or number (looked up on the host). (§5): the Get Info window isn't driven by the bridge yet
 - [ ] **G4** Hidden and Locked (Mac only). (§5): Mac only
-- [ ] **G5** Apply to enclosed items; Apply changes only what was edited; Revert. (§5): the Get Info window isn't driven by the bridge yet
-- [ ] **G6** Works on this computer and on hosts. (§5): the Get Info window isn't driven by the bridge yet
 - [ ] **A4** Safe root delete rules. (§5): deleting system folders as root isn't something to try on a real machine
 - [ ] **L1** Login database (host, port, username, password), several logins per host, host names ignore case. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L2** Administrator Password: AES-GCM with PBKDF2 600,000 rounds; locked at start, unlock once per… (§6): covered by the unit and self tests of the shared vault code

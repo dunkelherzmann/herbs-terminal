@@ -118,6 +118,8 @@ enum Dialogs {
 
     static func openFiles(_ parent: Widget?, title: String, accept: String, folder: String? = nil, folders: Bool = false,
                           multiple: Bool = false, pattern: String? = nil) async -> [String] {
+        // The feature tests' bridge stands in for the file chooser.
+        if let chosen = TestBridge.takeChosenFiles() { return chosen }
         let window: UnsafeMutablePointer<GtkWindow>? = anchor(parent).flatMap { rootWindow($0) }
         return await withCheckedContinuation { continuation in
             herb_file_open(window, title, accept, folder, folders ? 1 : 0, multiple ? 1 : 0, pattern, receivedTrampoline, stringBox { paths in
@@ -127,6 +129,10 @@ enum Dialogs {
     }
 
     static func save(_ parent: Widget?, title: String, folder: String? = nil, name: String) async -> String? {
+        if let chosen = TestBridge.takeChosenFiles()?.first {
+            var folder: ObjCBool = false
+            return FileManager.default.fileExists(atPath: chosen, isDirectory: &folder) && folder.boolValue ? chosen + "/" + name : chosen
+        }
         let window: UnsafeMutablePointer<GtkWindow>? = anchor(parent).flatMap { rootWindow($0) }
         return await withCheckedContinuation { continuation in
             herb_file_save(window, title, folder, name, receivedTrampoline, stringBox { continuation.resume(returning: $0) })

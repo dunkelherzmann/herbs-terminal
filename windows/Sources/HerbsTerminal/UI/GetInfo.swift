@@ -370,7 +370,7 @@ final class GetInfoWindow: WindowObject {
     var bridgeState: [String: Any] {
         ["open": !done, "title": (names.count == 1 ? names[0] : "\(names.count) items") + " Info", "names": items.map(\.name),
          "folders": items.filter(\.isFolder).map(\.name), "location": items.first?.location ?? "",
-         "size": items.first?.size.map { Int($0) } as Any, "modified": items.first?.modified != nil,
+         "size": items.first?.size.map { Int($0) as Any } ?? NSNull(), "modified": items.first?.modified != nil,
          "octal": text(octalField), "symbolic": text(symbolic), "owner": text(ownerField), "group": text(groupField),
          "recursive": isChecked(recursiveBox), "hasFolders": hasFolders, "macFlags": false, "busy": busy,
          "message": text(message), "changed": !change.isEmpty]

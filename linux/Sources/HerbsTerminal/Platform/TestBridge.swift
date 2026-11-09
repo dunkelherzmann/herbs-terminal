@@ -17,6 +17,12 @@ enum TestBridge {
     static let isActive = ParityScene.isActive && CommandLine.arguments.contains("--test-bridge")
     static let folder = ParityScene.appFiles + "/bridge"
     private static var lastID = -1
+    /// Set by the feature tests: what the next file chooser picks (a folder for a save names the file inside it).
+    private static var chosenFiles: [String]?
+    static func takeChosenFiles() -> [String]? {
+        defer { chosenFiles = nil }
+        return chosenFiles
+    }
 
     static func start() {
         guard isActive else { return }
@@ -75,6 +81,16 @@ enum TestBridge {
             // Types into the focused terminal's find bar, opening it first.
             try workspace.selected.focused.bridgeFind(request["text"] as? String ?? "")
             return true
+        case "choose-file":
+            // The file (or folder) the next file chooser answers with, without showing it.
+            chosenFiles = (request["path"] as? String).map { [$0] } ?? (request["paths"] as? [String])
+            return true
+        case "logins":
+            // The Manage Logins window: an action (select, check, check-all, new, edit, delete, import, export) with
+            // an optional row number or value, then what it shows.
+            guard let window = ManageLoginsWindow.current else { return ["open": false] }
+            if let action = request["action"] as? String { window.bridge(action, request["value"]) }
+            return window.bridgeState
         case "explorer-filter":
             guard let explorer = try workspace.selected.explorer else { throw Failure(description: "no explorer") }
             return explorer.bridgeFilter(request["text"] as? String ?? "")
@@ -244,6 +260,11 @@ enum TestBridge {
         let workspace = try workspace
         // The toolbar's SSH button: connection details while connected, Connect via SSH otherwise.
         if name == "connect-button" { workspace.connectButton(); return "ran" }
+        // Connect via SSH ▸ Manage Logins…
+        if name == "manage-logins" {
+            ManageLoginsWindow.show(CredentialStore.shared ?? CredentialStore.unavailable(), parent: workspace.window)
+            return "ran"
+        }
         if name.hasPrefix("explorer.") {
             guard let explorer = workspace.selected.explorer else { return "missing" }
             return explorer.bridgeDo(String(name.dropFirst("explorer.".count)))

@@ -234,7 +234,7 @@ final class FileInfoWindow {
     /// Feature tests: what the window shows.
     var bridgeState: [String: Any] {
         ["open": !closed, "title": "\(source.title) Info", "names": items.map(\.name), "folders": items.filter(\.isFolder).map(\.name),
-         "location": items.first?.location ?? "", "size": items.first?.size.map { Int($0) } as Any, "modified": items.first?.modified != nil,
+         "location": items.first?.location ?? "", "size": items.first?.size.map { Int($0) as Any } ?? NSNull(), "modified": items.first?.modified != nil,
          "octal": text(of: octal), "symbolic": String(cString: gtk_label_get_text(c(symbolic))), "owner": text(of: owner), "group": text(of: group),
          "recursive": isActive(recursive), "hasFolders": hasFolders, "macFlags": false, "busy": busy,
          "message": String(cString: gtk_label_get_text(c(message))), "changed": !change.isEmpty]

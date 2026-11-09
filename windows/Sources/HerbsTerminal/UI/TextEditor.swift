@@ -613,7 +613,8 @@ extension TextEditorPane {
         // The text's font: TMPF_FIXED_PITCH is set for variable-pitch fonts (its name is the wrong way round).
         var monospaced = false
         if let edit, let dc = GetDC(edit) {
-            let old = SelectObject(dc, HGDIOBJ(bitPattern: Int(SendMessageW(edit, UINT(WM_GETFONT), 0, 0))))
+            // The font the text is set in (Rich Edit doesn't answer WM_GETFONT).
+            let old = SelectObject(dc, textFonts.normal)
             var metrics = TEXTMETRICW()
             if GetTextMetricsW(dc, &metrics) { monospaced = metrics.tmPitchAndFamily & UInt8(TMPF_FIXED_PITCH) == 0 }
             SelectObject(dc, old)

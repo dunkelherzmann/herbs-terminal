@@ -405,6 +405,53 @@ final class ManageLoginsWindow: WindowObject {
         return ids
     }
 
+    /// The window while it's open, for the feature tests' bridge.
+    static var bridgeWindow: ManageLoginsWindow? { current }
+
+    /// Feature tests: what the window shows.
+    var bridgeState: [String: Any] {
+        let ticked = checkedIDs, selected = selectedRow
+        return ["open": true, "rows": shown.enumerated().map { row, login in
+                    ["host": login.host, "port": login.port, "username": login.username,
+                     "password": login.password.isEmpty ? "None (keys)" : "••••••••",
+                     "stored": store.plainTextIDs.contains(login.id) ? "Plain text" : "Encrypted",
+                     "checked": ticked.contains(login.id), "selected": row == selected] as [String: Any]
+                },
+                "locked": store.isLocked, "lockedCount": store.lockedCount, "protection": "\(store.protection)",
+                "export": buttons[.exportData].map { String(windowText: $0) } ?? "", "notice": String(windowText: banner),
+                "checkAll": false]
+    }
+
+    /// Feature tests: presses the window's controls, through the same code they run. Actions that open a
+    /// dialog run after the bridge has answered.
+    func bridge(_ action: String, _ value: Any?) {
+        let index = value as? Int
+        func setState(_ row: Int, mask: Int32, state: Int32) {
+            var item = LVITEMW()
+            item.stateMask = UINT(mask)
+            item.state = UINT(state)
+            _ = withUnsafeMutablePointer(to: &item) { SendMessageW(list, UINT(LVM_SETITEMSTATE), WPARAM(row), LPARAM(Int(bitPattern: $0))) }
+        }
+        switch action {
+        case "select": if let index, shown.indices.contains(index) { setState(index, mask: LVIS_SELECTED | LVIS_FOCUSED, state: LVIS_SELECTED | LVIS_FOCUSED) }
+        case "check":
+            if let index, shown.indices.contains(index) {
+                let ticked = checkedIDs.contains(shown[index].id)
+                setState(index, mask: LVIS_STATEIMAGEMASK, state: (ticked ? 1 : 2) << 12)
+            }
+        case "new": MainThread.async { self.perform(.new) }
+        case "edit", "open":
+            if let index, shown.indices.contains(index) { setState(index, mask: LVIS_SELECTED | LVIS_FOCUSED, state: LVIS_SELECTED | LVIS_FOCUSED) }
+            MainThread.async { self.perform(.edit) }
+        case "delete":
+            if let index, shown.indices.contains(index) { setState(index, mask: LVIS_SELECTED | LVIS_FOCUSED, state: LVIS_SELECTED | LVIS_FOCUSED) }
+            MainThread.async { self.perform(.delete) }
+        case "import": MainThread.async { self.perform(.importData) }
+        case "export": MainThread.async { self.perform(.exportData) }
+        default: break
+        }
+    }
+
     private func perform(_ action: Action) {
         let store = self.store
         switch action {
@@ -498,6 +545,10 @@ final class ManageLoginsWindow: WindowObject {
 
 /// The Save dialog; returns the chosen path.
 func saveFile(owner: HWND?, title: String, name: String, filter: [(String, String)], defaultExtension: String = "csv") -> String? {
+    if let chosen = TestBridge.takeChosenFile() {
+        var folder: ObjCBool = false
+        return FileManager.default.fileExists(atPath: chosen, isDirectory: &folder) && folder.boolValue ? chosen + "\\" + name : chosen
+    }
     var buffer = [WCHAR](repeating: 0, count: 4096)
     let initial = Array(name.utf16)
     for (index, unit) in initial.enumerated() where index < buffer.count - 1 { buffer[index] = unit }

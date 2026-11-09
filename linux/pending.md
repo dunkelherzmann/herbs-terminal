@@ -7,31 +7,32 @@ What the Linux version still needs before it can ship with as few bugs as possib
 - [x] **Main Menu matches the Mac's in-window menus** (#70). It holds the same menus, submenus, order and shortcuts (Edit, Shell and Window included), and no command is reachable only somewhere else; W19 checks it. (§2, §14, enhancements.md) *Asked 2026-11-09.*
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 15:05)
+## Feature test results (2026-11-09 15:20)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Broken (1)
+### Broken (5)
 
 A test ran and the feature didn't do what the Mac version does.
 
-- [ ] **D7** Closing the tab, window or app asks before discarding. (§5): Text editor: closing with unsaved changes asks first: expected Don't Save and Cancel, saw ['discard', 'cancel', 'save']
+- [ ] **G1** Get Info… on one or more items: name, location, kind, size, modified, `ls -l` permissions with… (§5): Get Info: name, location, kind, size, modified, permissions: the app stopped answering (no answer to info in 10 s (did the app quit?))
+- [ ] **G2** Read / write / execute for owner, group, others; set-UID, set-GID, sticky; octal field in step. (§5): Get Info: permission checkboxes, special bits and the octal field in step: the app stopped answering (no answer to info in 10 s (did the app quit?))
+- [ ] **G3** Owner and group by name or number (looked up on the host). (§5): Get Info: owner and group looked up on the host: the app stopped answering (no answer to info in 10 s (did the app quit?))
+- [ ] **G5** Apply to enclosed items; Apply changes only what was edited; Revert. (§5): Get Info: Revert, and Apply to enclosed items: the app stopped answering (no answer to info in 10 s (did the app quit?))
+- [ ] **G6** Works on this computer and on hosts. (§5): Get Info on this computer: the app stopped answering (no answer to info in 10 s (did the app quit?))
 
-### Not checked automatically (69)
+### Not checked automatically (61)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
 - [ ] **W2** Connect via SSH button; highlighted while connected, then shows the connection details (account,… (§2): checked as S10
 - [ ] **W6** Export Session button and shortcut: whole scrollback to `<tab> <date time>.txt`. (§2): the command is there; saving goes through the system's save dialog, which the bridge can't fill
-- [ ] **W11** Search button: searches files in the explorer, the scrollback otherwise. (§2): the command runs; whether the search field opens isn't reported by this platform's bridge yet
-- [ ] **W13** Main Menu: Find in Terminal…. (§2): the command runs; whether the search field opens isn't reported by this platform's bridge yet
 - [ ] **W17** Hover hints on every control after about half a second, also in the background; screen readers get… (§2): covered by parity/check.sh (hover texts through the accessibility tree)
 - [ ] **W19** Every menu in the window: on the Mac the system menu bar holds only the app menu, the Main Menu… (§2): no test yet
 - [ ] **P5** Focused pane outlined; Zoom, Clear, Reset and Find act on it. (§2): visual: shown in the window's picture, not reported by the bridge
 - [ ] **P6** The tab's SSH connection and explorer belong to its first pane; the next pane takes over when it… (§2): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
-- [ ] **B1** Right-click menu: Copy, Paste, Paste Escaped Text, Select All, Find. (§2): Copy, Paste, Paste Escaped Text and Select All work; Find… runs, but this platform's bridge doesn't report the find bar yet
 - [ ] **B6** Bell: sound, flash, both or none; flash at most twice a second, gentle with Reduce Motion. (§2): sound and flash can't be observed by the bridge
-- [ ] **B8** Find in Terminal (scrollback search). (§2): the command is there; this platform's bridge doesn't report the find bar and its matches yet
+- [ ] **B8** Find in Terminal (scrollback search). (§2): the find bar opens with the text; this platform's terminal (VTE) highlights matches but doesn't count them
 - [ ] **B14** Full color, bold/italic/underline, wide characters, mouse reporting for full-screen programs. (§2): visual: needs the window's picture compared with the Mac's
 - [ ] **B15** Typing with an input method (Chinese, Japanese, Korean): composition at the cursor, in the… (§2): no test yet
 - [ ] **R5** iTerm2 `.itermcolors` import (all colors); damaged files rejected; imported presets removable. (§3): needs the system's open dialog
@@ -55,12 +56,7 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **X4** A server silent for 30 s ends the request with an error; Reload works again. (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **X5** Local copy, move and Trash run in the background with a "Copying…" note. (§5): needs a large folder and timing; not automated yet
 - [ ] **X6** Staged uploads (temporary name, exclusive, renamed into place). (§5): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
-- [ ] **G1** Get Info… on one or more items: name, location, kind, size, modified, `ls -l` permissions with… (§5): the Get Info window isn't driven by the bridge yet
-- [ ] **G2** Read / write / execute for owner, group, others; set-UID, set-GID, sticky; octal field in step. (§5): the Get Info window isn't driven by the bridge yet
-- [ ] **G3** Owner and group by name or number (looked up on the host). (§5): the Get Info window isn't driven by the bridge yet
 - [ ] **G4** Hidden and Locked (Mac only). (§5): Mac only
-- [ ] **G5** Apply to enclosed items; Apply changes only what was edited; Revert. (§5): the Get Info window isn't driven by the bridge yet
-- [ ] **G6** Works on this computer and on hosts. (§5): the Get Info window isn't driven by the bridge yet
 - [ ] **A4** Safe root delete rules. (§5): deleting system folders as root isn't something to try on a real machine
 - [ ] **L1** Login database (host, port, username, password), several logins per host, host names ignore case. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L2** Administrator Password: AES-GCM with PBKDF2 600,000 rounds; locked at start, unlock once per… (§6): covered by the unit and self tests of the shared vault code

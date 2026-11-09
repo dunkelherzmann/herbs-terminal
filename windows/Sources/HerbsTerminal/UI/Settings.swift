@@ -461,6 +461,7 @@ var appIsDark: Bool {
 
 /// The Open dialog; returns the chosen file's path.
 func openFile(owner: HWND?, title: String, filter: [(String, String)]) -> String? {
+    if let chosen = TestBridge.takeChosenFile() { return chosen } // The feature tests' bridge stands in for the dialog.
     var buffer = [WCHAR](repeating: 0, count: 4096)
     // Filter pairs separated by NULs, ending with two.
     var filterUnits: [WCHAR] = []

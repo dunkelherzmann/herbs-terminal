@@ -10,6 +10,12 @@ enum TestBridge {
     static let isActive = ParityScene.isActive && CommandLine.arguments.contains("--test-bridge")
     static var folder: String { ParityScene.appFiles.appendingPathComponent("bridge").path }
     private static var lastID = -1
+    /// Set by the feature tests: what the next Open or Save dialog picks.
+    private static var chosenFile: String?
+    static func takeChosenFile() -> String? {
+        defer { chosenFile = nil }
+        return chosenFile
+    }
 
     static func start() {
         guard isActive else { return }
@@ -94,6 +100,16 @@ enum TestBridge {
             guard let explorer = try workspace.activePane?.explorer else { throw Failure(description: "no explorer") }
             _ = explorer.perform(named: "filter=" + (request["text"] as? String ?? ""))
             return explorer.bridgeState["items"] ?? []
+        case "choose-file":
+            // The file (or folder) the next Open or Save dialog answers with, without showing it.
+            chosenFile = request["path"] as? String
+            return true
+        case "logins":
+            // The Manage Logins window: an action (select, check, new, edit, delete, import, export) with an
+            // optional row number, then what it shows.
+            guard let window = ManageLoginsWindow.bridgeWindow else { return ["open": false] }
+            if let action = request["action"] as? String { window.bridge(action, request["value"]) }
+            return window.bridgeState
         case "info":
             // The Get Info window on top: edits, then Apply / Revert / Close, then what it shows.
             guard let info = GetInfoWindow.current else { return ["open": false] }
@@ -284,7 +300,7 @@ enum TestBridge {
         "rename-tab": .renameTab, "move-tab-left": .moveTabLeft, "move-tab-right": .moveTabRight,
         "clear-to-start": .clearToStart, "clear-scrollback": .clearScrollback, "reset": .reset, "hard-reset": .hardReset,
         "fullscreen": .fullScreen, "settings": .settings, "about": .about, "restore-size": .restoreDefaultSize,
-        "default-size": .makeSizeDefault, "close-tab": .closeTab, "take-screenshot": .takeScreenshot,
+        "default-size": .makeSizeDefault, "close-tab": .closeTab, "take-screenshot": .takeScreenshot, "manage-logins": .manageLogins,
     ]
     private static let greyedOut: Set<MenuCommand> = []
     private static let explorerCommands: [String: String] = [

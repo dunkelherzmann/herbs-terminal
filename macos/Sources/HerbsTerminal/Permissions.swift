@@ -237,15 +237,19 @@ final class FileInfoModel: ObservableObject {
         let change = change
         guard !change.isEmpty else { return }
         busy = true
+        var failure: String?
         do {
             try await source.apply(change)
             notice = "Changes applied."
             error = nil
         } catch {
-            self.error = error.localizedDescription
+            failure = error.localizedDescription
+            notice = nil
         }
         busy = false
         await load()
+        // Reloading shows what's on disk now; the reason Apply failed stays in view (load would clear it).
+        if let failure { error = failure }
     }
 
     func toggle(_ bit: UInt32) { mode ^= bit }
@@ -255,7 +259,7 @@ extension FileInfoModel {
     /// Feature tests: what the Get Info window shows.
     var bridgeState: [String: Any] {
         ["names": items.map(\.name), "folders": items.filter(\.isFolder).map(\.name), "location": items.first?.location ?? "",
-         "size": items.first?.size.map { Int($0) } as Any, "modified": items.first?.modified != nil,
+         "size": items.first?.size.map { Int($0) as Any } ?? NSNull(), "modified": items.first?.modified != nil,
          "octal": octal, "symbolic": symbolicMode(mode), "owner": owner, "group": group, "recursive": recursive,
          "hasFolders": hasFolders, "macFlags": source.hasMacFlags, "hidden": hidden, "locked": locked,
          "busy": busy, "error": error ?? "", "notice": notice ?? "", "changed": !change.isEmpty]
