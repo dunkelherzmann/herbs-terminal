@@ -548,6 +548,8 @@ final class ExplorerView {
     }
 
     private var placeTargets: [String?] = []
+    /// The side pane's places by name, for the feature tests' bridge.
+    private var placeNames: [String] = []
     private var placeRemovable: [Bool] = []
 
     /// The location bar's state and the side pane, for the current folder.
@@ -586,6 +588,7 @@ final class ExplorerView {
 
     private func renderPlaces(_ current: String) {
         gtk_list_box_remove_all(c(places))
+        placeNames = []
         placeTargets = []
         placeRemovable = []
         let sections: [PlacesSection]
@@ -605,6 +608,7 @@ final class ExplorerView {
                               removable: true),
             ]
         }
+        placeNames = sections.flatMap { $0.places.map(\.name) }
         for section in sections where !section.places.isEmpty {
             let heading = label(section.title, classes: ["section"])
             gtk_list_box_append(c(places), heading)
@@ -1161,7 +1165,7 @@ extension ExplorerView {
         ["shown": gtk_widget_get_mapped(view) != 0, "path": path, "items": visible.map { $0.isFolder ? $0.name + "/" : $0.name },
          "selected": selectedNames, "hidden": showHidden, "administrator": isAdministrator, "remote": remoteModel != nil,
          "bookmarked": bookmarks.contains(path),
-         "finding": gtk_widget_get_visible(filterBar) != 0, "filter": filterText,
+         "finding": gtk_widget_get_visible(filterBar) != 0, "filter": filterText, "places": placeNames,
          "transfers": remoteModel?.queue.items.map { ["name": $0.name, "state": "\($0.state)"] as [String: Any] } ?? [],
          "canUndo": actions["undo"] != nil && g_action_group_get_action_enabled(group, "undo") != 0,
          "canRedo": actions["redo"] != nil && g_action_group_get_action_enabled(group, "redo") != 0]

@@ -11,7 +11,7 @@ private func scratch() throws -> URL {
 private func localSFTP() throws -> SFTPClient { try SFTPClient(executable: "/usr/libexec/sftp-server", arguments: []) }
 private func mode(_ url: URL) throws -> Int { (try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int) ?? -1 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func modesReadLikeLsDashL() {
     #expect(symbolicMode(0o755) == "rwxr-xr-x")
     #expect(symbolicMode(0o640) == "rw-r-----")
@@ -21,7 +21,7 @@ func modesReadLikeLsDashL() {
     #expect(folderMode(0o644) == 0o755 && folderMode(0o600) == 0o700)
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func localPermissionsChangeRecursivelyAndSkipLinks() throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -50,7 +50,7 @@ func localPermissionsChangeRecursivelyAndSkipLinks() throws {
     #expect(throws: (any Error).self) { try LocalFileInfo.apply(FileInfoChange(owner: "root"), to: [file]) }
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func remotePermissionsAndOwnersGoOverSFTP() async throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }

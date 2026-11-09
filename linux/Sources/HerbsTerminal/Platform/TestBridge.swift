@@ -91,6 +91,13 @@ enum TestBridge {
             // The file (or folder) the next file chooser answers with, without showing it.
             chosenFiles = (request["path"] as? String).map { [$0] } ?? (request["paths"] as? [String])
             return true
+        case "hosts-state":
+            guard let window = MultiHostWindow.newest else { throw Failure(description: "the Run Command on Hosts window isn't open") }
+            return window.bridgeState
+        case "hosts-run":
+            guard let window = MultiHostWindow.newest else { throw Failure(description: "the Run Command on Hosts window isn't open") }
+            window.bridgeRun(hosts: request["hosts"] as? [String] ?? [], command: request["command"] as? String ?? "")
+            return true
         case "saved-passwords":
             // The toolbar's Saved Passwords menu: what it offers, or (with "choose") run one of its entries.
             let store = CredentialStore.shared ?? CredentialStore.unavailable()

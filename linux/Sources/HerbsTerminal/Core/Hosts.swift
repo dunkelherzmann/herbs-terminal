@@ -107,14 +107,23 @@ final class MultiHostModel: ObservableObject {
             }
             return (kept, dropped)
         }.value
-        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
-            DispatchQueue.global().async { process.waitUntilExit(); done.resume() }
+        // Reaped with waitpid: Foundation's waitUntilExit can wait forever in this GTK app (GLib handles SIGCHLD too),
+        // which left Run Command on Hosts "running" with no output.
+        let pid = process.processIdentifier
+        let waited: Int32? = await withCheckedContinuation { (done: CheckedContinuation<Int32?, Never>) in
+            DispatchQueue.global().async {
+                var raw: Int32 = 0, reaped: pid_t = -1
+                repeat { reaped = waitpid(pid, &raw, 0) } while reaped == -1 && errno == EINTR
+                done.resume(returning: reaped == pid ? raw : nil)
+            }
         }
         result.seconds = Date().timeIntervalSince(started)
         result.output = String(decoding: data, as: UTF8.self)
         if truncated { result.output += "\n… output truncated" }
-        let status = process.terminationStatus
-        if process.terminationReason == .uncaughtSignal {
+        // Foundation may have reaped it first; then its own status stands.
+        let signaled = waited.map { $0 & 0x7f != 0 } ?? (process.terminationReason == .uncaughtSignal)
+        let status = waited.map { ($0 >> 8) & 0xff } ?? process.terminationStatus
+        if signaled {
             result.outcome = .cancelled
         } else if status == 0 {
             result.outcome = .succeeded

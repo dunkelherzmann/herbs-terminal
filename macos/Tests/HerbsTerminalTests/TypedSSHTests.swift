@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import HerbsTerminal
 
-@Suite("Typed ssh following")
+@Suite("Typed ssh following", .timeLimit(.minutes(2)))
 struct TypedSSHTests {
     private func scratch() throws -> URL {
         let url = URL(fileURLWithPath: "/tmp/herbs-test-\(UUID().uuidString.prefix(8))", isDirectory: true)
@@ -21,10 +21,26 @@ struct TypedSSHTests {
         process.standardError = FileHandle.nullDevice
         process.standardInput = FileHandle.nullDevice
         try process.run()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        // Read on another thread, so a shell that never finishes (it hung once on CI, holding the run for good)
+        // fails this test after 30 s with what it printed, instead of hanging.
+        let box = OutputBox()
+        let finished = DispatchSemaphore(value: 0)
+        let handle = pipe.fileHandleForReading
+        Thread.detachNewThread {
+            box.data = handle.readDataToEndOfFile()
+            finished.signal()
+        }
+        if finished.wait(timeout: .now() + 30) == .timedOut {
+            kill(-process.processIdentifier, SIGKILL)
+            process.terminate()
+            _ = finished.wait(timeout: .now() + 2)
+            Issue.record("\(shell) didn't finish within 30 s; it printed: \(String(decoding: box.data, as: UTF8.self))")
+        }
         process.waitUntilExit()
-        return String(decoding: data, as: UTF8.self)
+        return String(decoding: box.data, as: UTF8.self)
     }
+
+    private final class OutputBox: @unchecked Sendable { var data = Data() }
 
     @Test
     func socketPathsFitUnixLimits() {

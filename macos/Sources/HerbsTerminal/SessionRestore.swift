@@ -29,7 +29,12 @@ enum SessionRestore {
     static func save(_ workspaces: [Workspace], defaults: UserDefaults = .standard) {
         guard !ParityScene.isActive else { return }
         guard TerminalProfile.shared.restoreSession else { defaults.removeObject(forKey: key); return }
-        let windows = workspaces.map { workspace in
+        if let data = try? JSONEncoder().encode(snapshot(workspaces)) { defaults.set(data, forKey: key) }
+    }
+
+    /// The windows as session restore saves them.
+    static func snapshot(_ workspaces: [Workspace]) -> [SavedWindow] {
+        workspaces.map { workspace in
             // Editor tabs aren't reopened; the files stay where they were saved.
             let terminals = workspace.tabs.filter { $0.editor == nil }
             return SavedWindow(tabs: terminals.map { tab in
@@ -39,13 +44,16 @@ enum SessionRestore {
                          panes: tab.shells.count > 1 ? tab.root.saved : nil)
             }, selected: terminals.firstIndex { $0 === workspace.selected } ?? 0)
         }
-        if let data = try? JSONEncoder().encode(windows) { defaults.set(data, forKey: key) }
     }
+
+    /// For the feature tests: windows to reopen next, as if the last session had saved them.
+    static func queue(_ windows: [SavedWindow]) { pending = (pending ?? []) + windows }
 
     /// The next window to reopen, read once per launch.
     static func takeNext(defaults: UserDefaults = .standard) -> SavedWindow? {
-        if ParityScene.isActive { return nil }
         if pending == nil {
+            // A test copy never reads the user's saved session; only windows the feature tests queued.
+            if ParityScene.isActive { return nil }
             let saved = defaults.data(forKey: key).flatMap { try? JSONDecoder().decode([SavedWindow].self, from: $0) } ?? []
             pending = TerminalProfile.shared.restoreSession ? saved.filter { !$0.tabs.isEmpty } : []
         }

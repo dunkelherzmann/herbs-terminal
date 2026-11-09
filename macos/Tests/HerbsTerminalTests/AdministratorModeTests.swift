@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import HerbsTerminal
 
-@Suite("Administrator mode")
+@Suite("Administrator mode", .timeLimit(.minutes(2)))
 struct AdministratorModeTests {
     private func scratch() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("admin-\(UUID().uuidString)").resolvingSymlinksInPath()

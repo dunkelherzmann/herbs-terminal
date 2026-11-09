@@ -190,9 +190,14 @@ final class MultiHostWindow {
     private let run: Widget
     private var token: ObservationToken?
 
+    /// The newest window, for the feature tests' bridge.
+    private(set) static var newest: MultiHostWindow?
+
     static func show(_ workspace: Workspace) {
         let hosts = MultiHostWindow(workspace)
         hosts.window.owner = hosts
+        newest = hosts
+        hosts.window.onClose = { [weak hosts] in if newest === hosts { newest = nil } }
         hosts.window.present()
     }
 
@@ -297,6 +302,21 @@ final class MultiHostWindow {
             if !result.output.isEmpty { append(block, label(result.output, classes: ["result-output"], wrap: true, selectable: true)) }
             append(results, block)
         }
+    }
+
+    /// Feature tests: the hosts offered, what's ticked, and each host's result.
+    var bridgeState: [String: Any] {
+        ["hosts": targets.map(\.id), "selected": Array(model.selected), "running": model.running,
+         "results": model.results.map { ["host": $0.id, "summary": summaryText($0), "output": $0.output] as [String: Any] }]
+    }
+
+    /// Feature tests: ticks hosts, sets the command and presses Run, as the controls would.
+    func bridgeRun(hosts: [String], command text: String) {
+        model.selected = Set(hosts)
+        model.command = text
+        gtk_text_buffer_set_text(gtk_text_view_get_buffer(c(command)), text, -1) // A text view, not an entry.
+        let chosen = targets.filter { model.selected.contains($0.id) }
+        Task { await model.run(chosen) }
     }
 
     private func summaryText(_ result: HostResult) -> String {

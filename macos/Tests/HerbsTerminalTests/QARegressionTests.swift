@@ -22,7 +22,7 @@ private func store(at url: URL) throws -> CredentialStore {
     try CredentialStore(databaseURL: url, vault: CryptoVault(keyProvider: StaticKeyProvider(key: testKey)))
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func aHostSpelledDifferentlyReplacesItsLoginInsteadOfDuplicatingIt() throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -33,7 +33,7 @@ func aHostSpelledDifferentlyReplacesItsLoginInsteadOfDuplicatingIt() throws {
     #expect(logins.get(id: SSHLogin(host: "nas.local", port: 22, username: "herb", password: "").id)?.password == "new")
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func theFallbackStoreWorksInMemoryOnly() throws {
     let fallback = CredentialStore.unavailable()
     try fallback.save(SSHLogin(host: "h", port: 22, username: "u", password: "p"))
@@ -41,7 +41,7 @@ func theFallbackStoreWorksInMemoryOnly() throws {
     #expect(!FileManager.default.fileExists(atPath: FileManager.default.currentDirectoryPath + "/:memory:"))
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func remoteCopyAndDownloadSkipFolderLinksInsideTheTree() throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -61,7 +61,7 @@ func remoteCopyAndDownloadSkipFolderLinksInsideTheTree() throws {
     }
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func uploadsNeverWriteThroughAPlantedPartFile() throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -81,7 +81,7 @@ func uploadsNeverWriteThroughAPlantedPartFile() throws {
     #expect(mode.map { $0 & 0o7000 } == 0)
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func remoteFoldersCannotBePastedIntoThemselves() async throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -94,7 +94,7 @@ func remoteFoldersCannotBePastedIntoThemselves() async throws {
     #expect(try FileManager.default.contentsOfDirectory(atPath: project.path).isEmpty)
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func unreadableProfilesAreKeptInsteadOfOverwritten() throws {
     let suite = "qa-\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))
@@ -106,7 +106,7 @@ func unreadableProfilesAreKeptInsteadOfOverwritten() throws {
     #expect(kept.count == 1)
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func unreadableTailcatPeersAreSetAside() throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -118,7 +118,7 @@ func unreadableTailcatPeersAreSetAside() throws {
     #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).contains { $0.contains("unreadable") })
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func manageLoginsKnowsWhichLoginsArePlainText() throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -135,7 +135,7 @@ func manageLoginsKnowsWhichLoginsArePlainText() throws {
     #expect(logins.logins.isEmpty && logins.lockedCount == 1)
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func anAdministratorPasswordSetByAnEarlierBuildStillUnlocks() throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -176,7 +176,7 @@ func anAdministratorPasswordSetByAnEarlierBuildStillUnlocks() throws {
     #expect(try CredentialStore(databaseURL: url, iterations: 1000).verify("correct horse battery"))
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func removingTheAdministratorPasswordLeavesReadablePlainTextLoginsAndAddresses() throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -201,7 +201,7 @@ func removingTheAdministratorPasswordLeavesReadablePlainTextLoginsAndAddresses()
     #expect(try logins.reveal(peers.peers[0].secret) == "secret-address")
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func exportIncludesOnlyTheTickedLogins() throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -214,7 +214,7 @@ func exportIncludesOnlyTheTickedLogins() throws {
     #expect(csv.contains("b.local") && !csv.contains("a.local"))
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func remoteItemsPasteIntoFinderAsRealFiles() throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -235,7 +235,7 @@ func remoteItemsPasteIntoFinderAsRealFiles() throws {
     #expect(try Data(contentsOf: urls[0]) == Data("remote bytes".utf8))
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func typingExitClosesThePaneThenTheTab() async throws {
     let workspace = Workspace(restoring: nil)
     defer { workspace.tabs.forEach { $0.shells.forEach { $0.close() } } }
@@ -252,7 +252,7 @@ func typingExitClosesThePaneThenTheTab() async throws {
     #expect(workspace.tabs.count == 1)
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func tailcatPanelStartsEmptyWithOneTimeChosen() {
     let form = TailcatForm()
     #expect(form.username.isEmpty && !form.persistent && !form.sharePersistent)
@@ -261,7 +261,7 @@ func tailcatPanelStartsEmptyWithOneTimeChosen() {
     #expect(form.name.isEmpty && form.username.isEmpty && form.address.isEmpty && !form.persistent)
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func exportSessionSavesTheWholeTextUnderTheTabNameAndTime() throws {
     let shell = LocalShell()
     for index in 1...150 { shell.view.feed(text: "line \(index)\r\n") }   // more than a screen: scrollback too
@@ -276,7 +276,7 @@ func exportSessionSavesTheWholeTextUnderTheTabNameAndTime() throws {
     #expect(Workspace.sessionFileName(title: "logs/prod: web", date: date) == "logs-prod- web 2026-11-06 09-05.txt")
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func exportSessionKeepsWideCharactersWithoutEmptyCells() {
     // SwiftTerm stores the cell after a wide character as a NUL; the exported text must not contain it.
     let shell = LocalShell()
@@ -285,7 +285,7 @@ func exportSessionKeepsWideCharactersWithoutEmptyCells() {
     #expect(text == "\u{4f60}\u{597d} ok\n")
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func aSavedPasswordAnswersKeyboardInteractivePrompts() throws {
     // PAM servers ask through keyboard-interactive: "(user@host) Password:" instead of "user@host's password:".
     #expect(AskpassBroker.isPasswordPrompt("(herb@nas.local) Password: ", for: "herb@nas.local"))
@@ -304,7 +304,7 @@ func aSavedPasswordAnswersKeyboardInteractivePrompts() throws {
     #expect(asked.isEmpty)
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func aSavedPasswordWaitsForItsOwnHostsPrompt() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("tx-\(UUID().uuidString.prefix(8))")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -331,7 +331,7 @@ func aSavedPasswordWaitsForItsOwnHostsPrompt() throws {
     #expect(Date().timeIntervalSince(started) < 5)
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func asRootFoldersOtherAccountsCanChangeAreNotEmptied() throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -347,7 +347,7 @@ func asRootFoldersOtherAccountsCanChangeAreNotEmptied() throws {
     #expect(!FileManager.default.fileExists(atPath: shared.path))
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func pipelinedTransfersKeepEveryByte() throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -372,7 +372,7 @@ func pipelinedTransfersKeepEveryByte() throws {
     #expect(try cancelled.client.stat(original.path, follow: true).size == UInt64(bytes.count))
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func aServerThatStopsAnsweringTimesOut() throws {
     let saved = SFTPClient.replyTimeout
     SFTPClient.replyTimeout = 1000
@@ -384,7 +384,7 @@ func aServerThatStopsAnsweringTimesOut() throws {
     #expect(Date().timeIntervalSince(started) < 10)
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func hostCommandOutputIsCappedWhileItRuns() async throws {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/bin/sh")
@@ -396,7 +396,7 @@ func hostCommandOutputIsCappedWhileItRuns() async throws {
     #expect(result.output.utf8.count < MultiHostModel.outputLimit + 100)
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func tailcatProxyKeepsTheAddressOffTheCommandLineAndFailsCleanly() throws {
     let tailcat = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         .appendingPathComponent("Vendor/tailcat/tailcat").path
@@ -407,7 +407,7 @@ func tailcatProxyKeepsTheAddressOffTheCommandLineAndFailsCleanly() throws {
     #expect(Date().timeIntervalSince(started) < 30)
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func sshEndsSoonAfterTheHostGoesAway() {
     // Both the app's logins and a typed ssh ask the server for a reply every 5 s and give up after 2 misses.
     let options = SSHControl.masterOptions.joined(separator: " ")
@@ -415,7 +415,7 @@ func sshEndsSoonAfterTheHostGoesAway() {
     #expect(ShellIntegration.sshFunction.contains("-o ServerAliveInterval=5 -o ServerAliveCountMax=2 \"$@\""))
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func takeScreenshotPicturesTheWholeWindow() throws {
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
                           styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
@@ -432,7 +432,7 @@ func takeScreenshotPicturesTheWholeWindow() throws {
     #expect(middle.alphaComponent == 1)
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func exitInTheLastTabQuitsOnlyWhenNoOtherWindowIsOpen() {
     // `exit` in a window's last tab quits the app only when it was the last window; with another window
     // open it closes just its own window.
@@ -447,7 +447,7 @@ func exitInTheLastTabQuitsOnlyWhenNoOtherWindowIsOpen() {
     #expect(!first.isLastWindow && !second.isLastWindow)
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func titleReturnsToThisMacWhenTheRemoteSessionEnds() {
     // The remote shell names the tab while connected; when the session ends (exit or a dropped link),
     // the tab shows this Mac's user@host again, not the remote title.
@@ -461,7 +461,7 @@ func titleReturnsToThisMacWhenTheRemoteSessionEnds() {
     #expect(shell.legend.subtitle == "~")
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func askpassLeavesOtherQuestionsToTheLinuxScriptWhenToldNotToUseTheTerminal() {
     // The Linux host script asks a new host's fingerprint question itself; the helper, run from inside the
     // Flatpak, must answer "no answer" at once instead of reaching for the terminal (where it would be stopped).
@@ -470,14 +470,14 @@ func askpassLeavesOtherQuestionsToTheLinuxScriptWhenToldNotToUseTheTerminal() {
     #expect(status == 1)
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func sshControlRunReportsTheRealExitStatus() {
     // run waits on its own ssh with waitpid, so it returns even where something else handles SIGCHLD (the Linux app).
     #expect(SSHControl.run(["-V"]) == 0)
     #expect(SSHControl.run(["-O", "check", "-o", "ControlPath=/nonexistent/herbs-test-%C", "user@example.invalid"]) == 255)
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func tailcatProxyTellsAPeerThatHangsUpSilentlyFromOneThatAnswers() throws {
     func relay(peerSends reply: [UInt8]) throws -> Bool {
         var peer: [Int32] = [0, 0], input: [Int32] = [0, 0], output: [Int32] = [0, 0]
@@ -492,7 +492,7 @@ func tailcatProxyTellsAPeerThatHangsUpSilentlyFromOneThatAnswers() throws {
     #expect(try relay(peerSends: Array("SSH-2.0-OpenSSH_10.2\r\n".utf8)) == true)
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func tailcatSharingChecksThatSomethingAnswersOnTheLocalPort() throws {
     let listener = socket(AF_INET, SOCK_STREAM, 0)
     try #require(listener >= 0)

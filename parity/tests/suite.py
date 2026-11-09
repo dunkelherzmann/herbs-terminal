@@ -343,7 +343,22 @@ def _(c):
 @test("W6", "Export Session")
 def _(c):
     c.probe("export-session")
-    c.unverified("the command is there; saving goes through the system's save dialog, which the bridge can't fill")
+    marker = c.say("EXPORTME")
+    c.until(lambda s: marker in c.text(s), "expected the marker printed")
+    folder = os.path.join(c.app.home, "exports")
+    os.makedirs(folder, exist_ok=True)
+    try:
+        c.bridge.call("choose-file", path=folder + os.sep)
+    except Exception as error:
+        if "unknown op" in str(error):
+            c.unverified("the command is there; saving goes through the system's save dialog, which the bridge can't fill")
+        raise
+    c.command("export-session", settle=1.5)
+    def exported():
+        files = [f for f in os.listdir(folder) if f.endswith(".txt")]
+        return files and marker in open(os.path.join(folder, files[0]), encoding="utf-8", errors="replace").read() and files[0]
+    name = c.until(lambda s: exported(), "expected the session saved as a text file with the scrollback", timeout=10) and exported()
+    c.expect(re.match(r"Terminal 1 \d{4}-\d{2}-\d{2} \d{2}-\d{2}(-\d{2})?\.txt$", name), f"expected the file named after the tab and the time, saw {name!r}")
 
 @test("W7", "Take Screenshot copies the window")
 def _(c):
@@ -870,7 +885,40 @@ def _(c):
     want = ["Solarized Dark", "Solarized Light", "Tango Dark", "Tango Light", "Gruvbox Dark", "Nord"]
     c.expect(all(n in names for n in want), f"presets are {names}")
 
-manual("R5", "iTerm2 preset import", "needs the system's open dialog")
+ITERM_PRESET = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+""" + "".join(f"<key>{key}</key><dict><key>Red Component</key><real>{r}</real><key>Green Component</key><real>{g}</real>"
+             f"<key>Blue Component</key><real>{b}</real><key>Color Space</key><string>sRGB</string></dict>"
+             for key, (r, g, b) in [("Background Color", (0.1, 0.12, 0.14)), ("Foreground Color", (0.9, 0.9, 0.85)),
+                                    ("Cursor Color", (1, 0.6, 0))] + [(f"Ansi {i} Color", (i / 16, 0.5, 1 - i / 16)) for i in range(16)]) + """
+</dict></plist>
+"""
+
+@test("R5", "Import an iTerm2 color preset; a damaged file is refused")
+def _(c):
+    path = os.path.join(c.app.home, "Test Sunset.itermcolors")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(ITERM_PRESET)
+    try:
+        c.bridge.call("choose-file", path=path)
+    except Exception as error:
+        if "unknown op" in str(error):
+            c.unverified("needs the system's open dialog")
+        raise
+    c.command("import-preset", settle=1.5)
+    s = c.state()
+    if s.get("dialogs"):
+        c.answer(s["dialogs"][0]["responses"][0])
+    c.until(lambda s: "Test Sunset" in s.get("presets", []), f"expected Test Sunset among the presets", timeout=8)
+    broken = os.path.join(c.app.home, "Broken.itermcolors")
+    with open(broken, "w", encoding="utf-8") as f:
+        f.write("<plist><dict><key>Background Color</key>")
+    c.bridge.call("choose-file", path=broken)
+    c.command("import-preset", settle=1.5)
+    s = c.until(lambda s: s.get("dialogs"), "expected a damaged preset to be refused with a message", timeout=8)
+    c.answer(s["dialogs"][0]["responses"][0])
+    c.expect("Broken" not in c.state().get("presets", []), "expected no preset made from the damaged file")
 
 @test("R6", "Restore Defaults asks first")
 def _(c):
@@ -1070,7 +1118,26 @@ def safe(c):
     if not path.lower().startswith(c.app.home.lower()):
         raise Outcome("error", f"refused: the explorer is at {path}, outside the scene's folder")
 
-manual("E1", "Places", "checked in the accessibility tree by parity/check.sh; the bridge doesn't report places")
+def places(c, s=None):
+    found = c.tab(s).get("explorer", {}).get("places")
+    if found is None:
+        c.unverified("checked in the accessibility tree by parity/check.sh; the bridge doesn't report places")
+    return found
+
+@test("E1", "Places on this computer: Home, the user folders, the whole disk and Trash")
+def _(c):
+    explorer_at_home(c, files=False)
+    p = places(c)
+    c.expect("Home" in p, f"expected Home among the places, saw {p}")
+    if c.platform == "windows":
+        c.expect(any(re.search(r"\([A-Z]:\)$", name) for name in p), f"expected the drives, saw {p}")
+    else:
+        c.expect("Computer" in p and "Trash" in p, f"expected Computer and Trash, saw {p}")
+
+@test("E1", "Places on a host: Home and File System")
+def _(c):
+    host_explorer(c)
+    c.until(lambda s: {"Home", "File System"} <= set(places(c, s)), f"expected Home and File System on the host", timeout=10)
 @test("E2", "Bookmarks: add and remove a folder")
 def _(c):
     explorer_at_home(c)

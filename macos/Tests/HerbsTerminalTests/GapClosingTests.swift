@@ -4,7 +4,7 @@ import Testing
 @testable import HerbsTerminal
 
 @MainActor
-@Suite("Parity gap tests")
+@Suite("Parity gap tests", .timeLimit(.minutes(2)))
 struct GapClosingTests {
     private func scratch() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("gaps-\(UUID().uuidString)").resolvingSymlinksInPath()
