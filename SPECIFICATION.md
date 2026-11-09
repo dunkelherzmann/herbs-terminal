@@ -541,7 +541,9 @@ The Windows version is the same app as a native Win32 program, with SwiftTerm's 
 
 ### Shortcuts
 
-The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In the terminal, Ctrl+C copies when text is selected (otherwise it interrupts the program), Ctrl+V pastes, and right-click copies a selection or pastes, as in Windows Terminal.
+The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In the terminal, Ctrl+C copies when text is selected (otherwise it interrupts the program), Ctrl+V pastes. Right-click opens the terminal's menu, as on the Mac and Linux (section 2): Copy, Paste, Paste Escaped Text (Ctrl+Alt+V), Select All (Ctrl+Shift+A), Find…, the Clear and Reset commands, the splits, New Tab, Show File Explorer, Connect via SSH or Disconnect, Bigger, Smaller and Settings. Paste Escaped Text quotes the text for the tab's shell so it's taken literally: single quotes for PowerShell and POSIX shells, and for Command Prompt a caret before each special character (`%` included) with line breaks turned into spaces.
+
+**Find in Terminal** (Ctrl+Shift+F, the toolbar's Search, the Main Menu or the right-click menu) shows a find bar at the top right of the terminal: the search text, Previous (Return), Next (Shift+Return) and Done (Esc), each with a hover hint and a name for screen readers. It finds as you type, ignores case, searches the scrollback, wraps around, and selects and scrolls to the match; it starts from the match nearest the prompt.
 
 ### Terminal
 
@@ -588,7 +590,7 @@ The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In 
 
 ### Not yet on Windows
 
-Find in Terminal; named profiles; session restore; following an `ssh` typed in a local tab; Tailcat peers; Paste Escaped Text. Their toolbar buttons and menu commands are shown dimmed.
+Named profiles; session restore; following an `ssh` typed in a local tab; Tailcat peers; finding files in the explorer. Their toolbar buttons and menu commands are shown dimmed.
 
 ## References
 

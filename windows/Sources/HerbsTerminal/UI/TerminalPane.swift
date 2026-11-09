@@ -1,3 +1,4 @@
+import CHerbUIA
 import Foundation
 import SwiftTerm
 import WinSDK
@@ -65,7 +66,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         terminal.registerOscHandler(code: 7) { [weak self] payload in
             MainActor.assumeIsolated { self?.setLocation(ShellLocation.folder(osc7: String(decoding: payload, as: UTF8.self))) }
         }
-        hwnd = createWindow(self, className: Self.className, style: DWORD(WS_CHILD | WS_CLIPSIBLINGS), parent: parent)
+        hwnd = createWindow(self, className: Self.className, style: DWORD(WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN), parent: parent)
         // Files and folders dropped from File Explorer are typed as paths, as on the Mac and Linux.
         if let hwnd { DragAcceptFiles(hwnd, true) }
         apply(settings)
@@ -82,6 +83,8 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     var group: PaneGroup?
     /// Tells the workspace this pane took the keyboard focus (for split panes).
     var onFocus: ((TerminalPane) -> Void)?
+    /// Selected text, for the feature tests' bridge.
+    var bridgeSelection: String { selectedText() }
     /// The focused pane of a split tab is outlined in the accent color, as on the Mac and Linux.
     var outlined = false {
         didSet { if outlined != oldValue { invalidate() } }
@@ -265,6 +268,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     /// Fits the grid to the window: whole cells, at least 2 × 1.
     private func layout() {
         guard let hwnd else { return }
+        layoutFind()
         var rect = RECT()
         GetClientRect(hwnd, &rect)
         let inset = Self.inset(hwnd)
@@ -408,9 +412,23 @@ final class TerminalPane: WindowObject, TerminalDelegate {
             selectWord(at: cell(at: lParam))
             return 0
         case WM_RBUTTONUP:
-            // As in Windows Terminal: right-click copies a selection, or pastes when there is none.
-            if hasSelection { copySelection() } else { paste() }
+            // The right-click menu, as on the Mac and Linux.
+            var point = POINT(x: Int32(loWord(lParam)), y: Int32(hiWord(lParam)))
+            ClientToScreen(hwnd, &point)
+            SetFocus(hwnd)
+            onContextMenu?(self, point)
             return 0
+        case WM_COMMAND:
+            switch Int32(wParam & 0xFFFF) {
+            case FindID.previous.rawValue: findStep(up: true)
+            case FindID.next.rawValue: findStep(up: false)
+            case FindID.done.rawValue: hideFind()
+            case FindID.field.rawValue where Int32((wParam >> 16) & 0xFFFF) == EN_CHANGE: search()
+            default: break
+            }
+            return 0
+        case WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, WM_CTLCOLORBTN:
+            return DialogTheme.colors(message, wParam)
         case WM_DPICHANGED_AFTERPARENT:
             apply(TerminalProfile.shared.settings(for: nil))
             return 0
@@ -605,6 +623,22 @@ final class TerminalPane: WindowObject, TerminalDelegate {
 
     var hasSelection: Bool { selectionStart != nil && selectionEnd != nil && selectionStart != selectionEnd }
 
+    /// Select All: the whole scrollback and screen.
+    func selectAll() {
+        selectionStart = Position(col: 0, row: terminal.buffer.totalLinesTrimmed)
+        selectionEnd = Position(col: terminal.cols, row: liveTop + terminal.rows - 1)
+        invalidate()
+    }
+
+    /// Paste Escaped Text: the clipboard's text quoted for this tab's shell, so it's taken literally.
+    func pasteEscaped() {
+        guard let hwnd, let text = clipboardText(hwnd), !text.isEmpty else { return }
+        send(dropQuoting.literal(text))
+    }
+
+    /// The right-click menu: the workspace builds it, so it holds the window's commands too.
+    var onContextMenu: ((TerminalPane, POINT) -> Void)?
+
     func clearSelection() {
         selectionStart = nil
         selectionEnd = nil
@@ -673,6 +707,154 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         selectionStart = Position(col: start, row: position.row)
         selectionEnd = Position(col: end, row: position.row)
         invalidate()
+    }
+
+    // MARK: Find in Terminal
+
+    private enum FindID: Int32 { case field = 0x4E01, previous, next, done }
+    private var findControls: (field: HWND?, previous: HWND?, next: HWND?, done: HWND?, font: HFONT?, glyph: HFONT?)?
+    private var findHints = HoverHints()
+    private var matches: [(row: Int, start: Int, end: Int)] = []
+    private var currentMatch: Int?
+
+    var isFinding: Bool { findControls.map { IsWindowVisible($0.field) } ?? false }
+    var findText: String { findControls?.field.map { String(windowText: $0) } ?? "" }
+    var findMatchCount: Int { matches.count }
+
+    /// The find bar at the top right of the terminal, as on Linux: the search text, Previous, Next and Done. It
+    /// finds as you type, ignores case, wraps around and searches the scrollback.
+    func showFind() {
+        guard let hwnd else { return }
+        if findControls == nil {
+            let dpi = GetDpiForWindow(hwnd)
+            let font = withWide("Segoe UI") { CreateFontW(-scaled(12, dpi: dpi), 0, 0, 0, Int32(FW_NORMAL), 0, 0, 0, DWORD(DEFAULT_CHARSET), 0, 0,
+                                                          DWORD(CLEARTYPE_QUALITY), 0, $0) }
+            let glyph = withWide("Segoe Fluent Icons") { CreateFontW(-scaled(11, dpi: dpi), 0, 0, 0, Int32(FW_NORMAL), 0, 0, 0, DWORD(DEFAULT_CHARSET), 0, 0,
+                                                                     DWORD(CLEARTYPE_QUALITY), 0, $0) }
+            func make(_ cls: String, _ text: String, _ style: DWORD, _ id: FindID, _ chosen: HFONT?) -> HWND? {
+                let control = withWide(cls) { c in
+                    withWide(text) { t in
+                        CreateWindowExW(0, c, t, DWORD(WS_CHILD) | DWORD(WS_TABSTOP) | style, 0, 0, 10, 10, hwnd,
+                                        HMENU(bitPattern: Int(id.rawValue)), GetModuleHandleW(nil), nil)
+                    }
+                }
+                SendMessageW(control, UINT(WM_SETFONT), WPARAM(UInt(bitPattern: Int(bitPattern: UnsafeRawPointer(chosen)))), 1)
+                withWide(appIsDark ? (cls == "EDIT" ? "DarkMode_CFD" : "DarkMode_Explorer") : (cls == "EDIT" ? "CFD" : "Explorer")) { _ = SetWindowTheme(control, $0, nil) }
+                return control
+            }
+            let field = make("EDIT", "", DWORD(ES_AUTOHSCROLL) | DWORD(WS_BORDER), .field, font)
+            _ = withWide("Find in terminal") { SendMessageW(field, UINT(EM_SETCUEBANNER), 1, LPARAM(Int(bitPattern: $0))) }
+            let previous = make("BUTTON", "\u{E70E}", DWORD(BS_PUSHBUTTON), .previous, glyph)
+            let next = make("BUTTON", "\u{E70D}", DWORD(BS_PUSHBUTTON), .next, glyph)
+            let done = make("BUTTON", "\u{E711}", DWORD(BS_PUSHBUTTON), .done, glyph)
+            for (control, name) in [(previous, "Previous match"), (next, "Next match"), (done, "Close Find")] {
+                // Screen readers read the button's name, not its glyph.
+                if let control { _ = withWide(name) { herb_set_accessible_name(UnsafeMutableRawPointer(control), $0) } }
+            }
+            findHints.set(field, "Find in Terminal\nType to find text in this terminal and its scrollback.", owner: hwnd)
+            findHints.set(previous, "Previous (Return)\nFind the match above.", owner: hwnd)
+            findHints.set(next, "Next (Shift+Return)\nFind the match below.", owner: hwnd)
+            findHints.set(done, "Done (Esc)\nClose Find and go back to typing.", owner: hwnd)
+            findControls = (field, previous, next, done, font, glyph)
+        }
+        layoutFind()
+        guard let controls = findControls else { return }
+        for control in [controls.field, controls.previous, controls.next, controls.done] { ShowWindow(control, SW_SHOW) }
+        SetFocus(controls.field)
+        SendMessageW(controls.field, UINT(EM_SETSEL), 0, -1)
+        search()
+    }
+
+    func hideFind() {
+        guard let controls = findControls else { return }
+        for control in [controls.field, controls.previous, controls.next, controls.done] { ShowWindow(control, SW_HIDE) }
+        matches = []
+        currentMatch = nil
+        clearSelection()
+        if let hwnd { SetFocus(hwnd) }
+    }
+
+    private func layoutFind() {
+        guard let hwnd, let controls = findControls else { return }
+        let dpi = GetDpiForWindow(hwnd)
+        func s(_ v: Double) -> Int32 { scaled(v, dpi: dpi) }
+        var rect = RECT()
+        GetClientRect(hwnd, &rect)
+        let width = min(s(340), rect.right - s(16)), top = s(6)
+        var x = rect.right - s(8) - width
+        let fieldWidth = width - 3 * s(30)
+        MoveWindow(controls.field, x, top, fieldWidth, s(26), true)
+        x += fieldWidth + s(2)
+        for button in [controls.previous, controls.next, controls.done] {
+            MoveWindow(button, x, top, s(28), s(26), true)
+            x += s(30)
+        }
+    }
+
+    /// Finds every match of the text, then shows the last one (the one nearest the prompt), as Linux does.
+    private func search() {
+        let needle = findText.lowercased()
+        matches = []
+        currentMatch = nil
+        guard !needle.isEmpty else { clearSelection(); return }
+        let first = terminal.buffer.totalLinesTrimmed, last = liveTop + terminal.rows - 1
+        if first <= last {
+            for row in first...last {
+                guard let line = terminal.getScrollInvariantLine(row: row) else { continue }
+                // One character per column, so a match's index is its column.
+                let text = Array(line.translateToString(trimRight: false, skipNullCellsFollowingWide: false).lowercased())
+                let pattern = Array(needle)
+                guard pattern.count <= text.count else { continue }
+                var index = 0
+                while index + pattern.count <= text.count {
+                    if Array(text[index..<index + pattern.count]) == pattern {
+                        matches.append((row, index, index + pattern.count))
+                        index += pattern.count
+                    } else {
+                        index += 1
+                    }
+                }
+            }
+        }
+        if matches.isEmpty { clearSelection(); MessageBeep(UINT(MB_OK)); return }
+        show(match: matches.count - 1)
+    }
+
+    /// Previous goes up (older output), Next goes down; both wrap around.
+    private func findStep(up: Bool) {
+        guard !matches.isEmpty else { search(); return }
+        let index = currentMatch ?? matches.count
+        show(match: (index + (up ? -1 : 1) + matches.count) % matches.count)
+    }
+
+    private func show(match index: Int) {
+        currentMatch = index
+        let match = matches[index]
+        selectionStart = Position(col: match.start, row: match.row)
+        selectionEnd = Position(col: match.end, row: match.row)
+        // Scrolled so the match is on screen, near the middle when it was off screen.
+        if match.row < viewTop || match.row >= viewTop + terminal.rows {
+            scrollOffset = max(0, min(maxScrollOffset, liveTop - match.row + terminal.rows / 2))
+        }
+        invalidate()
+    }
+
+    /// For the feature tests' bridge: opens Find with `text` typed in, or steps through the matches.
+    func bridgeFind(_ text: String) {
+        showFind()
+        if let field = findControls?.field { withWide(text) { _ = SetWindowTextW(field, $0) } }
+        search()
+    }
+    func bridgeFindStep(up: Bool) { findStep(up: up) }
+
+    /// Keys in the find field: Return finds the previous match, Shift+Return the next, Esc closes the bar.
+    func handleFindKey(_ message: MSG) -> Bool {
+        guard let controls = findControls, message.hwnd == controls.field, message.message == UINT(WM_KEYDOWN) else { return false }
+        switch Int32(message.wParam) {
+        case VK_RETURN: findStep(up: !isPressed(VK_SHIFT)); return true
+        case VK_ESCAPE: hideFind(); return true
+        default: return false
+        }
     }
 
     // MARK: Painting

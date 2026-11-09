@@ -39,4 +39,8 @@ void herb_uia_window_destroyed(void *hwnd);
 /// test setup). Returns 0 when there is no such desktop or the move failed, so the window stays where it is.
 int herb_move_to_named_desktop(void *hwnd, const uint16_t *name);
 
+/// The name screen readers read for a standard control whose text is an icon (Dynamic Annotation). Returns 0
+/// when it couldn't be set.
+int herb_set_accessible_name(void *hwnd, const uint16_t *name);
+
 #endif

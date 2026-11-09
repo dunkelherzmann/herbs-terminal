@@ -13,6 +13,7 @@ enum MenuCommand: UINT {
     case clearToStart, clearScrollback, reset, hardReset
     case fullScreen, settings, manageLogins, about, quit
     case restoreDefaultSize, makeSizeDefault, closeTab, takeScreenshot
+    case copy, paste, pasteEscaped, selectAll, showExplorer
     // Ranges for lists: tabs and color presets.
     static let firstTab: UINT = 1000
     static let firstPreset: UINT = 2000
@@ -50,7 +51,7 @@ enum MainMenu {
             }
         }
         divider(menu)
-        item(menu, "Find in Terminal…\tCtrl+Shift+F", .findInTerminal, enabled: false)
+        item(menu, "Find in Terminal…\tCtrl+Shift+F", .findInTerminal, enabled: workspace.focusedPane != nil && workspace.activePane?.showingExplorer == false)
         submenu(menu, "Zoom") { sub in
             item(sub, "Bigger\tCtrl+=", .zoomIn)
             item(sub, "Smaller\tCtrl+-", .zoomOut)

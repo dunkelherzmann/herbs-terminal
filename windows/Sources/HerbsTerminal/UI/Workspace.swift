@@ -103,6 +103,7 @@ final class Workspace: WindowObject {
         }
         pane.onExit = { [weak self] pane in self?.shellExited(pane) }
         pane.onFocus = { [weak self] pane in self?.paneFocused(pane) }
+        pane.onContextMenu = { [weak self] pane, point in self?.showContextMenu(for: pane, at: point) }
         return pane
     }
 
@@ -390,6 +391,41 @@ final class Workspace: WindowObject {
         let index = number == 9 ? all.count - 1 : number - 1
         guard all.indices.contains(index), let window = all[index].hwnd else { return }
         SetFocus(window)
+    }
+
+    // MARK: Right-click menu
+
+    /// The terminal's right-click menu, item for item as on the Mac and Linux, with Windows' shortcuts. nil is a
+    /// divider. The feature tests' bridge reads and chooses from this same list.
+    func contextMenuEntries(for pane: TerminalPane) -> [(title: String, command: MenuCommand, enabled: Bool)?] {
+        guard let index = tabIndex(holding: pane), let head = tabs[index] as? TerminalPane else { return [] }
+        let canPaste = pane.hwnd.flatMap { clipboardText($0) }.map { !$0.isEmpty } ?? false
+        var entries: [(title: String, command: MenuCommand, enabled: Bool)?] = [
+            ("Copy\tCtrl+Shift+C", .copy, pane.hasSelection), ("Paste\tCtrl+Shift+V", .paste, canPaste),
+            ("Paste Escaped Text\tCtrl+Alt+V", .pasteEscaped, canPaste), ("Select All\tCtrl+Shift+A", .selectAll, true), nil,
+            ("Find…\tCtrl+Shift+F", .findInTerminal, true), ("Clear to Start\tCtrl+Shift+L", .clearToStart, true),
+            ("Clear Scrollback\tCtrl+Alt+K", .clearScrollback, true), ("Reset\tCtrl+Alt+R", .reset, true), nil,
+            ("Split Vertically\tCtrl+Shift+E", .splitVertical, true), ("Split Horizontally\tCtrl+Shift+O", .splitHorizontal, true),
+        ]
+        if head.group?.isSplit == true { entries.append(("Close Pane\tCtrl+Alt+W", .closePane, true)) }
+        entries += [nil, ("New Tab\tCtrl+Shift+T", .newTab, true), ("Show File Explorer\tCtrl+Shift+X", .showExplorer, true), nil]
+        if head.isConnected, let remote = head.remote { entries.append(("Disconnect from \(remote.label)", .disconnect, true)) }
+        entries += [("Connect via SSH…\tCtrl+Shift+K", .connect, true), nil,
+                    ("Bigger\tCtrl+=", .zoomIn, true), ("Smaller\tCtrl+-", .zoomOut, true), ("Settings…\tCtrl+,", .settings, true)]
+        return entries
+    }
+
+    private func showContextMenu(for pane: TerminalPane, at point: POINT) {
+        guard let hwnd else { return }
+        paneFocused(pane)
+        let menu = CreatePopupMenu()
+        defer { DestroyMenu(menu) }
+        for entry in contextMenuEntries(for: pane) {
+            guard let entry else { AppendMenuW(menu, UINT(MF_SEPARATOR), 0, nil); continue }
+            _ = withWide(entry.title) { AppendMenuW(menu, UINT(MF_STRING) | (entry.enabled ? 0 : UINT(MF_GRAYED)), UINT_PTR(entry.command.rawValue), $0) }
+        }
+        let chosen = MainMenu.trackPopup(menu, at: point, owner: hwnd)
+        if chosen != 0 { perform(chosen) }
     }
 
     // MARK: Run Command on Hosts
@@ -774,8 +810,13 @@ final class Workspace: WindowObject {
         case .previousPane: cyclePane(-1)
         case .multiExec: setMultiExec(!multiExec)
         case .runOnHosts: showRunOnHosts()
+        case .copy: pane?.copySelection()
+        case .paste: pane?.paste()
+        case .pasteEscaped: pane?.pasteEscaped()
+        case .selectAll: pane?.selectAll()
+        case .showExplorer: if activePane?.showingExplorer == false { toggleExplorer() }
         case .findInTerminal:
-            break // Not in the Windows version yet; shown greyed out.
+            if activePane?.showingExplorer == false { pane?.showFind() }
         }
     }
 
@@ -791,6 +832,7 @@ final class Workspace: WindowObject {
 
     /// Keyboard shortcuts, checked before the message reaches the focused terminal. Returns true when handled.
     func shortcut(_ message: MSG) -> Bool {
+        if let pane = focusedPane, pane.handleFindKey(message) { return true }
         if let explorer = activePane?.explorer, activePane?.showingExplorer == true, explorer.handleKey(message) { return true }
         if let editor = activeEditor, editor.handleKey(message) { return true }
         let isKey = message.message == UINT(WM_KEYDOWN), isSystemKey = message.message == UINT(WM_SYSKEYDOWN)
@@ -812,6 +854,8 @@ final class Workspace: WindowObject {
             if letter("L") { return run(.clearToStart) }
             if letter("E") { return run(.splitVertical) }
             if letter("M") { return run(.multiExec) }
+            if letter("F") { return run(.findInTerminal) }
+            if letter("A") { return run(.selectAll) }
             if letter("O") { return run(.splitHorizontal) }
             if letter("Q") { return run(.quit) }
             if key == VK_PRIOR { return run(.moveTabLeft) }
@@ -820,6 +864,7 @@ final class Workspace: WindowObject {
         }
         if control && alt && !shift {
             if letter("W") { return run(.closePane) }
+            if letter("V") { return run(.pasteEscaped) }
             if key == VK_RIGHT { return run(.nextPane) }
             if key == VK_LEFT { return run(.previousPane) }
             if letter("K") { return run(.clearScrollback) }
@@ -1018,6 +1063,7 @@ final class Workspace: WindowObject {
         case .export: exportSession()
         case .explorer: toggleExplorer()
         case .multiExec: setMultiExec(!multiExec)
+        case .search: perform(MenuCommand.findInTerminal.rawValue)
         case .screenshot: takeScreenshot()
         case .tab(let index): select(index)
         case .tabClose(let index): closeTab(at: index)
