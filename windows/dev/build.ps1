@@ -104,6 +104,27 @@ if (-not (Test-Path $exe)) { $exe = Join-Path $windows "$scratch\$configuration\
 if (-not (Test-Path $exe)) { throw "The build didn't produce HerbsTerminal.exe." }
 Write-Host "Built $exe"
 
+# tailcat (BSD-3-Clause), Tailscale's own Windows release, for Tailcat peers: downloaded once into the build folder,
+# checked against its published SHA-256, and placed beside the executable (the app never uses a copy on PATH).
+$tailcatVersion = '0.7.0'
+$tailcatSha256 = 'f04cac07e3bf6c700b0b543df0d3315a3b312cd5a05ee76714e1cc848e9b2dff'
+$tailcatCache = Join-Path $windows "$scratch\tailcat-$tailcatVersion"
+if (-not (Test-Path (Join-Path $tailcatCache 'tailcat.exe'))) {
+    $zip = Join-Path $windows "$scratch\tailcat-$tailcatVersion.zip"
+    Invoke-WebRequest -UseBasicParsing "https://github.com/tailscale/tailcat/releases/download/v$tailcatVersion/tailcat_${tailcatVersion}_windows_amd64.zip" -OutFile $zip
+    if ((Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower() -ne $tailcatSha256) { Remove-Item $zip; throw "tailcat's download doesn't match its published checksum." }
+    New-Item -ItemType Directory -Force $tailcatCache | Out-Null
+    Expand-Archive -Force $zip $tailcatCache
+    Remove-Item $zip
+}
+$tailcatExe = Get-ChildItem -Recurse $tailcatCache -Filter 'tailcat.exe' | Select-Object -First 1
+$tailcatLicense = Get-ChildItem -Recurse $tailcatCache -Filter 'LICENSE*' | Select-Object -First 1
+# Only when it differs: a running tailcat (a share left by a test) locks the file.
+$tailcatBeside = Join-Path (Split-Path $exe) 'tailcat.exe'
+if (-not (Test-Path $tailcatBeside) -or (Get-FileHash $tailcatBeside).Hash -ne (Get-FileHash $tailcatExe.FullName).Hash) {
+    Copy-Item -Force $tailcatExe.FullName (Split-Path $exe)
+}
+
 if ($Package) {
     $out = Join-Path $repo 'dist\HerbsTerminal-windows'
     if (Test-Path $out) { Remove-Item -Recurse -Force $out }
@@ -148,6 +169,8 @@ if ($Package) {
         $bundled['vcruntime140_1.dll'] = 'vcruntime140_1.dll'
     }
     Copy-Item (Join-Path $repo 'LICENSE') (Join-Path $out 'LICENSE.txt')
+    Copy-Item $tailcatExe.FullName $out
+    if ($tailcatLicense) { Copy-Item $tailcatLicense.FullName (Join-Path $out 'tailcat-LICENSE.txt') }
     Copy-Item (Join-Path $windows 'NOTICES-windows.txt') $out
 
     $size = '{0:N1} MB' -f ((Get-ChildItem $out -Recurse | Measure-Object Length -Sum).Sum / 1MB)

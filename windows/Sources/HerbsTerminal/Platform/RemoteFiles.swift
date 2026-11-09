@@ -15,16 +15,28 @@ final class RemoteSession: @unchecked Sendable {
     private let lock = NSLock()
     private var client: SFTPClient?
 
-    init(endpoint: RemoteEndpoint, password: String?, asRoot: Bool = false, sudoPassword: String? = nil) {
+    /// A Tailcat peer's secret address: each connection gets its own one-time ProxyCommand from it.
+    private let tailcatAddress: String?
+
+    init(endpoint: RemoteEndpoint, password: String?, asRoot: Bool = false, sudoPassword: String? = nil, tailcatAddress: String? = nil) {
         self.endpoint = endpoint
         self.password = password
+        self.tailcatAddress = tailcatAddress
         self.asRoot = asRoot
         self.sudoPassword = sudoPassword
     }
 
+    /// Whether this login has a password to sign in with (otherwise only keys and ssh-agent).
+    var hasPassword: Bool { password?.isEmpty == false }
+
+    /// The same login with `password` (asked for by the explorer when keys don't sign in).
+    func with(password: String) -> RemoteSession {
+        RemoteSession(endpoint: endpoint, password: password, asRoot: asRoot, sudoPassword: sudoPassword, tailcatAddress: tailcatAddress)
+    }
+
     /// The same login as root (Administrator mode).
     func administrator(sudoPassword: String?) -> RemoteSession {
-        RemoteSession(endpoint: endpoint, password: password, asRoot: true, sudoPassword: sudoPassword)
+        RemoteSession(endpoint: endpoint, password: password, asRoot: true, sudoPassword: sudoPassword, tailcatAddress: tailcatAddress)
     }
 
     /// Finds the SFTP server, wherever its OpenSSH package put it (as on the Mac and Linux).
@@ -67,19 +79,29 @@ final class RemoteSession: @unchecked Sendable {
 
     /// ssh's options for this host, and the relay's first input line: the password helper's pipe and a one-time
     /// token, or "-" for keys only.
-    func relaySetup() throws -> (arguments: [String], preamble: String) {
+    func relaySetup() throws -> (arguments: [String], preamble: String, destination: String) {
         guard SSH.executable != nil else {
             throw FileIssue("Windows' OpenSSH client isn't installed. Add it in Settings ▸ System ▸ Optional features ▸ OpenSSH Client.")
         }
-        var arguments = ["-p", String(endpoint.port)] + SSH.keepAliveOptions
-        arguments += ["-o", "ControlPath=none", "-o", "StrictHostKeyChecking=yes", "-o", "NumberOfPasswordPrompts=1"]
+        var arguments = SSH.keepAliveOptions + ["-o", "ControlPath=none", "-o", "StrictHostKeyChecking=yes", "-o", "NumberOfPasswordPrompts=1"]
+        var destination = "\(endpoint.username)@\(endpoint.host)"
+        var logins = endpoint.passwordLogins
+        if let tailcatAddress {
+            // Through a loopback port the app forwards to the peer (Windows' ssh stalls on a ProxyCommand here).
+            let direct = try Tailcat.directOptions(address: tailcatAddress, endpoint: endpoint)
+            arguments += direct.options
+            destination = direct.destination
+            logins.append(direct.destination) // ssh's password prompt names the loopback address.
+        } else {
+            arguments += ["-p", String(endpoint.port)]
+        }
         var preamble = "-\n"
         if let password, !password.isEmpty, let broker = AskpassBroker.shared {
-            preamble = "\(broker.pipeName) \(broker.issue(password, for: endpoint.passwordLogins))\n"
+            preamble = "\(broker.pipeName) \(broker.issue(password, for: logins))\n"
         } else {
             arguments += ["-o", "BatchMode=yes"] // Keys and ssh-agent only; nothing could answer a prompt.
         }
-        return (arguments, preamble)
+        return (arguments, preamble, destination)
     }
 
     /// Runs one shell command on the host and returns what it printed. Windows' ssh can't reuse the tab's
@@ -88,7 +110,7 @@ final class RemoteSession: @unchecked Sendable {
         let setup = try relaySetup()
         let process = Process()
         process.executableURL = URL(fileURLWithPath: AskpassBroker.executablePath)
-        process.arguments = [SFTPRelay.flag] + setup.arguments + ["-T", "\(endpoint.username)@\(endpoint.host)", command]
+        process.arguments = [SFTPRelay.flag] + setup.arguments + ["-T", setup.destination, command]
         let pipe = Pipe(), output = Pipe()
         process.standardInput = pipe
         process.standardOutput = output
@@ -111,10 +133,10 @@ final class RemoteSession: @unchecked Sendable {
         if asRoot {
             // sudo reads its password line first; everything after it is the SFTP conversation.
             let sudo = sudoPassword == nil ? "sudo -n" : "sudo -S -k -p ''"
-            arguments += ["-T", "\(endpoint.username)@\(endpoint.host)", "\(sudo) /bin/sh -c '\(Self.serverSearch)'"]
+            arguments += ["-T", setup.destination, "\(sudo) /bin/sh -c '\(Self.serverSearch)'"]
             if let sudoPassword { preamble += sudoPassword + "\n" }
         } else {
-            arguments += ["-T", "-s", "\(endpoint.username)@\(endpoint.host)", "sftp"]
+            arguments += ["-T", "-s", setup.destination, "sftp"]
         }
         do {
             return try SFTPClient(executable: AskpassBroker.executablePath, arguments: [SFTPRelay.flag] + arguments,
@@ -291,7 +313,7 @@ extension RemoteEndpoint {
 
 extension RemoteSession {
     /// Another channel to the same host with the same login, so transfers don't hold up browsing.
-    func twin() -> RemoteSession { RemoteSession(endpoint: endpoint, password: password, asRoot: asRoot, sudoPassword: sudoPassword) }
+    func twin() -> RemoteSession { RemoteSession(endpoint: endpoint, password: password, asRoot: asRoot, sudoPassword: sudoPassword, tailcatAddress: tailcatAddress) }
 }
 
 /// Streams files and folders between this PC and a host over one SFTP channel, as Linux's `SFTPTransfer` does.

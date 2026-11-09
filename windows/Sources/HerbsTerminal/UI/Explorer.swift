@@ -795,6 +795,19 @@ final class ExplorerPane: WindowObject {
                 self.entries = found.entries.map { self.entry(for: $0, in: found.folder) }
                 self.status = ""
             case .failure(let error):
+                // Windows' ssh can't share the terminal's connection, so a login whose password was typed in the
+                // terminal (a typed ssh, a Tailcat peer) has none here: ask for it once, then sign in again.
+                if let remote = self.remote, !remote.hasPassword, !self.askedPassword, !remote.asRoot,
+                   error.localizedDescription.hasPrefix("Couldn't open the files of") {
+                    self.askedPassword = true
+                    if let password = self.askPassword(for: remote.endpoint) {
+                        let signedIn = remote.with(password: password)
+                        self.remote = signedIn
+                        self.userRemote = signedIn
+                        self.remoteNavigate(to: path, record: record, select: select)
+                        return
+                    }
+                }
                 self.status = error.localizedDescription
                 self.statusIsError = true
                 if record { MessageBeep(UINT(MB_ICONWARNING)) }
@@ -1026,6 +1039,20 @@ final class ExplorerPane: WindowObject {
         }
         let chosen = MainMenu.trackPopup(menu, at: screen, owner: owner, rightAligned: rightAligned)
         if let command = Command(rawValue: chosen) { perform(command) }
+    }
+
+    /// Asked at most once per explorer, so a refused password doesn't loop.
+    private var askedPassword = false
+
+    /// "Sign in to user@host": the explorer's own sign-in, when keys didn't work and it has no saved password.
+    private func askPassword(for endpoint: RemoteEndpoint) -> String? {
+        guard let answer = FormDialog.run(owner: GetAncestor(hwnd, UINT(GA_ROOT)), title: "Sign in to \(endpoint.label)",
+                                          message: "The file explorer signs in to the host on its own, because Windows' ssh can't share the terminal's connection. "
+                                                   + "Enter the password for \(endpoint.label); it's kept only while this tab is open.",
+                                          fields: [.init(label: "Password", text: "", secure: true)],
+                                          buttons: [.init(title: "Cancel"), .init(title: "Sign In", isDefault: true)]),
+              answer.button == 1, !answer.values[0].isEmpty else { return nil }
+        return answer.values[0]
     }
 
     // MARK: Administrator mode
@@ -1934,6 +1961,6 @@ extension ExplorerPane {
     var bridgeState: [String: Any] {
         ["shown": IsWindowVisible(hwnd), "path": folder, "items": rows.map { $0.isFolder ? $0.name + "/" : $0.name },
          "selected": selectedEntries.map(\.name), "hidden": showHidden, "administrator": isAdministrator, "remote": remote != nil,
-         "bookmarked": isBookmarked, "canUndo": !undoLog.undoStack.isEmpty, "canRedo": !undoLog.redoStack.isEmpty, "undoTitle": undoLog.undoTitle, "redoTitle": undoLog.redoTitle]
+         "bookmarked": isBookmarked, "status": status, "canUndo": !undoLog.undoStack.isEmpty, "canRedo": !undoLog.redoStack.isEmpty, "undoTitle": undoLog.undoTitle, "redoTitle": undoLog.redoTitle]
     }
 }

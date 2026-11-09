@@ -500,6 +500,13 @@ final class Workspace: WindowObject {
         if chosen != 0 { perform(chosen) }
     }
 
+    /// A Tailcat peer's address for the explorer's own channel, with the shared local proxy started for it.
+    private static func tailcatAddress(for endpoint: RemoteEndpoint) -> String? {
+        guard let address = try? Tailcat.address(for: endpoint) else { return nil }
+        Tailcat.startSocks()
+        return address
+    }
+
     // MARK: Run Command on Hosts
 
     /// Kept for the window's life, so the command and the chosen hosts are still there when it opens again.
@@ -534,7 +541,8 @@ final class Workspace: WindowObject {
                 let explorer: ExplorerPane
                 if let endpoint = pane.remote {
                     // An SSH tab's explorer shows that host, over its own SFTP channel with the tab's login.
-                    explorer = ExplorerPane(parent: hwnd, start: ".", remote: RemoteSession(endpoint: endpoint, password: pane.remotePassword))
+                    explorer = ExplorerPane(parent: hwnd, start: ".", remote: RemoteSession(endpoint: endpoint, password: pane.remotePassword,
+                                                                                         tailcatAddress: Self.tailcatAddress(for: endpoint)))
                 } else {
                     explorer = ExplorerPane(parent: hwnd, start: FileManager.default.homeDirectoryForCurrentUser.path.windowsPath)
                 }
@@ -679,8 +687,11 @@ final class Workspace: WindowObject {
     /// session or running a program (or an editor tab) gets a new tab instead. A saved or typed password reaches ssh
     /// only through the password helper.
     func connectSSH(_ login: SSHLogin) {
-        let endpoint = RemoteEndpoint(host: login.host, port: login.port, username: login.username)
-        let password = login.password.isEmpty ? nil : login.password
+        connect(RemoteEndpoint(host: login.host, port: login.port, username: login.username), password: login.password.isEmpty ? nil : login.password)
+    }
+
+    /// Connects to `endpoint` (a login, or a Tailcat peer) in the focused terminal or a new tab.
+    func connect(_ endpoint: RemoteEndpoint, password: String?) {
         if let pane = focusedPane, activePane?.showingExplorer == false, pane.remote == nil, pane.isRunning, pane.runningProgram == nil {
             pane.connectSSH(endpoint, password: password)
         } else {
@@ -1168,6 +1179,7 @@ final class Workspace: WindowObject {
         case .export: exportSession()
         case .explorer: toggleExplorer()
         case .multiExec: setMultiExec(!multiExec)
+        case .peers: TailcatPeersWindow.show(owner: hwnd, workspace: self)
         case .search: perform(MenuCommand.findInTerminal.rawValue)
         case .screenshot: takeScreenshot()
         case .tab(let index): select(index)

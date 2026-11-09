@@ -15,6 +15,9 @@ This folder also contains third-party components, each under its own license:
 - ICU (_FoundationICU.dll)
   Copyright (c) Unicode, Inc. Unicode License V3. https://www.unicode.org/license.txt
 
+- tailcat 0.7.0 (tailcat.exe; its license is in tailcat-LICENSE.txt)
+  Copyright (c) Tailscale Inc & AUTHORS. BSD 3-Clause License. https://github.com/tailscale/tailcat
+
 - Microsoft Visual C++ runtime (vcruntime140*.dll, msvcp140*.dll), when present
   Copyright (c) Microsoft Corporation. Redistributed under the Visual Studio redistribution terms.
 

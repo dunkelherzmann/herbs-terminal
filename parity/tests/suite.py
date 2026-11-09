@@ -207,8 +207,15 @@ def connection(c, s=None):
     return c.tab(s).get("connection", {})
 
 
+def logged_in(c, account, s):
+    """The remote shell's prompt is on screen (user@host:folder$), not just a line naming the account (an error does too)."""
+    import re
+    prompt = re.compile(r"^" + re.escape(account["user"]) + r"@[^\s:]+:[^\s]*[$#]\s*$")
+    return any(prompt.match(line.rstrip()) for line in c.text(s).splitlines())
+
+
 def expect_connected(c, account, s):
-    c.expect(connection(c, s).get("state") == "connected" and any(l.startswith(account["user"] + "@") for l in c.text(s).splitlines()),
+    c.expect(connection(c, s).get("state") == "connected" and logged_in(c, account, s),
              f"expected a login to {account['label']} (saw: {connection(c, s)}; {summary(s)})")
 
 
@@ -231,7 +238,7 @@ def connect_test_host(c, password=None):
         state = connection(c, s).get("state")
         # Connected means logged in: the remote shell's prompt names the account (Windows reports a running
         # ssh as connected before the login is done).
-        if state == "connected" and any(line.startswith(account["user"] + "@") for line in c.text(s).splitlines()):
+        if state == "connected" and logged_in(c, account, s):
             return account, s
         if state == "failed":
             failed_since = failed_since or time.time()
@@ -770,6 +777,13 @@ def _(c):
     c.until(lambda s: c.tab(s).get("explorer", {}).get("remote") and c.tab(s)["explorer"].get("path", "").rstrip("/") == f"/home/{account['user']}",
             f"expected the explorer in {account['user']}'s home on the host", timeout=15)
 
+@test("S2", "Connecting while the tab is busy opens a new tab for it")
+def _(c):
+    c.run("sleep 40", "ping -n 41 127.0.0.1 >nul", settle=1.5)
+    account, s = connect_test_host(c)
+    expect_connected(c, account, s)
+    c.expect(len(c.tabs(s)) == 2, f"expected a second tab for the login, saw {[t['name'] for t in c.tabs(s)]}")
+
 @test("S4", "Disconnect returns the tab and title to this computer")
 def _(c):
     account, s = connect_test_host(c)
@@ -800,6 +814,22 @@ def _(c):
     c.until(lambda s: has_window(s, "Connection") or any(account["label"] in d["heading"] or "Connection" in d["heading"] for d in s.get("dialogs", [])),
             "expected the connection details")
 
+def explorer_follows_with_password(c, account):
+    """The explorer shows the host's home folder; where it signs in on its own (Windows), it may ask for the password."""
+    c.command("toggle-explorer", settle=2)
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        s = c.state()
+        for dialog in s.get("dialogs", []):
+            if "Sign in" in dialog["heading"]:
+                c.answer(next(r for r in dialog["responses"] if r.lower() != "cancel"), [account["password"]], heading=dialog["heading"])
+        explorer = c.tab(s).get("explorer", {})
+        if explorer.get("remote") and explorer.get("path", "").rstrip("/") == f"/home/{account['user']}":
+            return
+        time.sleep(0.5)
+    s = c.state()
+    raise Outcome("broken", f"expected the explorer in {account['user']}'s home on the host (explorer: {c.tab(s).get('explorer')}; {summary(s)})")
+
 @test("S3", "A typed ssh is followed, and exit returns the tab")
 def _(c):
     account = ssh_account()
@@ -818,12 +848,14 @@ def _(c):
         elif not typed_password and last.lower().endswith("password:"):
             c.type(account["password"] + c.app.enter, settle=2)
             typed_password = True
-        elif connection(c, s).get("state") == "connected" and any(l.startswith(account["user"] + "@") for l in text.splitlines()):
+        elif connection(c, s).get("state") == "connected" and logged_in(c, account, s):
             break
         time.sleep(0.5)
     s = c.state()
     expect_connected(c, account, s)
     c.expect(account["label"] in c.window(s)["title"], f"the title doesn't name {account['label']}: {c.window(s)['title']!r}")
+    explorer_follows_with_password(c, account)
+    c.command("toggle-explorer", settle=1.5)
     c.run("exit", settle=2)
     c.until(lambda s: connection(c, s).get("state") == "local" and account["label"] not in c.window(s)["title"],
             "expected exit to return the tab to this computer", timeout=15)
@@ -1268,13 +1300,99 @@ def _(c):
 
 # ---------------------------------------------------------------- C, Y, Z
 
-@test("C1", "Tailcat Peers: add a peer")
-def _(c):
+def tailcat_window(c):
     c.command("tailcat", settle=1.5)
     c.until(lambda s: has_window(s, "Tailcat"), "expected the Tailcat Peers window")
-    c.unverified("the window opens; adding a peer needs its form, which the bridge doesn't fill yet")
-for fid in ("C2", "C3", "C4", "C5", "C6"):
-    manual(fid, "Tailcat", "needs a second machine running tailcat")
+    try:
+        return c.bridge.call("tailcat-state")
+    except bridge_module.BridgeError as error:
+        if "unknown op" in str(error):
+            c.unverified("the window opens; this platform's test bridge can't drive it yet")
+        raise
+
+def tailcat_self_peer(c):
+    """Shares this computer and adds that address as a peer (this computer is its own Tailcat peer)."""
+    tailcat_window(c)
+    c.bridge.call("tailcat-share", persistent=False)
+    s = None
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        s = c.bridge.call("tailcat-state")
+        if s.get("shareAddress") or s.get("error"):
+            break
+        time.sleep(0.5)
+    c.expect(s and s.get("shareAddress"), f"expected Share to report an address (saw: {s and s.get('error')})")
+    c.expect(c.bridge.call("tailcat-add", name="self", username="nobody", address=s["shareAddress"], persistent=False),
+             "expected Add Peer to save the peer")
+    return s["shareAddress"]
+
+@test("C6", "Share this computer: an address to give a peer, and Stop")
+def _(c):
+    tailcat_self_peer(c)
+    c.bridge.call("tailcat-stop")
+    c.until(lambda s: not c.bridge.call("tailcat-state")["sharing"], "expected Stop Sharing to stop the server")
+
+@test("C1", "Tailcat Peers: add a peer")
+def _(c):
+    tailcat_self_peer(c)
+    peers = c.bridge.call("tailcat-state")["peers"]
+    c.expect([p["name"] for p in peers] == ["self"] and peers[0]["persistent"] is False, f"expected the one-time peer 'self', saw {peers}")
+    c.bridge.call("tailcat-stop")
+
+@test("C2", "Ping: Direct or Relayed with latency")
+def _(c):
+    tailcat_self_peer(c)
+    c.bridge.call("tailcat-ping", name="self")
+    deadline, route = time.time() + 40, ""
+    while time.time() < deadline:
+        route = c.bridge.call("tailcat-state")["peers"][0]["route"]
+        if route.startswith(("Direct", "Relayed", "Unreachable")):
+            break
+        time.sleep(1)
+    c.bridge.call("tailcat-stop")
+    import re
+    c.expect(route.startswith(("Direct", "Relayed")) and re.search(r"\d(\.\d+)?(µs|us|ms|s)\b", route),
+             f"expected a Direct or Relayed route with its latency, saw {route!r}")
+
+@test("C5", "Remove a peer")
+def _(c):
+    tailcat_self_peer(c)
+    c.bridge.call("tailcat-remove", name="self")
+    c.until(lambda s: c.bridge.call("tailcat-state")["peers"] == [], "expected the peer gone")
+    c.bridge.call("tailcat-stop")
+
+@test("C3", "Connect through Tailcat: the shell, and the address nowhere on screen")
+def _(c):
+    account = ssh_account()
+    path = os.path.expanduser("~/.config/herbs-terminal/test-tailcat")
+    if not account or not os.path.exists(path):
+        c.unverified("needs the test host shared over tailcat (~/.config/herbs-terminal/test-tailcat holds its address)")
+    address = open(path, encoding="utf-8").read().strip()
+    tailcat_window(c)
+    c.bridge.call("tailcat-add", name="testhost", username=account["user"], address=address, persistent=False)
+    c.bridge.call("tailcat-connect", name="testhost")
+    deadline, typed_password = time.time() + 45, False
+    while time.time() < deadline:
+        s = c.state()
+        text = c.text(s)
+        last = text.rstrip().splitlines()[-1] if text.strip() else ""
+        if "(yes/no" in last:
+            c.type("yes" + c.app.enter, settle=1)
+        elif not typed_password and last.lower().endswith("password:"):
+            c.type(account["password"] + c.app.enter, settle=2)
+            typed_password = True
+        elif connection(c, s).get("state") == "connected" and logged_in(c, account, s):
+            break
+        time.sleep(0.5)
+    s = c.state()
+    if connection(c, s).get("state") != "connected":
+        tail = [line for line in c.text(s).splitlines() if line.strip()][-12:]
+        raise Outcome("broken", f"expected a login through Tailcat; the terminal shows: {tail}")
+    expect_connected(c, account, s)
+    c.expect(address not in c.text(s), "the Tailcat address is on the screen")
+    explorer_follows_with_password(c, account)
+
+manual("C4", "Tailcat", "needs a peer whose SSH service is off")
 manual("C7", "Unlock / Lock", "the Tailcat window isn't driven by the bridge yet")
 manual("Y1", "Names and hints for screen readers", "covered by parity/check.sh and a screen-reader pass")
 manual("Y2", "States announced", "needs a screen reader")

@@ -8,6 +8,7 @@ import WinSDK
 /// history, and when ssh ends the tab is back at its own shell.
 enum SSHLauncher {
     /// Writes a launcher for `endpoint` and returns its path.
+    @MainActor
     static func write(_ endpoint: RemoteEndpoint, password: String?, lines: (String) -> Int, shell: DropQuoting) -> String? {
         guard let ssh = SSH.executable else { return nil }
         let folder = AppFolders.support().appendingPathComponent("launch", isDirectory: true)
@@ -15,17 +16,22 @@ enum SSHLauncher {
         let path = folder.appendingPathComponent("ssh-\(randomHex(8)).cmd").path
         // Up and clear, once per row the typed line takes: the launcher's own path, which the shell echoed.
         let rows = max(1, lines(typed(path, for: shell)))
-        var lines = ["@echo off", "setlocal"]
+        // Everything after the first line is one block, which Command Prompt reads in full before running it: the
+        // app deletes the launcher as soon as ssh is running, and cmd mustn't need to read the file again.
+        var lines = ["@echo off", "(", "setlocal"]
         lines.append("<nul set /p \"=" + String(repeating: "\u{1b}[1A\u{1b}[2K", count: rows) + "\"")
         if let password, !password.isEmpty, let broker = AskpassBroker.shared {
             for (name, value) in broker.environment(token: broker.issue(password, for: endpoint.passwordLogins)).sorted(by: { $0.key < $1.key }) {
                 lines.append("set \"\(name)=\(batchSafe(value))\"")
             }
         }
-        let arguments = [ssh] + SSH.keepAliveOptions + ["-p", String(endpoint.port), "\(endpoint.username)@\(endpoint.host)"]
-        lines.append(arguments.map { "\"\(batchSafe($0))\"" }.joined(separator: " "))
+        // A Tailcat peer is reached through the app's proxy helper, with a token for this connection only.
+        guard let proxy = try? Tailcat.sshOptions(endpoint) else { return nil }
+        let arguments = [ssh] + SSH.keepAliveOptions + proxy + ["-p", String(endpoint.port), "\(endpoint.username)@\(endpoint.host)"]
+        lines.append(arguments.map { batchSafe(quoteArgument($0)) }.joined(separator: " "))
         // Deletes the launcher as the batch ends (the usual trick, so cmd doesn't look for the next line).
         lines.append("(goto) 2>nul & del \"%~f0\" >nul 2>&1")
+        lines.append(")")
         guard FileManager.default.createFile(atPath: path, contents: Data((lines.joined(separator: "\r\n") + "\r\n").utf8)) else { return nil }
         return path
     }
