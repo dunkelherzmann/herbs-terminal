@@ -5,7 +5,7 @@ import Testing
 @testable import HerbsTerminal
 
 @MainActor
-@Suite("MultiExec")
+@Suite("MultiExec", .timeLimit(.minutes(2)))
 struct MultiExecTests {
     @Test
     func onlyWhatTheUserTypesIsBroadcast() {

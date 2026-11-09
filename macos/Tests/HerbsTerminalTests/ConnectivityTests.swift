@@ -4,7 +4,7 @@ import Foundation
 import Testing
 @testable import HerbsTerminal
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func askpassHandsOverThePasswordOnceAndNeverForOtherPrompts() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("tx-\(UUID().uuidString.prefix(8))")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -32,7 +32,7 @@ func askpassHandsOverThePasswordOnceAndNeverForOtherPrompts() throws {
     #expect(HelperMode.run(environment: [:], arguments: ["Herb's Terminal"]) == nil)
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func sshLauncherKeepsTokensOffScreenAndDeletesItself() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("tx-\(UUID().uuidString.prefix(8))")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -60,14 +60,14 @@ func sshLauncherKeepsTokensOffScreenAndDeletesItself() throws {
     #expect(!FileManager.default.fileExists(atPath: url.path))
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func bundledTailcatIsTheOnlyOneUsed() throws {
     let path = try #require(Tailcat.executable)
     #expect(path.hasSuffix("Contents/Helpers/tailcat") || path.hasSuffix("Vendor/tailcat/tailcat"))
     #expect(!path.hasPrefix("/opt/homebrew") && !path.hasPrefix("/usr/local"))
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func bookmarksAreScopedPerHost() {
     var list = BookmarkList(raw: "", scope: "me@a:22")
     list.toggle("/srv")
@@ -82,7 +82,7 @@ func bookmarksAreScopedPerHost() {
     #expect(list.paths == ["/var/log"])
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func newTabsCanStartInTheShellsRealFolder() async throws {
     let shell = LocalShell()
     shell.startDirectory = "/tmp"
@@ -93,7 +93,7 @@ func newTabsCanStartInTheShellsRealFolder() async throws {
     #expect(shell.foregroundProgram == nil)
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func titlesHideCredentialsInCommandLines() {
     #expect(redactCredentials("ssh admin:s3cret@192.0.2.10") == "ssh admin:•••@192.0.2.10")
     #expect(redactCredentials("curl https://bob:hunter2@example.com/x") == "curl https://bob:•••@example.com/x")
@@ -102,7 +102,7 @@ func titlesHideCredentialsInCommandLines() {
     #expect(redactCredentials("ssh -p 2222 admin@host") == "ssh -p 2222 admin@host")
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func sshArgumentsShareTheTabConnectionAndLetCallersOverride() {
     let direct = RemoteEndpoint(host: "h", port: 2222, username: "u")
     let args = direct.sshArguments(["-o", "ProxyCommand=/usr/bin/false"])
@@ -116,7 +116,7 @@ func sshArgumentsShareTheTabConnectionAndLetCallersOverride() {
     #expect(shellQuote("it's here") == "'it'\\''s here'")
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func tailcatPingReportsDirectOrRelayedRoutes() {
     #expect(Tailcat.route(fromPing: "pong in 42.1ms via DERP(sfo)\npong in 1.2ms via 203.0.113.7:41641\n")
             == .direct("1.2ms via 203.0.113.7:41641"))
@@ -124,7 +124,7 @@ func tailcatPingReportsDirectOrRelayedRoutes() {
     if case .unreachable = Tailcat.route(fromPing: "timeout waiting for pong\n") {} else { Issue.record("expected unreachable") }
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func tailcatPeersStoreAddressesEncryptedAndKeepThemOutOfSSHArguments() throws {
     let file = FileManager.default.temporaryDirectory.appendingPathComponent("peers-\(UUID().uuidString).json")
     defer { try? FileManager.default.removeItem(at: file) }
@@ -163,7 +163,7 @@ func tailcatPeersStoreAddressesEncryptedAndKeepThemOutOfSSHArguments() throws {
     #expect(TailcatPeerStore(file: file, secrets: secrets).peers.isEmpty)
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func multiHostClassifiesEachHostOnItsOwn() async throws {
     func outcome(_ script: String) async -> HostResult {
         let process = Process()

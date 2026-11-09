@@ -20,7 +20,8 @@ jobs:
       - run: macos/dev/build_and_run.sh --bundle
       # terminalUsesFactoryBasicProfile compares with the runner's own Terminal.app Basic profile, whose font
       # differs between macOS releases; it runs on the Mac with the rest of the suite.
-      - run: macos/dev/test.sh --skip terminalUsesFactoryBasicProfile
+      # Under a pseudo-terminal, so each test's result reaches the log as it happens and a hang shows which test.
+      - run: script -q /dev/null macos/dev/test.sh --skip terminalUsesFactoryBasicProfile
   linux:
     # x86_64, and aarch64 on GitHub's ARM runners: the release's ARM Flatpak comes from here (no ARM Linux machine).
     strategy:

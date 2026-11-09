@@ -3,7 +3,7 @@ import Testing
 @testable import HerbsTerminal
 
 @MainActor
-@Suite("Split panes")
+@Suite("Split panes", .timeLimit(.minutes(2)))
 struct SplitPaneTests {
     @Test
     func splittingBuildsAndCollapsesTheTree() {

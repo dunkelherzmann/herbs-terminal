@@ -29,7 +29,7 @@ final class MockRemoteFileService: RemoteFileService, @unchecked Sendable {
     }
 }
 
-@Suite("Remote Explorer Tests")
+@Suite("Remote Explorer Tests", .timeLimit(.minutes(2)))
 @MainActor
 struct RemoteExplorerTests {
 

@@ -15,7 +15,7 @@ private func read(_ url: URL) throws -> String { String(decoding: try Data(conte
 /// The macOS SFTP server, talking over pipes to the local filesystem: real SFTP without a network.
 private func localSFTP() throws -> SFTPClient { try SFTPClient(executable: "/usr/libexec/sftp-server", arguments: []) }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func destinationsGetFinderStyleCopyNames() throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -25,7 +25,7 @@ func destinationsGetFinderStyleCopyNames() throws {
     #expect(LocalFiles.destination(for: "fresh", in: root).lastPathComponent == "fresh")
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func localCopyMoveAndTrashUndoAndRedo() throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -68,7 +68,7 @@ func localCopyMoveAndTrashUndoAndRedo() throws {
     #expect(log.redoTitle == "Redo Move to Trash")
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func clipboardTracksCutAndRemoteOwnership() {
     let board = NSPasteboard(name: NSPasteboard.Name("herbsterminal-test-" + UUID().uuidString))
     defer { board.releaseGlobally() }
@@ -90,7 +90,7 @@ func clipboardTracksCutAndRemoteOwnership() {
     #expect(clipboard.readRemote(for: host) == nil)
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func sftpUploadDownloadCopyAndRemoveTrees() throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -125,7 +125,7 @@ func sftpUploadDownloadCopyAndRemoveTrees() throws {
     #expect(!FileManager.default.fileExists(atPath: remote.appendingPathComponent("dup").path))
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func cancelledUploadLeavesNoPartialFile() throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -139,7 +139,7 @@ func cancelledUploadLeavesNoPartialFile() throws {
     #expect(try FileManager.default.contentsOfDirectory(atPath: remote.path).isEmpty)
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func remotePasteMovesUndoAndRedo() async throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -177,7 +177,7 @@ func remotePasteMovesUndoAndRedo() async throws {
     #expect(vm.alert == nil)
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func profileDefaultsToBasicAndClampsSize() throws {
     let defaults = try #require(UserDefaults(suiteName: "herbsterminal-profile-" + UUID().uuidString))
     let profile = TerminalProfile(defaults: defaults)
@@ -201,7 +201,7 @@ func profileDefaultsToBasicAndClampsSize() throws {
     #expect(profile.scrollbackLines == 100)
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func builtInThemesAreSelectableAndPersist() throws {
     let defaults = try #require(UserDefaults(suiteName: "herbsterminal-themes-" + UUID().uuidString))
     let library = ThemeLibrary(defaults: defaults)
@@ -213,7 +213,7 @@ func builtInThemesAreSelectableAndPersist() throws {
     #expect(!library.isImported("Nord"))
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func remoteSymlinksToFoldersListAsFolders() async throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }

@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import HerbsTerminal
 
-@Suite("Typed ssh following")
+@Suite("Typed ssh following", .timeLimit(.minutes(2)))
 struct TypedSSHTests {
     private func scratch() throws -> URL {
         let url = URL(fileURLWithPath: "/tmp/herbs-test-\(UUID().uuidString.prefix(8))", isDirectory: true)

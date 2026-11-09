@@ -10,7 +10,7 @@ private func scratch() throws -> URL {
 
 private func localSFTP() throws -> SFTPClient { try SFTPClient(executable: "/usr/libexec/sftp-server", arguments: []) }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func textFilesAreRecognisedByTypeOrContent() {
     for name in ["notes.txt", "README.md", "main.swift", "config.json", "site.yaml", "run.sh", "data.csv", "Info.plist"] {
         #expect(TextCodec.isText(name: name) { nil }, "\(name)")
@@ -24,7 +24,7 @@ func textFilesAreRecognisedByTypeOrContent() {
     #expect(!TextCodec.isText(name: "blob") { Data([0x7F, 0x45, 0x4C, 0x46, 0, 0, 1]) })
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func encodingsRoundTripByteForByte() throws {
     let samples: [Data] = [
         Data("plain ascii\r\nwith CRLF\n".utf8),
@@ -39,7 +39,7 @@ func encodingsRoundTripByteForByte() throws {
     #expect(TextCodec.decode(Data([0x00, 0x01, 0x02])) == nil)
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func localSavesKeepPermissionsAndEditThroughLinks() async throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -59,7 +59,7 @@ func localSavesKeepPermissionsAndEditThroughLinks() async throws {
     #expect(try await source.version() != before)
 }
 
-@Test
+@Test(.timeLimit(.minutes(2)))
 func remoteFilesAreReadAndReplacedWhole() throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -78,7 +78,7 @@ func remoteFilesAreReadAndReplacedWhole() throws {
     #expect(try FileManager.default.contentsOfDirectory(atPath: root.path) == ["remote.conf"])
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func remoteNewFileOpensThroughTheExplorersConnection() async throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -95,7 +95,7 @@ func remoteNewFileOpensThroughTheExplorersConnection() async throws {
     #expect(await model.newFile(named: "todo.md", in: root.path) != path)
 }
 
-@Test @MainActor
+@Test(.timeLimit(.minutes(2))) @MainActor
 func filesOpenAsTabsInTheTerminalWindow() async throws {
     let root = try scratch()
     defer { try? FileManager.default.removeItem(at: root) }
