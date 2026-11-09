@@ -101,6 +101,19 @@ enum TestBridge {
             default: throw Failure(description: "unknown profile key")
             }
             return true
+        case "session-snapshot":
+            // Every window as session restore would save it (the parity copy never writes it).
+            let data = try JSONEncoder().encode(App.allWorkspaces.map(\.savedWindow))
+            return try JSONSerialization.jsonObject(with: data)
+        case "session-open":
+            // Reopens windows from a snapshot, as the next launch would.
+            let data = try JSONSerialization.data(withJSONObject: request["windows"] ?? [])
+            for window in try JSONDecoder().decode([SavedWindow].self, from: data) { App.newWindow(restoring: window) }
+            return true
+        case "resize-grid":
+            // The window resized to show this grid, as dragging its edge would.
+            try workspace.resize(columns: request["columns"] as? Int ?? 80, rows: request["rows"] as? Int ?? 24)
+            return true
         case "profile-add":
             // A new named profile (a copy of the default), with a startup command when given; returns its id.
             let profile = TerminalProfile.shared
@@ -324,6 +337,7 @@ enum TestBridge {
                                     "title": shell.title, "subtitle": shell.subtitle, "exited": !shell.isRunning, "text": shell.exportText(),
                                     "fontSize": TerminalProfile.shared.settings(for: shell.profileID).effectiveSize,
                                     "profile": TerminalProfile.shared.name(of: shell.profileID), "selection": shell.bridgeSelection,
+                                    "badge": shell.showingBadge ? shell.badgeText : NSNull(),
                                     "find": ["shown": shell.isFinding, "text": shell.findText, "matches": shell.findMatchCount]]
                         }
                         // A tab's connection, as the Mac and Linux report it.

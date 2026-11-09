@@ -71,6 +71,18 @@ enum TestBridge {
             guard number >= 1, number <= workspace.allPanes.count else { throw Failure(description: "no pane \(number)") }
             workspace.setIncluded(workspace.allPanes[number - 1], request["on"] as? Bool ?? true)
             return true
+        case "session-snapshot":
+            // Every window as session restore would save it (the parity copy never writes it).
+            return try JSONSerialization.jsonObject(with: try JSONEncoder().encode(Workspace.sessionSnapshot))
+        case "session-open":
+            // Reopens windows from a snapshot, as the next launch would.
+            let data = try JSONSerialization.data(withJSONObject: request["windows"] ?? [])
+            for window in try JSONDecoder().decode([SavedWindow].self, from: data) { Workspace(restoring: window).present() }
+            return true
+        case "resize-grid":
+            // The window resized to show this grid, as dragging its edge would.
+            try workspace.resize(columns: request["columns"] as? Int ?? 80, rows: request["rows"] as? Int ?? 24)
+            return true
         case "profile-add":
             // A new named profile (a copy of the default), with a startup command when given; returns its id.
             let profile = TerminalProfile.shared
@@ -217,7 +229,7 @@ enum TestBridge {
                                 ["number": (panes.firstIndex { $0 === pane } ?? -1) + 1, "focused": pane === tab.focused,
                                  "columns": pane.columns, "rows": pane.rows, "title": pane.title, "subtitle": pane.subtitle,
                                  "exited": pane.exited, "text": pane.screenText, "fontSize": pane.settings.effectiveSize,
-                                 "profile": TerminalProfile.shared.name(of: pane.profileID)]
+                                 "profile": TerminalProfile.shared.name(of: pane.profileID), "badge": pane.bridgeBadge ?? NSNull()]
                             },
                         ]
                         entry["connection"] = bridgeConnection(tab.state.connection)

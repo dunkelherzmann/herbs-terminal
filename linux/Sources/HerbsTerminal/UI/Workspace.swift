@@ -733,7 +733,12 @@ final class Workspace {
     static func saveSession() {
         guard !ParityScene.isActive else { return }
         guard TerminalProfile.shared.restoreSession else { SavedSession.clear(); return }
-        SavedSession.write(registry.map { workspace in
+        SavedSession.write(sessionSnapshot)
+    }
+
+    /// Every window as session restore saves it.
+    static var sessionSnapshot: [SavedWindow] {
+        registry.map { workspace in
             // Editor tabs aren't reopened; the files stay where they were saved.
             let terminals = workspace.tabs.filter { $0.editor == nil }
             return SavedWindow(tabs: terminals.map { tab in
@@ -741,7 +746,7 @@ final class Workspace {
                          title: tab.customTitle, explorerPath: tab.state.directory.path, profile: tab.shell.profileID?.uuidString,
                          panes: tab.panes.count > 1 ? tab.root.saved : nil)
             }, selected: terminals.firstIndex { $0 === workspace.selected } ?? 0)
-        })
+        }
     }
 
     // MARK: Zoom and size

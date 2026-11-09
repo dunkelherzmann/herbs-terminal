@@ -13,6 +13,11 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     private static let endedTimer: UINT_PTR = 2
     /// Looks for the program running in the foreground, for the title.
     private static let programTimer: UINT_PTR = 3
+    private static let badgeTimer: UINT_PTR = 4
+    /// The size badge: shown while the grid changes size, gone 1.2 s after the last change (Settings ▸ Window).
+    private(set) var showingBadge = false
+    private var hasGrid = false
+    var badgeText: String { "\(terminal.cols) × \(terminal.rows)" }
 
     private(set) var hwnd: HWND?
     let terminal: Terminal
@@ -271,6 +276,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     func show(_ visible: Bool) {
         guard let hwnd else { return }
         ShowWindow(hwnd, visible ? SW_SHOW : SW_HIDE)
+        if visible && IsWindowVisible(hwnd) { hasGrid = true }
         if visible { SetFocus(hwnd) }
     }
 
@@ -292,7 +298,18 @@ final class TerminalPane: WindowObject, TerminalDelegate {
             terminal.resize(cols: columns, rows: rows)
             session?.resize(columns: columns, rows: rows)
             scrollOffset = min(scrollOffset, maxScrollOffset)
+            // Not when the pane first gets its size, as on Linux.
+            if hasGrid, TerminalProfile.shared.showSizeWhileResizing {
+                showingBadge = true
+                SetTimer(hwnd, Self.badgeTimer, 1200, nil)
+            }
         }
+        // Sizes taken while the window is still opening (hidden) don't count as resizing.
+        if rect.right > 0 && rect.bottom > 0 && IsWindowVisible(hwnd) { hasGrid = true }
+    }
+
+    /// The pane has its first size: later changes of the grid show the size badge.
+    func markSized() { hasGrid = true
         invalidate()
     }
 
@@ -344,6 +361,11 @@ final class TerminalPane: WindowObject, TerminalDelegate {
             KillTimer(hwnd, Self.endedTimer)
             drainOutput()
             processEnded()
+            return 0
+        case WM_TIMER where wParam == Self.badgeTimer:
+            KillTimer(hwnd, Self.badgeTimer)
+            showingBadge = false
+            invalidate()
             return 0
         case WM_TIMER where wParam == Self.programTimer:
             refreshForegroundProgram()
@@ -723,6 +745,38 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         invalidate()
     }
 
+    // MARK: Size badge
+
+    /// "100 × 30" in the middle of the terminal, in its own font at 18 px and semibold, on a rounded card, as on Linux.
+    private func drawBadge(_ dc: HDC?, width: Int32, height: Int32) {
+        guard let hwnd else { return }
+        let dpi = GetDpiForWindow(hwnd)
+        func s(_ v: Double) -> Int32 { scaled(v, dpi: dpi) }
+        let font = withWide(TerminalProfile.shared.settings(for: profileID).family) {
+            CreateFontW(-s(18), 0, 0, 0, Int32(FW_SEMIBOLD), 0, 0, 0, DWORD(DEFAULT_CHARSET), 0, 0, DWORD(CLEARTYPE_QUALITY), 0, $0)
+        }
+        defer { DeleteObject(font) }
+        let old = SelectObject(dc, font)
+        defer { SelectObject(dc, old) }
+        var text = badgeText.wide
+        var size = SIZE()
+        GetTextExtentPoint32W(dc, text, Int32(text.count - 1), &size)
+        let cardWidth = size.cx + s(28), cardHeight = size.cy + s(16)
+        let left = (width - cardWidth) / 2, top = (height - cardHeight) / 2
+        let chrome = WindowChrome.Colors(dark: appIsDark)
+        let brush = CreateSolidBrush(chrome.background), pen = CreatePen(PS_SOLID, 1, chrome.border)
+        let oldBrush = SelectObject(dc, brush), oldPen = SelectObject(dc, pen)
+        RoundRect(dc, left, top, left + cardWidth, top + cardHeight, s(16), s(16))
+        SelectObject(dc, oldBrush)
+        SelectObject(dc, oldPen)
+        DeleteObject(brush)
+        DeleteObject(pen)
+        SetBkMode(dc, TRANSPARENT)
+        SetTextColor(dc, chrome.text)
+        var rect = RECT(left: left, top: top, right: left + cardWidth, bottom: top + cardHeight)
+        DrawTextW(dc, &text, -1, &rect, UINT(DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX))
+    }
+
     // MARK: Find in Terminal
 
     private enum FindID: Int32 { case field = 0x4E01, previous, next, done }
@@ -944,6 +998,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
             if screenRow == cursorRow && cursorVisible { drawCursor(dc, line: line, column: cursor.x, x: inset.left + Int32(cursor.x) * cw, y: y) }
         }
         if focused { SetCaretPos(inset.left + Int32(cursor.x) * cw, inset.top + Int32(cursorRow) * ch) }
+        if showingBadge { drawBadge(dc, width: width, height: height) }
         if outlined {
             let line = max(1, scaled(1.5, dpi: GetDpiForWindow(hwnd)))
             let accent = systemAccentColor
