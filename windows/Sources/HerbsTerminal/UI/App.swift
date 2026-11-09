@@ -13,6 +13,7 @@ enum App {
         SetCurrentProcessExplicitAppUserModelID(withWide("HerbsTerminal.App") { UnsafeMutablePointer(mutating: $0) })
         registerClass(Workspace.className)
         registerClass(TerminalPane.className, style: UINT(CS_DBLCLKS))
+        _ = TerminalPane.registerAccessibility
         registerClass(SettingsWindow.className, background: GetSysColorBrush(COLOR_WINDOW))
         registerClass(FormDialog.className, background: GetSysColorBrush(COLOR_WINDOW))
         registerClass(ManageLoginsWindow.className, background: GetSysColorBrush(COLOR_WINDOW))

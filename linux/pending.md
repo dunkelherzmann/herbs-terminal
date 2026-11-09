@@ -7,7 +7,7 @@ What the Linux version still needs before it can ship with as few bugs as possib
 - [ ] **Main Menu matches the Mac's in-window menus.** Once the Mac has moved every menu into its window, check that this version's in-window menu holds the same menus, submenus, order and shortcuts, and that no command is reachable only somewhere else. (§2, §14, enhancements.md) *Asked 2026-11-09.*
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 06:31)
+## Feature test results (2026-11-09 09:07)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
@@ -76,12 +76,12 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **L10** Export ticked logins (checkbox column with select-all heading), file readable only by you,… (§6): the Manage Logins window isn't driven by the bridge yet
 - [ ] **L11** Double-click edits; Delete key or right-click removes after a confirmation defaulting to Cancel. (§6): the Manage Logins window isn't driven by the bridge yet
 - [ ] **U7** Results per host: outcome, exit code, duration, output (64 KB cap, marked truncated). (§7): this platform's test bridge can't drive Run Command on Hosts yet
-- [ ] **C1** Add a peer: name, username, secret address, One-time or Persistent; addresses protected like logins. (§8): the window opens; adding a peer needs its form, which the bridge doesn't fill yet
-- [ ] **C2** Ping: Direct or Relayed with latency. (§8): needs a second machine running tailcat
-- [ ] **C3** Connect: shell and explorer through Tailcat, address never in arguments or history. (§8): needs a second machine running tailcat
+- [ ] **C1** Add a peer: name, username, secret address, One-time or Persistent; addresses protected like logins. (§8): the window opens; this platform's test bridge can't drive it yet
+- [ ] **C2** Ping: Direct or Relayed with latency. (§8): the window opens; this platform's test bridge can't drive it yet
+- [ ] **C3** Connect: shell and explorer through Tailcat, address never in arguments or history. (§8): needs the test host shared over tailcat (~/.config/herbs-terminal/test-tailcat holds its address)
 - [ ] **C4** Clear message when nothing answers SSH on the peer. (§8): needs a second machine running tailcat
-- [ ] **C5** Remove a peer. (§8): needs a second machine running tailcat
-- [ ] **C6** Share this computer: `tailcat serve`, one-time or persistent, address with Copy and Stop; checks… (§8): needs a second machine running tailcat
+- [ ] **C5** Remove a peer. (§8): the window opens; this platform's test bridge can't drive it yet
+- [ ] **C6** Share this computer: `tailcat serve`, one-time or persistent, address with Copy and Stop; checks… (§8): the window opens; this platform's test bridge can't drive it yet
 - [ ] **C7** Unlock… / Lock… button with the vault states. (§8): the Tailcat window isn't driven by the bridge yet
 - [ ] **Y1** Every control has a screen-reader name and hover hint (hint without repeating the name). (§9): covered by parity/check.sh and a screen-reader pass
 - [ ] **Y2** Selected tab announced (and bold); toggles announce on/off; MultiExec checkboxes named. (§9): needs a screen reader

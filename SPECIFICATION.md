@@ -388,6 +388,7 @@ Tailcat connects machines that can't reach each other by IP. Herb's Terminal run
   - which tab is selected; the selected tab's title is also bold;
   - whether toggle buttons (MultiExec, Bookmark, Administrator mode) are on or off;
   - each MultiExec checkbox, named after its terminal.
+- **The terminal's text** reaches screen readers: through SwiftTerm's accessibility on the Mac, VTE's on Linux, and on Windows through UI Automation's Text pattern (read by character, word and line, with the cursor as the caret), where new output is also announced as it arrives, without the echo of what was typed (full-screen programs are read by reviewing the screen). On Windows the drawn controls (toolbar, tab strip, window buttons, the explorer's bar, places and transfer buttons) are described to UI Automation by the app itself, with their states, and can be pressed from there.
 - **Password fields** in dialogs have visible labels.
 - **Motion:** window resizing follows Reduce Motion, and the visual bell never flashes more than twice a second.
 - **Identifiers:** toolbar controls carry the same accessibility identifier on Mac, Linux and Windows (`toolbar.newTab`, `toolbar.connect`, `toolbar.title`, `toolbar.exportSession`, `toolbar.takeScreenshot`, `toolbar.switchView`, `toolbar.multiExec`, `toolbar.tailcatPeers`, `toolbar.search`, `toolbar.mainMenu`), so the parity check can match them.

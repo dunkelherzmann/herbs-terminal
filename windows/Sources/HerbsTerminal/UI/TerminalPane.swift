@@ -14,6 +14,10 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     /// Looks for the program running in the foreground, for the title.
     private static let programTimer: UINT_PTR = 3
     private static let badgeTimer: UINT_PTR = 4
+    /// Reads new output to screen readers a moment after it arrives, in one piece.
+    private static let announceTimer: UINT_PTR = 5
+    /// Fades the visual bell's flash.
+    private static let flashTimer: UINT_PTR = 6
     /// The size badge: shown while the grid changes size, gone 1.2 s after the last change (Settings ▸ Window).
     private(set) var showingBadge = false
     private var hasGrid = false
@@ -397,6 +401,20 @@ final class TerminalPane: WindowObject, TerminalDelegate {
             drainOutput()
             processEnded()
             return 0
+        case WM_TIMER where wParam == Self.announceTimer:
+            KillTimer(hwnd, Self.announceTimer)
+            announceOutput()
+            return 0
+        case WM_TIMER where wParam == Self.flashTimer:
+            if flashStart == nil { KillTimer(hwnd, Self.flashTimer) }
+            invalidate()
+            return 0
+        case WM_GETOBJECT:
+            var result: Int = 0
+            return herb_uia_text_get_object(UnsafeMutableRawPointer(hwnd), UInt(wParam), Int(lParam), &result) != 0 ? LRESULT(result) : nil
+        case WM_DESTROY:
+            herb_uia_text_destroyed(UnsafeMutableRawPointer(hwnd))
+            return nil
         case WM_TIMER where wParam == Self.badgeTimer:
             KillTimer(hwnd, Self.badgeTimer)
             showingBadge = false
@@ -521,6 +539,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         if scrollOffset > 0 { scrollOffset = min(maxScrollOffset, scrollOffset + (liveTop - before)) }
         restartBlink()
         invalidate()
+        accessibleTextChanged()
     }
 
     private func restartBlink() {
@@ -560,6 +579,12 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     }
 
     func send(_ text: String) { send(Array(text.utf8)) }
+
+    /// Text typed as the keyboard types it (the test bridge's typing): remembered, so its echo isn't announced.
+    func type(_ text: String) {
+        typedEcho += text.filter { $0 != "\r" && $0 != "\n" && !($0.asciiValue.map { $0 < 0x20 } ?? false) }
+        send(text)
+    }
 
     /// Keys that WM_CHAR doesn't cover: arrows, editing keys, function keys, and the copy/paste shortcuts.
     /// Returns true when the key was handled.
@@ -664,6 +689,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
             if unit == 0x09 && isPressed(VK_SHIFT) { return } // Shift+Tab went out as CSI Z.
             if unit == 0x20 && isPressed(VK_CONTROL) { return } // Ctrl+Space went out as NUL.
             let text = String(decoding: [unit], as: UTF16.self)
+            if !alt, unit >= 0x20 { typedEcho.append(text) }
             send((alt ? "\u{1b}" : "") + text)
         }
     }
@@ -776,6 +802,141 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         selectionStart = Position(col: start, row: position.row)
         selectionEnd = Position(col: end, row: position.row)
         invalidate()
+    }
+
+    // MARK: Visual bell
+
+    private var lastFlash = Date.distantPast
+    private var flashStart: Date?
+    /// Visual bells shown, for the test bridge.
+    private(set) var bellFlashes = 0
+
+    /// As on the Mac and Linux: the terminal lights up and fades, at most twice a second (WCAG 2.3.1), and fades
+    /// more gently when Windows' animations are off (Settings ▸ Accessibility ▸ Visual effects).
+    private func flash() {
+        guard let hwnd, Date().timeIntervalSince(lastFlash) >= 0.5 else { return }
+        lastFlash = Date()
+        flashStart = lastFlash
+        bellFlashes += 1
+        SetTimer(hwnd, Self.flashTimer, 16, nil)
+        invalidate()
+    }
+
+    private static var animationsEnabled: Bool {
+        var on: Int32 = 1
+        return SystemParametersInfoW(UINT(SPI_GETCLIENTAREAANIMATION), 0, &on, 0) ? on != 0 : true
+    }
+
+    /// The flash: white at a quarter strength, fading out over 0.18 s (0.35 s with animations off).
+    private func drawFlash(_ dc: HDC?, width: Int32, height: Int32) {
+        guard let start = flashStart else { return }
+        let duration = Self.animationsEnabled ? 0.18 : 0.35
+        let progress = Date().timeIntervalSince(start) / duration
+        guard progress < 1 else { flashStart = nil; return }
+        let white = CreateCompatibleDC(dc), pixel = CreateCompatibleBitmap(dc, 1, 1)
+        let old = SelectObject(white, pixel)
+        SetPixel(white, 0, 0, colorRef(255, 255, 255))
+        let blend = BLENDFUNCTION(BlendOp: BYTE(AC_SRC_OVER), BlendFlags: 0, SourceConstantAlpha: BYTE(64 * (1 - progress)), AlphaFormat: 0)
+        GdiAlphaBlend(dc, 0, 0, width, height, white, 0, 0, 1, 1, blend)
+        SelectObject(white, old)
+        DeleteObject(pixel)
+        DeleteDC(white)
+    }
+
+    // MARK: Screen readers
+
+    /// What was typed here since the last announcement: the shell echoes it, and screen readers already read keys.
+    private var typedEcho = ""
+    /// Where the cursor was at the last announcement (scroll-invariant row, column); output since then is new.
+    private var announced: (row: Int, column: Int)?
+
+    /// Screen readers read the terminal through UI Automation's Text pattern (herb_text.c); the text is built
+    /// only when one asks for it.
+    static let registerAccessibility: Void = {
+        herb_uia_text_register { window in
+            guard let window, let raw = UnsafeRawPointer(bitPattern: Int(GetWindowLongPtrW(HWND(OpaquePointer(window)), GWLP_USERDATA))),
+                  let pane = Unmanaged<AnyObject>.fromOpaque(raw).takeUnretainedValue() as? TerminalPane else { return }
+            MainActor.assumeIsolated { pane.publishAccessibleText() }
+        }
+    }()
+
+    /// The rows on screen, one line each without trailing spaces, and the cursor's offset in them.
+    func accessibleText() -> (text: String, caret: Int) {
+        var lines: [String] = []
+        for row in 0..<terminal.rows {
+            guard let line = terminal.getScrollInvariantLine(row: viewTop + row) else { lines.append(""); continue }
+            var text = line.translateToString(trimRight: true, skipNullCellsFollowingWide: false)
+            text = text.replacingOccurrences(of: "\u{0}", with: " ")
+            while text.hasSuffix(" ") { text.removeLast() }
+            lines.append(text)
+        }
+        let cursor = terminal.getCursorLocation()
+        let row = cursor.y + scrollOffset
+        var caret = 0
+        if row >= 0, row < lines.count {
+            caret = lines[..<row].reduce(0) { $0 + $1.utf16.count + 1 } + min(cursor.x, lines[row].utf16.count)
+        }
+        return (lines.joined(separator: "\n"), caret)
+    }
+
+    private func publishAccessibleText() {
+        guard let hwnd else { return }
+        let (text, caret) = accessibleText()
+        let inset = Self.inset(hwnd)
+        let units = Array(text.utf16)
+        withWide(tabName) { name in
+            units.withUnsafeBufferPointer { buffer in
+                herb_uia_text_set(UnsafeMutableRawPointer(hwnd), name, buffer.baseAddress, Int32(buffer.count), Int32(caret),
+                                  inset.left, inset.top, fonts.cellWidth, fonts.cellHeight)
+            }
+        }
+    }
+
+    /// New output: the text is stale, and a moment later screen readers hear what was added.
+    private func accessibleTextChanged() {
+        guard let hwnd else { return }
+        herb_uia_text_changed(UnsafeMutableRawPointer(hwnd), 1)
+        guard herb_uia_listening() != 0 || TestBridge.isActive else { announced = nil; typedEcho = ""; return }
+        if announced == nil { announced = cursorPosition }
+        SetTimer(hwnd, Self.announceTimer, 150, nil)
+    }
+
+    private var cursorPosition: (row: Int, column: Int) {
+        let cursor = terminal.getCursorLocation()
+        return (liveTop + cursor.y, cursor.x)
+    }
+
+    /// The text that arrived since the last announcement, minus the echo of what was typed. Nothing for programs
+    /// that draw the whole screen (they move the cursor around), which screen readers read by reviewing the text.
+    func newOutput() -> String? {
+        defer { announced = cursorPosition; typedEcho = "" }
+        guard let from = announced, !terminal.isCurrentBufferAlternate else { return nil }
+        let to = cursorPosition
+        guard to.row > from.row || (to.row == from.row && to.column > from.column) else { return nil }
+        var lines: [String] = []
+        for row in from.row...to.row {
+            guard let line = terminal.getScrollInvariantLine(row: row) else { continue }
+            let start = row == from.row ? from.column : 0
+            let end = row == to.row ? to.column : terminal.cols
+            guard end > start else { lines.append(""); continue }
+            var text = line.translateToString(trimRight: true, startCol: start, endCol: end, skipNullCellsFollowingWide: true)
+            while text.hasSuffix(" ") { text.removeLast() }
+            lines.append(text)
+        }
+        var text = lines.joined(separator: "\n")
+        if !typedEcho.isEmpty, text.hasPrefix(typedEcho) { text.removeFirst(typedEcho.count) }
+        text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.count > 4000 { text = String(text.suffix(4000)) }
+        return text.isEmpty ? nil : text
+    }
+
+    /// The last announcement, for the test bridge.
+    private(set) var lastAnnouncement: String?
+
+    private func announceOutput() {
+        guard let hwnd, let text = newOutput() else { return }
+        lastAnnouncement = text
+        withWide(text) { herb_uia_text_announce(UnsafeMutableRawPointer(hwnd), $0) }
     }
 
     // MARK: Size badge
@@ -1031,6 +1192,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
             if screenRow == cursorRow && cursorVisible { drawCursor(dc, line: line, column: cursor.x, x: inset.left + Int32(cursor.x) * cw, y: y) }
         }
         if focused { SetCaretPos(inset.left + Int32(cursor.x) * cw, inset.top + Int32(cursorRow) * ch) }
+        drawFlash(dc, width: width, height: height)
         if showingBadge { drawBadge(dc, width: width, height: height) }
         if outlined {
             let line = max(1, scaled(1.5, dpi: GetDpiForWindow(hwnd)))
@@ -1155,8 +1317,10 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     nonisolated func bell(source: Terminal) {
         MainActor.assumeIsolated {
             switch TerminalProfile.shared.settings(for: profileID).bell {
-            case .audible, .both: MessageBeep(UINT(MB_OK))
-            case .visual, .none: break
+            case .audible: MessageBeep(UINT(MB_OK))
+            case .both: MessageBeep(UINT(MB_OK)); flash()
+            case .visual: flash()
+            case .none: break
             }
             if let parent = hwnd.flatMap({ GetAncestor($0, UINT(GA_ROOT)) }), GetForegroundWindow() != parent {
                 var flash = FLASHWINFO(cbSize: UINT(MemoryLayout<FLASHWINFO>.size), hwnd: parent,

@@ -152,6 +152,27 @@ class Context:
         if not condition:
             raise Outcome("broken", what)
 
+    def uia(self, press=None, find=None):
+        """Windows: the app's windows as UI Automation shows them to screen readers (uia.ps1), after pressing the
+        element with identifier `press` the way an assistive tool would."""
+        if self.platform != "windows":
+            raise Outcome("unverified", "this platform's accessibility tree is checked by parity/check.sh, not the feature tests")
+        import json, subprocess
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uia.ps1")
+        arguments = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "-ProcessId", str(self.app.process.pid)]
+        if press:
+            arguments += ["-Press", press]
+        if find:
+            arguments += ["-Find", find]
+        result = subprocess.run(arguments, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=90)
+        try:
+            nodes = json.loads(result.stdout)
+        except ValueError as error:
+            raise Outcome("broken", f"UI Automation couldn't read the window: {error}: {result.stderr.strip()[-300:]} / around it {result.stdout[max(0, error.pos - 80):error.pos + 80]!r}")
+        if isinstance(nodes, dict) and nodes.get("error"):
+            raise Outcome("broken", f"UI Automation: {nodes['error']} ({press})")
+        return nodes
+
     def unverified(self, reason):
         raise Outcome("unverified", reason)
 
@@ -1394,10 +1415,83 @@ def _(c):
 
 manual("C4", "Tailcat", "needs a peer whose SSH service is off")
 manual("C7", "Unlock / Lock", "the Tailcat window isn't driven by the bridge yet")
-manual("Y1", "Names and hints for screen readers", "covered by parity/check.sh and a screen-reader pass")
-manual("Y2", "States announced", "needs a screen reader")
+def uia_node(nodes, identifier):
+    return next((n for n in nodes if n.get("identifier") == identifier), None)
+
+
+@test("Y1", "Every drawn control has a name, and buttons a hover text")
+def _(c):
+    nodes = c.uia()
+    drawn = [n for n in nodes if n.get("identifier", "").startswith(("toolbar.", "tabStrip.", "window."))]
+    c.expect(len(drawn) >= 12, f"UI Automation shows only {len(drawn)} toolbar, tab and window controls")
+    unnamed = [n["identifier"] for n in drawn if not n.get("name")]
+    c.expect(not unnamed, f"controls without a name: {unnamed}")
+    hintless = [n["identifier"] for n in drawn if n["identifier"].startswith("toolbar.") and n["role"] == "Button" and not n.get("help")]
+    c.expect(not hintless, f"toolbar buttons without a hover text: {hintless}")
+    repeated = [n["identifier"] for n in drawn if n.get("help") and n.get("name") and n["help"].startswith(n["name"])]
+    c.expect(not repeated, f"hover texts that repeat the control's name: {repeated}")
+    c.command("toggle-explorer", settle=1.5)
+    nodes = c.uia()
+    explorer = [n for n in nodes if n.get("identifier", "").startswith("explorer.")]
+    for identifier in ("explorer.back", "explorer.up", "explorer.home", "explorer.bookmarkFolder", "explorer.actions", "explorer.place.1"):
+        node = uia_node(explorer, identifier)
+        c.expect(node and node.get("name"), f"the explorer's {identifier} isn't named for screen readers (saw {[n['identifier'] for n in explorer]})")
+
+
+@test("Y1", "Screen readers read the terminal's text, and hear new output")
+def _(c):
+    word = c.say("READ" + "ME42")
+    nodes = c.uia(find="DME4")
+    terminal = next((n for n in nodes if n.get("identifier") == "terminal"), None)
+    c.expect(terminal, "the terminal isn't in the UI Automation tree: " + "; ".join(f"{n['depth']}:{n['role']}:{n.get('identifier', n.get('name', ''))}" for n in nodes))
+    c.expect(terminal.get("name") == "Terminal 1", f"the terminal is named {terminal.get('name')!r}")
+    c.expect(word in (terminal.get("text") or ""), "the terminal's Text pattern doesn't have the output")
+    prompt = [line for line in c.text().splitlines() if line.strip()][-1].strip()
+    c.expect(terminal.get("caretLine", "").strip() == prompt, f"the caret's line isn't the prompt {prompt!r}: {terminal.get('caretLine')!r}")
+    c.expect((terminal.get("foundWord") or "").strip() == word, f"the word around the output is {terminal.get('foundWord')!r}")
+    c.expect(terminal.get("lineRects", 0) >= 1, "the caret's line has no place on screen")
+    c.say("NEW" + "LINE7")
+    pane = c.until(lambda s: "NEWLINE7" in (c.pane(s).get("announcement") or ""), "new output isn't announced")
+    announcement = c.pane(pane)["announcement"]
+    c.expect("echo" not in announcement, f"the announcement repeats the typed command: {announcement!r}")
+
+
+@test("Y2", "The selected tab and toggle buttons report their state")
+def _(c):
+    nodes = c.uia()
+    c.expect((uia_node(nodes, "tabStrip.tab.1") or {}).get("selected") is True, "tab 1 isn't reported as selected")
+    c.expect((uia_node(nodes, "toolbar.multiExec") or {}).get("toggle") == "Off", "MultiExec isn't a toggle button that is off")
+    c.command("new-tab", settle=1.5)
+    nodes = c.uia()
+    c.expect(uia_node(nodes, "tabStrip.tab.2").get("selected") is True and uia_node(nodes, "tabStrip.tab.1").get("selected") is False,
+             "the new tab isn't the one reported as selected")
+    nodes = c.uia(press="tabStrip.tab.1")
+    c.until(lambda s: c.tabs(s)[0]["selected"], "selecting tab 1 through UI Automation didn't switch to it")
+    nodes = c.uia(press="toolbar.multiExec")
+    c.until(lambda s: c.window(s).get("multiExec") or c.window(s).get("multiExecOn"), "toggling MultiExec through UI Automation didn't turn it on")
+    c.expect(uia_node(c.uia(), "toolbar.multiExec").get("toggle") == "On", "MultiExec doesn't report On")
+    c.command("multiexec")
+    c.command("toggle-explorer", settle=1.5)
+    nodes = c.uia(press="explorer.bookmarkFolder")
+    c.expect(uia_node(nodes, "explorer.bookmarkFolder").get("toggle") == "On", "Bookmark doesn't report On after toggling it")
+    selected = [n["name"] for n in nodes if n.get("identifier", "").startswith("explorer.place.") and n.get("selected")]
+    c.expect(selected, "no place in the side pane is reported as the current one")
+
 manual("Y3", "Password field labels", "covered by the accessibility tree; not automated here")
-manual("Y4", "Reduce Motion", "visual")
+@test("Y4", "The visual bell flashes at most twice a second")
+def _(c):
+    if c.platform != "windows":
+        c.unverified("this platform's test bridge doesn't report the visual bell yet")
+    c.bridge.call("profile-set", key="bell", value="visual")
+    bells = "\u0007" * 3
+    c.run(f"printf '{bells}'", f"echo {bells}", settle=0.3)
+    first = c.until(lambda s: c.pane(s)["bellFlashes"] >= 1, "the visual bell didn't flash")
+    c.expect(c.pane(first)["bellFlashes"] == 1, f"three bells at once flashed {c.pane(first)['bellFlashes']} times")
+    time.sleep(0.6)
+    c.run(f"printf '{bells}'", f"echo {bells}", settle=0.3)
+    c.until(lambda s: c.pane(s)["bellFlashes"] == 2, "a bell half a second later didn't flash again")
+
+manual("Y4", "Reduce Motion", "window resizing isn't animated on Windows; the slower fade with animations off is visual")
 manual("Y5", "Shared identifiers", "covered by parity/check.sh")
 for fid in ("Z1", "Z2", "Z3", "Z4"):
     manual(fid, "Safety", "needs damaged files or a dropped connection (fault injection, not automated yet)")

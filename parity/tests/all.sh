@@ -51,7 +51,7 @@ run_windows() {
     local host="${PARITY_WINDOWS_HOST:?set PARITY_WINDOWS_HOST}" tree="${PARITY_WINDOWS_TREE:-.}" home
     home=$(ssh -o BatchMode=yes "$host" 'echo %USERPROFILE%' | tr -d '\r' | tr '\\' '/')
     ssh -o BatchMode=yes "$host" 'powershell -NoProfile -Command "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $env:USERPROFILE\src\herbs-parity\windows\Sources"'
-    COPYFILE_DISABLE=1 tar -C "$tree" -cf - --exclude .git --exclude dist --exclude .build VERSION Sources linux windows \
+    COPYFILE_DISABLE=1 tar -C "$tree" -cf - --exclude .git --exclude dist --exclude .build VERSION shared linux windows \
         | ssh -o BatchMode=yes "$host" "tar -xf - -C $home/src/herbs-parity"
     COPYFILE_DISABLE=1 tar -cf - --exclude results parity | ssh -o BatchMode=yes "$host" "tar -xf - -C $home/src/herbs-parity"
     # A test copy left over from an interrupted run would lock the program file; only test copies are stopped.

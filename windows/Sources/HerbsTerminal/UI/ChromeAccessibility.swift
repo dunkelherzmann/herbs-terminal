@@ -11,19 +11,19 @@ extension WindowChrome {
 
     /// Sends the current items to UI Automation. Cheap when nothing changed: it runs on every layout.
     func updateAccessibility(owner: HWND, dpi: UINT, state: State) {
-        struct Entry {
-            var identifier: String, name: String, help: String?, accelerator: String?
-            var rect: RECT, controlType: Int32, enabled = true, popup = false, invokable = true, tag: Int
-        }
+        typealias Entry = AccessibleItem
         var entries: [Entry] = []
 
         /// `name` fixes a control's name where its hover text changes with the state, as on the Mac and Linux.
-        func add(_ item: Item, _ identifier: String, name: String? = nil, controlType: Int32 = Int32(HERB_UIA_BUTTON), popup: Bool = false) {
+        /// `toggle` and `selected` are the on/off state of a toggle button and the selected state of a tab, which
+        /// screen readers announce.
+        func add(_ item: Item, _ identifier: String, name: String? = nil, controlType: Int32 = Int32(HERB_UIA_BUTTON), popup: Bool = false,
+                 toggle: Bool? = nil, selected: Bool? = nil) {
             guard let rect = rects[item] else { return }
             let parts = Self.hintParts(Self.hint(for: item, state: state) ?? "")
             entries.append(Entry(identifier: identifier, name: name ?? parts.name, help: parts.help, accelerator: parts.accelerator,
                                  rect: rect, controlType: controlType, enabled: !state.isUnavailable(item), popup: popup,
-                                 tag: Int(Self.toolID(item))))
+                                 tag: Int(Self.toolID(item)), toggle: toggle.map { $0 ? 1 : 0 } ?? -1, selected: selected.map { $0 ? 1 : 0 } ?? -1))
         }
 
         // In reading order: left to right along the toolbar, then the tab strip, then the window buttons.
@@ -42,11 +42,11 @@ extension WindowChrome {
         add(.export, "toolbar.exportSession")
         add(.screenshot, "toolbar.takeScreenshot")
         add(.explorer, "toolbar.switchView", name: "Switch Terminal / Explorer")
-        add(.multiExec, "toolbar.multiExec")
+        add(.multiExec, "toolbar.multiExec", toggle: state.multiExecOn)
         add(.peers, "toolbar.tailcatPeers")
         add(.search, "toolbar.search", name: "Search")
         for index in state.tabNames.indices {
-            add(.tab(index), "tabStrip.tab.\(index + 1)", controlType: Int32(HERB_UIA_TAB_ITEM))
+            add(.tab(index), "tabStrip.tab.\(index + 1)", controlType: Int32(HERB_UIA_TAB_ITEM), selected: index == state.active)
             add(.tabClose(index), "tabStrip.close.\(index + 1)")
         }
         for (item, identifier, name) in [(Item.minimize, "window.minimize", "Minimize"),
@@ -57,27 +57,7 @@ extension WindowChrome {
                                  controlType: Int32(HERB_UIA_BUTTON), tag: Int(Self.toolID(item))))
         }
 
-        // Every string stays alive until herb_uia_set_items has copied it.
-        var storage: [[UInt16]] = []
-        func keep(_ text: String?) -> Int? {
-            guard let text else { return nil }
-            storage.append(Array(text.utf16) + [0])
-            return storage.count - 1
-        }
-        let slots = entries.map { (keep($0.identifier), keep($0.name), keep($0.help), keep($0.accelerator)) }
-        let pointers: [UnsafeMutablePointer<UInt16>] = storage.map { text in
-            let pointer = UnsafeMutablePointer<UInt16>.allocate(capacity: text.count)
-            pointer.initialize(from: text, count: text.count)
-            return pointer
-        }
-        defer { pointers.forEach { $0.deallocate() } }
-        func pointer(_ slot: Int?) -> UnsafePointer<UInt16>? { slot.map { UnsafePointer(pointers[$0]) } }
-        let items = zip(entries, slots).map { entry, slot in
-            HerbUIAItem(automationId: pointer(slot.0), name: pointer(slot.1), help: pointer(slot.2), accelerator: pointer(slot.3),
-                        left: entry.rect.left, top: entry.rect.top, right: entry.rect.right, bottom: entry.rect.bottom, controlType: entry.controlType, enabled: entry.enabled ? 1 : 0,
-                        hasPopup: entry.popup ? 1 : 0, invokable: entry.invokable ? 1 : 0, tag: Int32(entry.tag))
-        }
-        items.withUnsafeBufferPointer { herb_uia_set_items(UnsafeMutableRawPointer(owner), $0.baseAddress, Int32($0.count)) }
+        AccessibleItem.publish(entries, owner: owner)
     }
 
     /// The item an assistive tool pressed, from its tag.

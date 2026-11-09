@@ -42,7 +42,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] **13. Session restore** (§2) and the size badge while resizing (#60).
 - [x] **14. Following an `ssh` typed in a local tab** (§4), and the explorer following that host. SSH sessions run inside the local shell, so Disconnect returns the tab to it (feature test S4). (#61)
 - [x] **15. Tailcat peers** (§8) (#63): pairing, sharing, connecting through Tailcat, the Lock / Unlock button.
-- [ ] **16. Accessibility** (§9): UI Automation names for the toolbar, tabs and terminal.
+- [x] **16. Accessibility** (§9): UI Automation names, hover texts and states for the toolbar, tabs, window buttons and the explorer's bar and places; the terminal's text through the Text pattern, with new output announced; the visual bell (feature tests Y1, Y2, Y4).
 - [ ] **17. Dark mode for Settings and dialogs** (done in #43), mouse reporting for full-screen programs, IME composition.
 - [ ] **18. App icon, MSIX installer and code signing** (§1).
 
@@ -56,7 +56,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 09:05)
+## Feature test results (2026-11-09 10:48)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
@@ -68,7 +68,7 @@ The command isn't there, or it's greyed out.
 - [ ] **E13** New Folder, New File (free "untitled" name), Rename; undoable locally, rename undoable on a host. (§5): New Folder and Rename: no `explorer.rename` command
 - [ ] **E14** Search files (Find). (§5): Find files: `explorer.find` is not there
 
-### Not checked automatically (66)
+### Not checked automatically (65)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -126,12 +126,11 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **L9** Import (CSV, all-or-nothing). (§6): the Manage Logins window isn't driven by the bridge yet
 - [ ] **L10** Export ticked logins (checkbox column with select-all heading), file readable only by you,… (§6): the Manage Logins window isn't driven by the bridge yet
 - [ ] **L11** Double-click edits; Delete key or right-click removes after a confirmation defaulting to Cancel. (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **C4** Clear message when nothing answers SSH on the peer. (§8): needs a second machine running tailcat
+- [ ] **C3** Connect: shell and explorer through Tailcat, address never in arguments or history. (§8): needs the test host shared over tailcat (~/.config/herbs-terminal/test-tailcat holds its address)
+- [ ] **C4** Clear message when nothing answers SSH on the peer. (§8): needs a peer whose SSH service is off
 - [ ] **C7** Unlock… / Lock… button with the vault states. (§8): the Tailcat window isn't driven by the bridge yet
-- [ ] **Y1** Every control has a screen-reader name and hover hint (hint without repeating the name). (§9): covered by parity/check.sh and a screen-reader pass
-- [ ] **Y2** Selected tab announced (and bold); toggles announce on/off; MultiExec checkboxes named. (§9): needs a screen reader
 - [ ] **Y3** Password fields have visible labels. (§9): covered by the accessibility tree; not automated here
-- [ ] **Y4** Resizing follows Reduce Motion; visual bell limited to twice a second. (§9): visual
+- [ ] **Y4** Resizing follows Reduce Motion; visual bell limited to twice a second. (§9): window resizing isn't animated on Windows; the slower fade with animations off is visual
 - [ ] **Y5** Shared accessibility identifiers on the toolbar. (§9): covered by parity/check.sh
 - [ ] **Z1** Settings, profiles or peers that can't be read are set aside, not overwritten. (§10): needs damaged files or a dropped connection (fault injection, not automated yet)
 - [ ] **Z2** Login database that can't be opened: in-memory store, Manage Logins off. (§10): needs damaged files or a dropped connection (fault injection, not automated yet)
