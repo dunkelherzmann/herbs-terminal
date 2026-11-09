@@ -458,6 +458,18 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         }
         if scrollOffset != 0 { scrollOffset = 0; invalidate() }
         session?.write(bytes)
+        broadcast?(bytes)
+    }
+
+    /// MultiExec: receives what the user types or pastes here, to send to the other included terminals. Text the
+    /// app types itself, and the emulator's replies to programs, go straight to the session and aren't sent on.
+    var broadcast: (([UInt8]) -> Void)?
+
+    /// Typing that MultiExec forwards from another terminal.
+    func sendQuietly(_ bytes: [UInt8]) {
+        guard !awaitingReconnect else { return }
+        if scrollOffset != 0 { scrollOffset = 0; invalidate() }
+        session?.write(bytes)
     }
 
     func send(_ text: String) { send(Array(text.utf8)) }

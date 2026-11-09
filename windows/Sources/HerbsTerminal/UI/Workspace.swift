@@ -120,6 +120,14 @@ final class Workspace: WindowObject {
     func select(_ index: Int) {
         guard tabs.indices.contains(index) else { return }
         active = index
+        if multiExec {
+            // Every terminal stays in the grid; the selected one takes the keyboard.
+            if let head = tabs[index] as? TerminalPane, let window = (head.group?.focused ?? head).hwnd { SetFocus(window) }
+            updateOutlines()
+            refreshChrome()
+            InvalidateRect(hwnd, nil, false)
+            return
+        }
         for (i, tab) in tabs.enumerated() where i != index {
             tab.show(false)
             (tab as? TerminalPane)?.explorer?.show(false)
@@ -216,6 +224,15 @@ final class Workspace: WindowObject {
     }
 
     private func paneFocused(_ pane: TerminalPane) {
+        if multiExec, let index = tabIndex(holding: pane), index != active {
+            // Clicking a terminal in the grid makes its tab the current one.
+            active = index
+            (tabs[index] as? TerminalPane)?.group?.focused = pane
+            updateOutlines()
+            refreshChrome()
+            InvalidateRect(hwnd, nil, false)
+            return
+        }
         guard let index = tabIndex(holding: pane), let group = (tabs[index] as? TerminalPane)?.group else { return }
         guard group.focused !== pane else { return }
         group.focused = pane
@@ -225,10 +242,154 @@ final class Workspace: WindowObject {
 
     /// The focused pane of a split tab is outlined; a tab with one pane has no outline.
     private func updateOutlines() {
+        if multiExec {
+            let focused = focusedPane
+            for pane in panes { pane.outlined = pane === focused }
+            return
+        }
         for case let head as TerminalPane in tabs {
             let group = head.group
             for pane in group?.panes ?? [head] { pane.outlined = group?.isSplit == true && pane === group?.focused }
         }
+    }
+
+    // MARK: MultiExec
+
+    /// MultiExec, as on the Mac and Linux (after MobaXterm): every terminal of the window in a grid, and what you
+    /// type into an included terminal goes to every included terminal.
+    private(set) var multiExec = false
+    private var excluded = Set<ObjectIdentifier>()
+    private var multiControls: MultiExecControls?
+
+    /// Every terminal in grid order (tabs in order, each tab's panes in order).
+    var allPanes: [TerminalPane] { panes }
+    /// The grid numbers of the terminals left out, for the feature tests' bridge.
+    var excludedNumbers: [Int] { panes.enumerated().filter { excluded.contains(ObjectIdentifier($0.element)) }.map { $0.offset + 1 } }
+
+    func setMultiExec(_ on: Bool) {
+        guard multiExec != on, let hwnd else { return }
+        multiExec = on
+        if on {
+            multiControls = MultiExecControls(owner: hwnd)
+            // Every terminal is shown, even a tab that shows its explorer; editors and explorers step aside.
+            for tab in tabs {
+                if let head = tab as? TerminalPane { head.explorer?.show(false); (head.group?.panes ?? [head]).forEach { $0.show(true) } }
+                else { tab.show(false) }
+            }
+        } else {
+            multiControls?.destroy()
+            multiControls = nil
+            for pane in panes { pane.broadcast = nil }
+        }
+        updateBroadcast()
+        layout()
+        if on { select(active) } else { select(min(active, tabs.count - 1)) }
+    }
+
+    /// Includes or leaves out the terminal with this grid number (1 is the first).
+    func setIncluded(number: Int, _ included: Bool) {
+        let all = panes
+        guard all.indices.contains(number - 1) else { return }
+        if included { excluded.remove(ObjectIdentifier(all[number - 1])) } else { excluded.insert(ObjectIdentifier(all[number - 1])) }
+        updateBroadcast()
+        layout()
+    }
+
+    func includeAll() {
+        excluded = []
+        updateBroadcast()
+        layout()
+    }
+
+    /// Wires each included terminal to send its user input on to the other included terminals.
+    private func updateBroadcast() {
+        let all = panes
+        excluded = excluded.filter { id in all.contains { ObjectIdentifier($0) == id } }
+        let targets = all.filter { !excluded.contains(ObjectIdentifier($0)) }
+        for pane in all {
+            guard multiExec, !excluded.contains(ObjectIdentifier(pane)) else { pane.broadcast = nil; continue }
+            pane.broadcast = { [weak pane] bytes in
+                for other in targets where other !== pane { other.sendQuietly(bytes) }
+            }
+        }
+    }
+
+    private func layoutMultiExec(_ controls: MultiExecControls, in rect: RECT) {
+        let all = panes
+        updateBroadcast()
+        var titles: [String] = []
+        for tab in tabs {
+            guard let head = tab as? TerminalPane else { tab.show(false); continue }
+            head.explorer?.show(false)
+            let group = head.group?.panes ?? [head]
+            for (index, pane) in group.enumerated() {
+                // The tab's name, or its host, plus the pane's position when the tab is split.
+                let base = pane.remote?.label ?? head.tabName
+                titles.append(group.count > 1 ? "\(base) (pane \(index + 1))" : base)
+            }
+        }
+        let included = all.map { !excluded.contains(ObjectIdentifier($0)) }
+        let count = included.filter { $0 }.count
+        controls.status = "MultiExec: typing goes to \(count) of \(all.count) terminal\(all.count == 1 ? "" : "s")"
+        let frames = controls.layout(in: rect, titles: titles, included: included, includeAllEnabled: !excluded.isEmpty)
+        for (pane, frame) in zip(all, frames) {
+            pane.move(to: frame)
+            pane.show(true)
+        }
+        if let focused = focusedPane?.hwnd, GetFocus() == nil || !all.contains(where: { $0.hwnd == GetFocus() }) {
+            if !controls.owns(GetFocus()) { SetFocus(focused) }
+        }
+        updateOutlines()
+    }
+
+    /// A bar button or checkbox was pressed (WM_COMMAND).
+    private func multiExecCommand(_ id: Int, control: HWND?) {
+        if id >= MultiExecControls.checkboxBase {
+            let checked = SendMessageW(control, UINT(BM_GETCHECK), 0, 0) == LRESULT(BST_CHECKED)
+            setIncluded(number: id - MultiExecControls.checkboxBase + 1, checked)
+            return
+        }
+        switch MultiExecControls.Action(rawValue: id) {
+        case .newTab?: newTab()
+        case .connect?: showConnect()
+        case .includeAll?: includeAll()
+        case .closeAll?: closeAllTerminals()
+        case .exit?: setMultiExec(false)
+        case nil: break
+        }
+    }
+
+    /// MultiExec ▸ Close All: ends every terminal after asking, then leaves MultiExec with one new terminal. Editor
+    /// tabs stay open.
+    func closeAllTerminals() {
+        let terminals = tabs.compactMap { $0 as? TerminalPane }
+        let shells = terminals.flatMap { $0.group?.panes ?? [$0] }
+        let count = shells.count
+        guard FormDialog.ask(owner: hwnd, title: "Close all \(count) terminal\(count == 1 ? "" : "s")?",
+                             message: "Every shell and remote session in the grid ends. A new terminal opens in their place.",
+                             buttons: [.init(title: "Cancel", isDefault: true), .init(title: "Close All")]) == 1,
+              confirmClosing(shells, scope: "these terminals") else { return }
+        for head in terminals {
+            head.explorer?.close()
+            for shell in head.group?.panes ?? [head] { shell.broadcast = nil; shell.close() }
+            head.group = nil
+        }
+        tabs.removeAll { $0 is TerminalPane }
+        excluded = []
+        multiControls?.destroy()
+        multiControls = nil
+        multiExec = false
+        newTab()
+        layout()
+    }
+
+    /// In MultiExec, Alt+1–Alt+9 pick a terminal by its grid number (9 is the last).
+    private func selectGridTerminal(_ number: Int) {
+        let all = panes
+        guard !all.isEmpty else { return }
+        let index = number == 9 ? all.count - 1 : number - 1
+        guard all.indices.contains(index), let window = all[index].hwnd else { return }
+        SetFocus(window)
     }
 
     // MARK: File explorer
@@ -576,13 +737,20 @@ final class Workspace: WindowObject {
                 TerminalProfile.shared.windowColumns = pane.terminal.cols
                 TerminalProfile.shared.windowRows = pane.terminal.rows
             }
-        case .closeTab: closeTab(at: active)
+        case .closeTab:
+            // In MultiExec only the active terminal closes, as on the Mac.
+            if multiExec, let head = activePane, head.group?.isSplit == true, let pane = focusedPane {
+                if confirmClosing([pane], scope: "this terminal") { closePane(pane) }
+            } else {
+                closeTab(at: active)
+            }
         case .splitVertical: split(.horizontal)
         case .splitHorizontal: split(.vertical)
         case .closePane: closeFocusedPane()
         case .nextPane: cyclePane(1)
         case .previousPane: cyclePane(-1)
-        case .findInTerminal, .multiExec, .runOnHosts:
+        case .multiExec: setMultiExec(!multiExec)
+        case .findInTerminal, .runOnHosts:
             break // Not in the Windows version yet; shown greyed out.
         }
     }
@@ -619,6 +787,7 @@ final class Workspace: WindowObject {
             if letter("I") { return run(.renameTab) }
             if letter("L") { return run(.clearToStart) }
             if letter("E") { return run(.splitVertical) }
+            if letter("M") { return run(.multiExec) }
             if letter("O") { return run(.splitHorizontal) }
             if letter("Q") { return run(.quit) }
             if key == VK_PRIOR { return run(.moveTabLeft) }
@@ -642,9 +811,15 @@ final class Workspace: WindowObject {
             if letter("0") || key == VK_NUMPAD0 { return run(.zoomReset) }
             if key == VK_OEM_COMMA { return run(.settings) }
         }
-        // Alt+1–8 pick a tab; Alt+9 is always the last one.
+        // Esc on MultiExec's own buttons leaves it; in a terminal, Esc belongs to the program.
+        if multiExec, key == VK_ESCAPE, !control, !shift, !alt, multiControls?.owns(message.hwnd) == true {
+            setMultiExec(false)
+            return true
+        }
+        // Alt+1–8 pick a tab; Alt+9 is always the last one. In MultiExec they pick a terminal in the grid.
         if alt && !control && !shift, key >= 0x31, key <= 0x39 {
             let number = Int(key - 0x30)
+            if multiExec { selectGridTerminal(number); return true }
             select(number == 9 ? tabs.count - 1 : number - 1)
             return true
         }
@@ -697,6 +872,7 @@ final class Workspace: WindowObject {
             state.windowActive = GetActiveWindow() == hwnd || GetForegroundWindow() == hwnd
         }
         state.screenshotCopied = screenshotCopied
+        state.multiExecOn = multiExec
         return state
     }
 
@@ -709,6 +885,11 @@ final class Workspace: WindowObject {
         chrome.updateTooltips(owner: hwnd, state: state)
         chrome.updateAccessibility(owner: hwnd, dpi: dpi, state: state)
         rect.top = chrome.height(dpi)
+        if multiExec, let controls = multiControls {
+            layoutMultiExec(controls, in: rect)
+            InvalidateRect(hwnd, nil, false)
+            return
+        }
         for tab in tabs {
             if let head = tab as? TerminalPane, let group = head.group {
                 // Equal shares with a one-pixel hairline between panes, as on the Mac and Linux.
@@ -812,6 +993,7 @@ final class Workspace: WindowObject {
         case .connect: connectButton()
         case .export: exportSession()
         case .explorer: toggleExplorer()
+        case .multiExec: setMultiExec(!multiExec)
         case .screenshot: takeScreenshot()
         case .tab(let index): select(index)
         case .tabClose(let index): closeTab(at: index)
@@ -886,7 +1068,11 @@ final class Workspace: WindowObject {
             chrome.paint(dc, width: client.right, dpi: dpi, state: state)
             BitBlt(screen, 0, 0, client.right, height, dc, 0, 0, DWORD(SRCCOPY))
             // Under the panes: shows only as the hairlines between split panes.
-            fill(screen, RECT(left: 0, top: height, right: client.right, bottom: client.bottom), WindowChrome.Colors(dark: appIsDark).border)
+            fill(screen, RECT(left: 0, top: height, right: client.right, bottom: client.bottom),
+                 multiExec ? WindowChrome.Colors(dark: appIsDark).background : WindowChrome.Colors(dark: appIsDark).border)
+            if multiExec, let controls = multiControls {
+                controls.paint(screen, focusedIndex: panes.firstIndex { $0 === focusedPane })
+            }
             SelectObject(dc, old)
             DeleteObject(bitmap)
             DeleteDC(dc)
@@ -1020,6 +1206,13 @@ final class Workspace: WindowObject {
         case WM_TIMER where wParam == TestScript.timer:
             if !TestScript.step(self) { KillTimer(hwnd, TestScript.timer) }
             return 0
+        case WM_COMMAND:
+            let id = Int(loWord(LPARAM(Int(bitPattern: UInt(wParam)))))
+            if multiExec, id >= 1 { multiExecCommand(id, control: HWND(bitPattern: Int(lParam))); return 0 }
+            return nil
+        case WM_CTLCOLORBTN, WM_CTLCOLORSTATIC:
+            if let result = multiControls?.colors(wParam, control: HWND(bitPattern: Int(lParam))) { return result }
+            return nil
         case WM_DESTROY:
             herb_uia_window_destroyed(UnsafeMutableRawPointer(hwnd))
             chrome.release()

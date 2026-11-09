@@ -113,7 +113,9 @@ enum TestBridge {
             TestClipboard.clear()
             if let files = request["files"] as? [String] { TestClipboard.files = (files, false) } else { TestClipboard.text = request["text"] as? String ?? "" }
             return true
-        case "include": throw Failure(description: "MultiExec isn't in the Windows version")
+        case "include":
+            try workspace.setIncluded(number: request["pane"] as? Int ?? 0, request["on"] as? Bool ?? true)
+            return true
         case "quit": PostQuitMessage(0); return true
         default: throw Failure(description: "unknown op")
         }
@@ -135,7 +137,7 @@ enum TestBridge {
         "fullscreen": .fullScreen, "settings": .settings, "about": .about, "restore-size": .restoreDefaultSize,
         "default-size": .makeSizeDefault, "close-tab": .closeTab, "take-screenshot": .takeScreenshot,
     ]
-    private static let greyedOut: Set<MenuCommand> = [.findInTerminal, .multiExec, .runOnHosts]
+    private static let greyedOut: Set<MenuCommand> = [.findInTerminal, .runOnHosts]
     private static let explorerCommands: [String: String] = [
         "cut": "cut", "copy": "copy", "paste": "paste", "delete": "delete", "new-folder": "newFolder", "new-file": "newFile",
         "select-all": "selectAll", "open": "open", "edit": "edit", "info": "info", "reveal": "reveal", "open-default": "openWith",
@@ -159,6 +161,10 @@ enum TestBridge {
         case "connect-button":
             // The toolbar's SSH button: connection details while connected, Connect via SSH otherwise.
             if run { workspace.connectButton() }
+            return run ? "ran" : "enabled"
+        case "close-all":
+            // MultiExec ▸ Close All (it asks first).
+            if run { workspace.closeAllTerminals() }
             return run ? "ran" : "enabled"
         case "toggle-explorer", "show-explorer":
             if run { workspace.toggleExplorer() }
@@ -283,7 +289,8 @@ enum TestBridge {
                     return entry
                 }
                 let active = workspace.focusedPane
-                return ["title": active?.title ?? "", "subtitle": active?.subtitle ?? "", "multiExec": false, "excluded": [Int](), "tabs": tabs]
+                return ["title": active?.title ?? "", "subtitle": active?.subtitle ?? "", "multiExec": workspace.multiExec,
+                        "excluded": workspace.excludedNumbers, "tabs": tabs]
             },
             "dialogs": openDialogs().map { ["heading": $0.heading, "responses": $0.buttons, "fields": $0.fields] as [String: Any] },
             "toplevels": threadWindows().filter { IsWindowVisible($0) }.map(windowText),
