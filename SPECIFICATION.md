@@ -549,6 +549,8 @@ The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In 
 - **Take Screenshot** copies a picture of the whole window to the clipboard; the button shows a check mark for a moment to confirm it.
 - **Export Session** saves the terminal's text, scrollback included, as a text file with Windows line endings.
 
+- **Split panes** work as in section 2: Split Vertically (Ctrl+Shift+E) and Split Horizontally (Ctrl+Shift+O) in the Main Menu's Shell submenu, equal shares with a one-pixel hairline between panes, Close Pane (Ctrl+Alt+W) and `exit`, Select Next / Previous Pane (Ctrl+Alt+→ / ←), and the focused pane outlined in Windows' accent color. A new pane starts in the current pane's folder when that's on this PC. Clear, Reset, Export Session and the window title follow the focused pane. One difference: an SSH tab's session is its first pane's own program (Windows' ssh), so closing that pane ends the session; the next pane takes over the tab's number and name.
+
 ### Files
 
 - **The explorer** shows this PC's files in a local tab and the host's files in an SSH tab: the toolbar's folder button or Ctrl+Shift+X switches between the tab's shell and its explorer, which keeps its folder while hidden.
@@ -582,7 +584,7 @@ The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In 
 
 ### Not yet on Windows
 
-Split panes; MultiExec and Run Command on Hosts; Find in Terminal; named profiles; session restore; following an `ssh` typed in a local tab; Tailcat peers; Paste Escaped Text. Their toolbar buttons and menu commands are shown dimmed.
+MultiExec and Run Command on Hosts; Find in Terminal; named profiles; session restore; following an `ssh` typed in a local tab; Tailcat peers; Paste Escaped Text. Their toolbar buttons and menu commands are shown dimmed.
 
 ## References
 

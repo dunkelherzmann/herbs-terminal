@@ -81,11 +81,13 @@ enum MainMenu {
                 for profile in TerminalProfile.shared.profiles { item(profiles, profile.name, MenuCommand.newTab.rawValue, enabled: false) }
             }
             divider(sub)
-            item(sub, "Split Vertically\tCtrl+Shift+E", .splitVertical, enabled: false)
-            item(sub, "Split Horizontally\tCtrl+Shift+O", .splitHorizontal, enabled: false)
-            item(sub, "Close Pane\tCtrl+Alt+W", .closePane, enabled: false)
-            item(sub, "Select Next Pane\tCtrl+Alt+Right", .nextPane, enabled: false)
-            item(sub, "Select Previous Pane\tCtrl+Alt+Left", .previousPane, enabled: false)
+            let terminal = pane != nil && pane?.showingExplorer == false
+            let split = pane?.group?.isSplit == true
+            item(sub, "Split Vertically\tCtrl+Shift+E", .splitVertical, enabled: terminal)
+            item(sub, "Split Horizontally\tCtrl+Shift+O", .splitHorizontal, enabled: terminal)
+            item(sub, "Close Pane\tCtrl+Alt+W", .closePane, enabled: terminal && split)
+            item(sub, "Select Next Pane\tCtrl+Alt+Right", .nextPane, enabled: terminal && split)
+            item(sub, "Select Previous Pane\tCtrl+Alt+Left", .previousPane, enabled: terminal && split)
             divider(sub)
             item(sub, "MultiExec\tCtrl+Shift+M", .multiExec, enabled: false)
             item(sub, "Run Command on Hosts…", .runOnHosts, enabled: false)

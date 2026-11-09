@@ -84,7 +84,7 @@ enum TestScript {
         guard !steps.isEmpty else { return false }
         switch steps.removeFirst() {
         case .type(let text):
-            if let editor = workspace.activeEditor { editor.type(text) } else { workspace.activePane?.send(text) }
+            if let editor = workspace.activeEditor { editor.type(text) } else { workspace.focusedPane?.send(text) }
         case .editorDo(let name): workspace.activeEditor?.perform(named: name)
         case .infoDo(let name): GetInfoWindow.current?.perform(named: name)
         case .newTab: workspace.newTab()
@@ -93,7 +93,7 @@ enum TestScript {
         case .logins: workspace.showLogins()
         case .menu: workspace.openMainMenu()
         case .menuCommand(let id): workspace.perform(id)
-        case .drop(let paths): drop(paths, on: workspace.activePane?.hwnd)
+        case .drop(let paths): drop(paths, on: workspace.focusedPane?.hwnd)
         case .explorer: workspace.toggleExplorer()
         case .explore(let path): workspace.activePane?.explorer?.navigate(to: path)
         case .select(let names): workspace.activePane?.explorer?.select(names: names)

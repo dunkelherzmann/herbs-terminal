@@ -52,9 +52,13 @@ final class Workspace: WindowObject {
     // MARK: Tabs
 
     var activeTab: WorkspaceTab? { tabs.indices.contains(active) ? tabs[active] : nil }
+    /// The active tab's first pane: the tab itself, with its number, name, SSH connection and explorer.
     var activePane: TerminalPane? { activeTab as? TerminalPane }
+    /// The pane with the keyboard focus in the active tab; Clear, Reset, Find and typing act on it.
+    var focusedPane: TerminalPane? { activePane.map { $0.group?.focused ?? $0 } }
     var activeEditor: TextEditorPane? { activeTab as? TextEditorPane }
-    private var panes: [TerminalPane] { tabs.compactMap { $0 as? TerminalPane } }
+    /// Every shell in the window, split panes included.
+    private var panes: [TerminalPane] { tabs.compactMap { $0 as? TerminalPane }.flatMap { $0.group?.panes ?? [$0] } }
     private var editors: [TextEditorPane] { tabs.compactMap { $0 as? TextEditorPane } }
     var activeIndex: Int { active }
     var tabNames: [String] { tabs.map(\.tabName) }
@@ -88,18 +92,25 @@ final class Workspace: WindowObject {
         return candidate
     }
 
-    /// A new, selected tab whose process the caller starts. It takes the lowest free number, as on the Mac.
-    private func addPane() -> TerminalPane? {
+    /// A shell's window, wired to this workspace; the caller places it and starts its process.
+    private func makePane() -> TerminalPane? {
         guard let hwnd else { return nil }
         let pane = TerminalPane(parent: hwnd, settings: TerminalProfile.shared.settings(for: nil))
-        let used = Set(tabs.map(\.number))
-        pane.number = (1...).first { !used.contains($0) }!
         pane.onTitleChange = { [weak self] pane in
             // Administrator mode on a host ends with the tab's SSH session.
             if pane.remote != nil, !pane.isConnected { pane.explorer?.leaveAdministrator() }
             self?.refreshChrome()
         }
-        pane.onExit = { [weak self] pane in self?.close(pane) }
+        pane.onExit = { [weak self] pane in self?.shellExited(pane) }
+        pane.onFocus = { [weak self] pane in self?.paneFocused(pane) }
+        return pane
+    }
+
+    /// A new, selected tab whose process the caller starts. It takes the lowest free number, as on the Mac.
+    private func addPane() -> TerminalPane? {
+        guard let pane = makePane() else { return nil }
+        let used = Set(tabs.map(\.number))
+        pane.number = (1...).first { !used.contains($0) }!
         tabs.append(pane)
         layout()
         select(tabs.count - 1)
@@ -118,14 +129,106 @@ final class Workspace: WindowObject {
             refreshChrome()
             return
         }
+        let shells = pane.group?.panes ?? [pane]
         if pane.showingExplorer, let explorer = pane.explorer {
-            pane.show(false)
+            shells.forEach { $0.show(false) }
             explorer.show(true)
         } else {
             pane.explorer?.show(false)
-            pane.show(true)
+            shells.forEach { $0.show(true) }
+            // The focused pane keeps the keyboard.
+            if let focused = pane.group?.focused, let window = focused.hwnd { SetFocus(window) }
         }
+        updateOutlines()
         refreshChrome()
+    }
+
+    // MARK: Split panes
+
+    /// Split Vertically (side by side) or Horizontally (stacked): a new shell beside the focused pane, in its folder
+    /// when that's on this PC, as on the Mac.
+    func split(_ axis: PaneNode.Axis) {
+        guard let head = activePane, !head.showingExplorer, let current = focusedPane, let pane = makePane() else { return }
+        let group = head.group ?? PaneGroup(first: head)
+        head.group = group
+        group.split(current, axis, adding: pane)
+        var isFolder: ObjCBool = false
+        let folder = current.remote == nil ? current.location.flatMap {
+            FileManager.default.fileExists(atPath: $0, isDirectory: &isFolder) && isFolder.boolValue ? $0 : nil
+        } : nil
+        layout()
+        select(active)
+        if ParityScene.isActive {
+            pane.start(commandLine: ParityScene.commandLine, directory: folder ?? ParityScene.home, environment: ParityScene.shellEnvironment)
+        } else {
+            pane.start(directory: folder)
+        }
+    }
+
+    /// Close Pane: asks first when a program is running in it, as closing a tab does.
+    func closeFocusedPane() {
+        guard let head = activePane, let group = head.group, group.isSplit, let pane = group.focused else { return }
+        guard confirmClosing([pane], scope: "this pane") else { return }
+        closePane(pane)
+    }
+
+    /// Select Next / Previous Pane.
+    func cyclePane(_ step: Int) {
+        guard let group = activePane?.group, group.isSplit else { return }
+        group.cycle(step)
+        if let window = group.focused?.hwnd { SetFocus(window) }
+        updateOutlines()
+        refreshChrome()
+    }
+
+    /// The tab whose panes include `pane`.
+    private func tabIndex(holding pane: TerminalPane) -> Int? {
+        tabs.firstIndex { tab in
+            guard let head = tab as? TerminalPane else { return false }
+            return head === pane || head.group?.panes.contains { $0 === pane } == true
+        }
+    }
+
+    /// A shell ended (`exit`, or its program quit): its pane closes, then its tab, then the window.
+    private func shellExited(_ pane: TerminalPane) {
+        guard let index = tabIndex(holding: pane), let head = tabs[index] as? TerminalPane else { return }
+        if head.group?.isSplit == true { closePane(pane) } else { close(head) }
+    }
+
+    /// Takes one pane out of a split tab. When it's the first pane, the next one takes over the tab: its number and
+    /// name. The SSH connection was the closed pane's own program, so its explorer closes with it.
+    private func closePane(_ pane: TerminalPane) {
+        guard let index = tabIndex(holding: pane), let head = tabs[index] as? TerminalPane, let group = head.group, group.isSplit else { return }
+        group.remove(pane)
+        if pane === head, let next = group.panes.first {
+            next.group = group
+            head.group = nil
+            next.number = head.number
+            next.customName = head.customName
+            head.explorer?.close()
+            head.explorer = nil
+            tabs[index] = next
+        }
+        pane.close()
+        if let first = tabs[index] as? TerminalPane, first.group?.isSplit == false { first.group = nil }
+        layout()
+        if index == active { select(active) } else { refreshChrome() }
+    }
+
+    private func paneFocused(_ pane: TerminalPane) {
+        guard let index = tabIndex(holding: pane), let group = (tabs[index] as? TerminalPane)?.group else { return }
+        guard group.focused !== pane else { return }
+        group.focused = pane
+        updateOutlines()
+        refreshChrome()
+    }
+
+    /// The focused pane of a split tab is outlined; a tab with one pane has no outline.
+    private func updateOutlines() {
+        for case let head as TerminalPane in tabs {
+            let group = head.group
+            for pane in group?.panes ?? [head] { pane.outlined = group?.isSplit == true && pane === group?.focused }
+        }
     }
 
     // MARK: File explorer
@@ -191,7 +294,8 @@ final class Workspace: WindowObject {
         guard let index = tabs.firstIndex(where: { $0 === tab }) else { return }
         if let pane = tab as? TerminalPane {
             pane.explorer?.close()
-            pane.close()
+            for shell in pane.group?.panes ?? [pane] { shell.close() }
+            pane.group = nil
         }
         (tab as? TextEditorPane)?.close()
         tabs.remove(at: index)
@@ -218,7 +322,7 @@ final class Workspace: WindowObject {
             return
         }
         guard let pane = tabs[index] as? TerminalPane else { return }
-        if confirm, !confirmClosing([pane], scope: "this tab") { return }
+        if confirm, !confirmClosing(pane.group?.panes ?? [pane], scope: "this tab") { return }
         close(pane)
     }
 
@@ -302,7 +406,7 @@ final class Workspace: WindowObject {
 
     /// Export Session: everything in the terminal, scrollback included, to a text file named after the tab and time.
     func exportSession() {
-        guard let pane = activePane else { return }
+        guard let pane = focusedPane else { return }
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH-mm"
         let safe = pane.tabName.map { "\\/:*?\"<>|".contains($0) ? "-" : $0 }
@@ -433,7 +537,7 @@ final class Workspace: WindowObject {
         }
         if id >= MenuCommand.firstTab { select(Int(id - MenuCommand.firstTab)); return }
         guard let command = MenuCommand(rawValue: id) else { return }
-        let pane = activePane
+        let pane = focusedPane
         switch command {
         case .newTab: newTab()
         case .newWindow: App.newWindow()
@@ -449,7 +553,7 @@ final class Workspace: WindowObject {
         case .restoreTheming: restoreTheming()
         case .exportSession: exportSession()
         case .takeScreenshot: takeScreenshot()
-        case .disconnect: pane?.disconnect()
+        case .disconnect: activePane?.disconnect()
         case .previousTab: select((active - 1 + tabs.count) % tabs.count)
         case .nextTab: select((active + 1) % tabs.count)
         case .renameTab: rename(active)
@@ -473,7 +577,12 @@ final class Workspace: WindowObject {
                 TerminalProfile.shared.windowRows = pane.terminal.rows
             }
         case .closeTab: closeTab(at: active)
-        case .findInTerminal, .splitVertical, .splitHorizontal, .closePane, .nextPane, .previousPane, .multiExec, .runOnHosts:
+        case .splitVertical: split(.horizontal)
+        case .splitHorizontal: split(.vertical)
+        case .closePane: closeFocusedPane()
+        case .nextPane: cyclePane(1)
+        case .previousPane: cyclePane(-1)
+        case .findInTerminal, .multiExec, .runOnHosts:
             break // Not in the Windows version yet; shown greyed out.
         }
     }
@@ -509,12 +618,17 @@ final class Workspace: WindowObject {
             if letter("S") { return run(.exportSession) }
             if letter("I") { return run(.renameTab) }
             if letter("L") { return run(.clearToStart) }
+            if letter("E") { return run(.splitVertical) }
+            if letter("O") { return run(.splitHorizontal) }
             if letter("Q") { return run(.quit) }
             if key == VK_PRIOR { return run(.moveTabLeft) }
             if key == VK_NEXT { return run(.moveTabRight) }
             if key == VK_TAB { return run(.previousTab) }
         }
         if control && alt && !shift {
+            if letter("W") { return run(.closePane) }
+            if key == VK_RIGHT { return run(.nextPane) }
+            if key == VK_LEFT { return run(.previousPane) }
             if letter("K") { return run(.clearScrollback) }
             if letter("R") { return run(.reset) }
             if letter("S") { return run(.takeScreenshot) }
@@ -561,8 +675,9 @@ final class Workspace: WindowObject {
         state.tabNames = tabNames
         state.active = active
         if let pane = activePane {
-            state.title = pane.title
-            state.subtitle = pane.subtitle
+            // The focused pane's title, as on the Mac; the connection is the tab's.
+            state.title = (focusedPane ?? pane).title
+            state.subtitle = (focusedPane ?? pane).subtitle
             state.connected = pane.isConnected ? pane.remote?.label : nil
             state.explorerShowing = pane.showingExplorer
             state.explorerAvailable = true
@@ -595,7 +710,12 @@ final class Workspace: WindowObject {
         chrome.updateAccessibility(owner: hwnd, dpi: dpi, state: state)
         rect.top = chrome.height(dpi)
         for tab in tabs {
-            tab.move(to: rect)
+            if let head = tab as? TerminalPane, let group = head.group {
+                // Equal shares with a one-pixel hairline between panes, as on the Mac and Linux.
+                for (pane, frame) in group.root.frames(in: rect, gap: max(1, scaled(1, dpi: dpi))) { pane.move(to: frame) }
+            } else {
+                tab.move(to: rect)
+            }
             (tab as? TerminalPane)?.explorer?.move(to: rect)
         }
         InvalidateRect(hwnd, nil, false)
@@ -765,6 +885,8 @@ final class Workspace: WindowObject {
             let old = SelectObject(dc, bitmap)
             chrome.paint(dc, width: client.right, dpi: dpi, state: state)
             BitBlt(screen, 0, 0, client.right, height, dc, 0, 0, DWORD(SRCCOPY))
+            // Under the panes: shows only as the hairlines between split panes.
+            fill(screen, RECT(left: 0, top: height, right: client.right, bottom: client.bottom), WindowChrome.Colors(dark: appIsDark).border)
             SelectObject(dc, old)
             DeleteObject(bitmap)
             DeleteDC(dc)
