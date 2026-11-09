@@ -1,4 +1,4 @@
-# Herb's Terminal for Linux as a Flatpak. Build it on Linux with script/build_flatpak.sh [--install].
+# Herb's Terminal for Linux as a Flatpak. Build it on Linux with linux/dev/build_flatpak.sh [--install].
 id: org.herbsterminal.app
 runtime: org.gnome.Platform
 runtime-version: '49'
@@ -72,7 +72,7 @@ modules:
     build-commands:
       - sh linux/install.sh /app
     sources:
-      # The whole repository: the Linux package links to the macOS app's shared sources.
+      # The whole repository: the Linux package builds the shared/ sources at its root.
       - type: dir
         path: ..
         skip:

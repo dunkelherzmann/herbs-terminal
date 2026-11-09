@@ -162,7 +162,7 @@ class LinuxApp(App):
 
 
 class MacApp(App):
-    """The parity copy made by parity/mac-copy.sh, opened in the background."""
+    """The parity copy made by macos/parity/copy.sh, opened in the background."""
     platform = "mac"
     bundle_id = "org.herbsterminal.parity"
 
@@ -175,7 +175,7 @@ class MacApp(App):
         return os.path.join(tempfile.gettempdir(), "herbs-parity-app", "bridge")
 
     def launch(self):
-        executable = subprocess.run(["parity/mac-copy.sh"], cwd=self.repo, capture_output=True, text=True).stdout.strip()
+        executable = subprocess.run(["macos/parity/copy.sh"], cwd=self.repo, capture_output=True, text=True).stdout.strip()
         self.app_path = executable.split("/Contents/MacOS/")[0]
         self.quit_running()
         subprocess.run(["defaults", "delete", self.bundle_id], capture_output=True)

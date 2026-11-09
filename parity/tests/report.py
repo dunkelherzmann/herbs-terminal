@@ -135,7 +135,7 @@ def main():
         out.append("")
     open(os.path.join(REPO, "parity", "feature-check.md"), "w", encoding="utf-8").write("\n".join(out))
 
-    targets = {"mac": os.path.join(REPO, "pending.md"), "linux": os.path.join(REPO, "linux", "pending.md"),
+    targets = {"mac": os.path.join(REPO, "macos", "pending.md"), "linux": os.path.join(REPO, "linux", "pending.md"),
                "windows": args.windows_pending}
     for p, title in PLATFORMS:
         if p not in status or not targets[p] or loaded[p][1] is None:

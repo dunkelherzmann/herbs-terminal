@@ -1,7 +1,7 @@
 # Opens one parity scene of the Windows build, saves its UI tree (UI Automation) and the window's own picture,
 # then closes it. The installed app and the user's settings are not used: the scene keeps its files in %TEMP%.
 # Run on the Windows PC (over SSH is fine):
-#   parity\windows-scene.ps1 -Scene main -Out <output folder> -Exe <HerbsTerminal.exe> -Dump <uia-dump.ps1>
+#   windows/parity/scene.ps1 -Scene main -Out <output folder> -Exe <HerbsTerminal.exe> -Dump <uia-dump.ps1>
 # UI Automation and PrintWindow need the logged-in desktop, which an SSH session doesn't have, so the script
 # runs itself again there through a one-time scheduled task ("Herb's Terminal parity") and waits for it. The scene's
 # window opens without taking focus, for a few seconds, then closes.

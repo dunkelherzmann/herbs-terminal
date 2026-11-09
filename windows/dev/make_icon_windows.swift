@@ -2,10 +2,10 @@
 // lighter title bar and the "> HT_" prompt, drawn with the same strokes as the Mac icon. Writes
 // windows/Resources/HerbsTerminal.ico (16 to 256 px, PNG-compressed entries).
 //
-//   swift script/make_icon_windows.swift
+//   swift windows/dev/make_icon_windows.swift
 import AppKit
 
-let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 let canvas: CGFloat = 256
 
 func color(_ hex: UInt32, _ alpha: CGFloat = 1) -> NSColor {

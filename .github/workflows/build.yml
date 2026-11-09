@@ -1,0 +1,43 @@
+# Builds and tests every version on GitHub's own runners for each pull request and push to main.
+# Release builds are still made and installed on Herbert's own Mac, Linux and Windows machines.
+name: Build
+on:
+  pull_request:
+  push:
+    branches: [main]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  macos:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - run: macos/dev/build_and_run.sh --bundle
+      # terminalUsesFactoryBasicProfile compares with the runner's own Terminal.app Basic profile, whose font
+      # differs between macOS releases; it runs on the Mac with the rest of the suite.
+      - run: macos/dev/test.sh --skip terminalUsesFactoryBasicProfile
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      # flatpak-builder sandboxes each step in a user namespace, which Ubuntu 24.04 restricts by default.
+      - run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          sudo apt-get update -q && sudo apt-get install -yq flatpak
+      # The project's own build script: it prefetches the downloads with retries and gh, then builds the bundle.
+      - run: dbus-run-session -- linux/dev/build_flatpak.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: compnerd/gha-setup-swift@main
+        with:
+          branch: swift-6.4.2-release
+          tag: 6.4.2-RELEASE
+      - run: powershell -ExecutionPolicy Bypass -File windows\dev\build.ps1 -Release

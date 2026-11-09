@@ -7,23 +7,23 @@
 # VTE and the downloads, so later builds only rebuild the app.
 #
 # From another computer, over SSH:
-#   ssh <linux-machine> 'cd herbs-terminal && git pull --ff-only && script/build_flatpak.sh --install'
-# Usage: script/build_flatpak.sh [--install]
+#   ssh <linux-machine> 'cd herbs-terminal && git pull --ff-only && linux/dev/build_flatpak.sh --install'
+# Usage: linux/dev/build_flatpak.sh [--install]
 set -eu
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 install=false
 for arg in "$@"; do
     case "$arg" in
         --install) install=true ;;
-        *) echo "usage: script/build_flatpak.sh [--install]" >&2; exit 2 ;;
+        *) echo "usage: linux/dev/build_flatpak.sh [--install]" >&2; exit 2 ;;
     esac
 done
 [ "$(uname -s)" = Linux ] || { echo "Build the Linux version on a Linux machine." >&2; exit 1; }
 command -v flatpak >/dev/null || { echo "flatpak not found; install it with your package manager" >&2; exit 1; }
 
 APP=org.herbsterminal.app
-VERSION="$(sh "$ROOT/script/version.sh")"
+VERSION="$(sh "$ROOT/scripts/version.sh")"
 ARCH="$(flatpak --default-arch)"
 STATE="$ROOT/linux/.flatpak-builder"
 BUNDLE="$ROOT/dist/Herbs-Terminal-$VERSION-linux-$ARCH.flatpak"

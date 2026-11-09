@@ -255,7 +255,7 @@ struct TailcatPeersView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Tailcat Peers").font(.headline)
             if Tailcat.executable == nil {
-                Text("This build is missing its bundled tailcat helper; rebuild Herb's Terminal with script/build_and_run.sh.")
+                Text("This build is missing its bundled tailcat helper; rebuild Herb's Terminal with macos/dev/build_and_run.sh.")
                     .foregroundStyle(.red)
             }
             Text("Reach machines that can't see each other by IP. Each peer runs `tailcat serve 22`; paste the address it prints. Addresses are secrets; they are encrypted with your Administrator Password when one is set.")

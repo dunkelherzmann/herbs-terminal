@@ -4,7 +4,8 @@
 set -eu
 . "$(dirname "$0")/env.sh"
 prepare_sdk
-version="let appVersion = \"$(sh "$ROOT/script/version.sh")\""
+version="let appVersion = \"$(sh "$ROOT/scripts/version.sh")\""
 file="$ROOT/linux/Sources/HerbsTerminal/Version.swift"
 [ "$(cat "$file" 2>/dev/null)" = "$version" ] || printf '%s\n' "$version" > "$file"
+sh "$ROOT/linux/copy-shared.sh"
 in_sdk sh -c 'cd "$1/linux" && shift && swift build --scratch-path "$@"' sh "$ROOT" "$SCRATCH" "$@"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 frameworks="$(xcode-select -p)/Library/Developer/Frameworks"
 testing_lib="$(xcode-select -p)/Library/Developer/usr/lib"
 if [[ -d "$frameworks/Testing.framework" ]]; then

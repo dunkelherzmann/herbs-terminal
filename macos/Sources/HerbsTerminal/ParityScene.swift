@@ -2,7 +2,7 @@ import Foundation
 
 /// A fixed, private state for comparing this app with its Linux and Windows versions (`parity/parity.json`).
 /// It only works in a parity copy of the app (bundle identifier `org.herbsterminal.parity`, made by
-/// `parity/mac-copy.sh`), so it has its own settings domain and never touches the user's profiles, logins or
+/// `macos/parity/copy.sh`), so it has its own settings domain and never touches the user's profiles, logins or
 /// saved session. Launch it with `--parity-scene <name>`.
 enum ParityScene {
     static let bundleIdentifier = "org.herbsterminal.parity"
