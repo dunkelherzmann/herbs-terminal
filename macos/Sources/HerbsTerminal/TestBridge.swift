@@ -75,6 +75,31 @@ enum TestBridge {
             guard let explorer = try workspace.selected.state.explorerBridge else { return "unsupported" }
             explorer.select(request["names"] as? [String] ?? [])
             return explorer.selected()
+        case "session-snapshot":
+            // Every window as session restore would save it (the test copy never writes it).
+            return try JSONSerialization.jsonObject(with: try JSONEncoder().encode(SessionRestore.snapshot(Workspace.all)))
+        case "session-open":
+            // Reopens windows from a snapshot, as the next launch would.
+            let data = try JSONSerialization.data(withJSONObject: request["windows"] ?? [])
+            let windows = try JSONDecoder().decode([SavedWindow].self, from: data)
+            SessionRestore.queue(windows)
+            for _ in windows { openWindow?() }
+            return true
+        case "resize-grid":
+            // The window resized to show this grid, as dragging its edge would.
+            try workspace.resize(columns: request["columns"] as? Int ?? 80, rows: request["rows"] as? Int ?? 24)
+            return true
+        case "profile-add":
+            // A new named profile (a copy of the default), with a startup command when given; returns its id.
+            let profile = TerminalProfile.shared
+            let id = profile.addProfile(named: request["name"] as? String ?? "Profile")
+            if let command = request["startupCommand"] as? String { profile.update(id) { $0.startupCommand = command } }
+            return id.uuidString
+        case "profile-new-tab":
+            // New Tab with Profile.
+            guard let id = (request["profile"] as? String).flatMap(UUID.init(uuidString:)) else { throw Failure(description: "no profile id") }
+            try workspace.add(profile: id)
+            return true
         case "saved-passwords":
             // The toolbar's Saved Passwords menu: what it offers, or (with "choose") run one of its entries.
             let store = CredentialStore.shared ?? CredentialStore.unavailable()
@@ -374,6 +399,8 @@ enum TestBridge {
                                         "columns": terminal.cols, "rows": terminal.rows, "title": shell.legend.title,
                                         "subtitle": shell.legend.subtitle, "exited": false, "text": Workspace.sessionText(shell),
                                         "fontSize": shell.settings.effectiveSize,
+                                        "profile": TerminalProfile.shared.name(of: shell.profileID),
+                                        "badge": shell.legend.showingSize ? "\(shell.legend.columns) × \(shell.legend.rows)" : NSNull(),
                                         // SwiftTerm's find bar, a subview of the terminal while it's open.
                                         "find": ["shown": shell.view.subviews.contains {
                                             String(describing: type(of: $0)).contains("FindBar") && !$0.isHidden }]]
