@@ -94,6 +94,8 @@ It covers the everyday features of the stock macOS Terminal and Ptyxis. It adds:
   - Bigger, Smaller, Settings.
 - **Dropping files:** dropping files or folders on the terminal types their paths, quoted for the shell.
 - **Bell:** sounds, flashes, does both, or does nothing. The flash happens at most twice a second and fades gently when Reduce Motion is on.
+- **Mouse in full-screen programs:** a program that asks for mouse events (vim, htop, tmux, mc) gets clicks, drags, movement and the wheel at the cell under the pointer. Shift+click and Shift+drag still select text, unless the program asks for Shift too, and the right-click menu stays. Without mouse reporting, the wheel scrolls back, or sends arrow keys in full-screen programs (unless they turn alternate scrolling off).
+- **Input methods:** Chinese, Japanese and Korean input methods compose at the cursor, in the terminal's font, with the candidate list below the cursor's line; the result is typed like keys.
 - **Size badge:** while the window is being resized, a badge shows the terminal's size in columns × rows (Settings ▸ Window).
 
 ### Menus and shortcuts

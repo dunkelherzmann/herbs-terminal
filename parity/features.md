@@ -66,6 +66,7 @@ When the Mac gains a feature, add it here with the next free id in its group.
 - **B12** Zoom: Bigger, Smaller, Default; zoom saved in the profile, Default clears it.
 - **B13** Secure Keyboard Entry (Mac only; Linux and Windows are exempt).
 - **B14** Full color, bold/italic/underline, wide characters, mouse reporting for full-screen programs.
+- **B15** Typing with an input method (Chinese, Japanese, Korean): composition at the cursor, in the terminal's font.
 
 ## M: Menus
 

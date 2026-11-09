@@ -246,7 +246,8 @@ final class TerminalPane: WindowObject, TerminalDelegate {
 
     /// Everything in the terminal, scrollback included, as text.
     func exportText() -> String {
-        String(decoding: terminal.getBufferAsData(kind: .normal), as: UTF8.self)
+        // SwiftTerm keeps the empty cell after a wide (CJK) character as a NUL; the text has none.
+        String(decoding: terminal.getBufferAsData(kind: .normal), as: UTF8.self).replacingOccurrences(of: "\u{0}", with: "")
     }
 
     /// Clear to Start: empties the screen and scrollback, then asks the shell to draw its prompt again.
@@ -470,8 +471,26 @@ final class TerminalPane: WindowObject, TerminalDelegate {
             // Alt+letter: ESC then the letter, as terminals send Meta.
             character(WCHAR(truncatingIfNeeded: wParam), alt: true)
             return 0
+        case WM_IME_STARTCOMPOSITION:
+            // The input method composes at the cursor, in the terminal's font; Windows then types the result as
+            // characters (WM_IME_CHAR becomes WM_CHAR), which go to the program like keys.
+            composing = true
+            placeInputMethod()
+            return nil
+        case WM_IME_ENDCOMPOSITION:
+            composing = false
+            return nil
         case WM_MOUSEWHEEL:
-            wheel(hiWord(wParam))
+            var point = POINT(x: Int32(loWord(lParam)), y: Int32(hiWord(lParam)))
+            ScreenToClient(hwnd, &point)
+            wheel(hiWord(wParam), at: point)
+            return 0
+        case WM_LBUTTONDOWN where reportsMouse, WM_LBUTTONDBLCLK where reportsMouse:
+            // A full-screen program that tracks the mouse gets the click (Shift+click still selects, as on the Mac).
+            SetFocus(hwnd)
+            SetCapture(hwnd)
+            reportedButton = 0
+            if pressReported { report(button: 0, release: false, motion: false, at: lParam) }
             return 0
         case WM_LBUTTONDOWN:
             SetFocus(hwnd)
@@ -485,6 +504,19 @@ final class TerminalPane: WindowObject, TerminalDelegate {
             }
             selecting = true
             invalidate()
+            return 0
+        case WM_MOUSEMOVE where reportedButton != nil:
+            if terminal.mouseMode == .buttonEventTracking || terminal.mouseMode == .anyEvent {
+                report(button: 0, release: false, motion: true, at: lParam)
+            }
+            return 0
+        case WM_MOUSEMOVE where !selecting && terminal.mouseMode == .anyEvent && scrollOffset == 0:
+            report(button: 3, release: false, motion: true, at: lParam)  // movement with no button held
+            return 0
+        case WM_LBUTTONUP where reportedButton != nil:
+            reportedButton = nil
+            ReleaseCapture()
+            if terminal.mouseMode != .x10 { report(button: 0, release: true, motion: false, at: lParam) }
             return 0
         case WM_MOUSEMOVE:
             if selecting {
@@ -703,14 +735,85 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         send(text)
     }
 
-    private func wheel(_ delta: Int) {
+    private func wheel(_ delta: Int, at point: POINT) {
         let lines = max(1, abs(delta) / 40) * (delta > 0 ? 1 : -1)
-        if terminal.isCurrentBufferAlternate {
+        if reportsMouse {
+            // Programs that track the mouse get the wheel as buttons 4 (up) and 5 (down), once per line.
+            let position = LPARAM(Int(UInt16(bitPattern: Int16(clamping: point.x))) | Int(UInt16(bitPattern: Int16(clamping: point.y))) << 16)
+            for _ in 0..<abs(lines) { report(button: lines > 0 ? 4 : 5, release: false, motion: false, at: position) }
+        } else if terminal.isCurrentBufferAlternate {
+            // With alternate scroll mode off (DECRST 1007) the wheel does nothing there, as on the Mac.
+            guard terminal.alternateScrollMode else { return }
             // Full-screen programs without mouse reporting (less, man) scroll with the arrow keys.
             let key = delta > 0 ? (terminal.applicationCursor ? "\u{1b}OA" : "\u{1b}[A") : (terminal.applicationCursor ? "\u{1b}OB" : "\u{1b}[B")
             session?.write(Array(String(repeating: key, count: abs(lines)).utf8))
         } else {
             scroll(by: lines)
+        }
+    }
+
+    // MARK: Input methods
+
+    /// Whether an input method is composing (it follows the cursor while it does).
+    private var composing = false
+
+    func placeInputMethod() {
+        guard let hwnd else { return }
+        let inset = Self.inset(hwnd)
+        let cursor = terminal.getCursorLocation()
+        let x = inset.left + Int32(cursor.x) * fonts.cellWidth, y = inset.top + Int32(cursor.y + scrollOffset) * fonts.cellHeight
+        _ = withWide(fonts.face) { herb_ime_place(UnsafeMutableRawPointer(hwnd), x, y, fonts.cellHeight, $0, fonts.pixelHeight) }
+    }
+
+    /// Where the input method's window is and where the cursor's cell is (client pixels), for the test bridge.
+    func inputMethodPlace() -> (window: POINT, cursor: POINT)? {
+        guard let hwnd else { return nil }
+        var x: Int32 = 0, y: Int32 = 0
+        guard herb_ime_position(UnsafeMutableRawPointer(hwnd), &x, &y) != 0 else { return nil }
+        let inset = Self.inset(hwnd)
+        let cursor = terminal.getCursorLocation()
+        return (POINT(x: x, y: y), POINT(x: inset.left + Int32(cursor.x) * fonts.cellWidth, y: inset.top + Int32(cursor.y + scrollOffset) * fonts.cellHeight))
+    }
+
+    // MARK: Mouse reporting
+
+    /// The button a full-screen program was told is down (0 = left), until it's released.
+    private var reportedButton: Int?
+    private var lastMotion: (column: Int, row: Int)?
+
+    /// The middle of a cell on screen, in client pixels (for the test bridge).
+    func cellCenter(column: Int, row: Int) -> POINT {
+        let inset = hwnd.map(Self.inset) ?? (left: 0, top: 0, right: 0, bottom: 0)
+        return POINT(x: inset.left + Int32(column) * fonts.cellWidth + fonts.cellWidth / 2, y: inset.top + Int32(row) * fonts.cellHeight + fonts.cellHeight / 2)
+    }
+
+    /// Whether the mouse goes to the program: it asked for mouse events, the live screen is shown, and Shift isn't
+    /// held (unless the program captures Shift too), as on the Mac.
+    var reportsMouse: Bool {
+        terminal.mouseMode != .off && scrollOffset == 0 && !(isPressed(VK_SHIFT) && !terminal.mouseShiftCapture)
+    }
+
+    /// X10 mode reports presses only; the others presses and releases.
+    private var pressReported: Bool { terminal.mouseMode != .off }
+
+    /// Sends a mouse event to the program, at the cell under the pointer, with the keyboard's modifiers.
+    private func report(button: Int, release: Bool, motion: Bool, at lParam: LPARAM) {
+        let inset = hwnd.map(Self.inset) ?? (left: 0, top: 0, right: 0, bottom: 0)
+        let x = Int(Int16(truncatingIfNeeded: loWord(lParam))) - Int(inset.left), y = Int(Int16(truncatingIfNeeded: hiWord(lParam))) - Int(inset.top)
+        let column = max(0, min(terminal.cols - 1, x / max(1, Int(fonts.cellWidth))))
+        let row = max(0, min(terminal.rows - 1, y / max(1, Int(fonts.cellHeight))))
+        if motion {
+            if let last = lastMotion, last == (column, row) { return }  // only when it moves to another cell
+            lastMotion = (column, row)
+        } else {
+            lastMotion = nil
+        }
+        let flags = terminal.encodeButton(button: button, release: release, shift: isPressed(VK_SHIFT), meta: isPressed(VK_MENU),
+                                          control: isPressed(VK_CONTROL))
+        if motion {
+            terminal.sendMotion(buttonFlags: flags, x: column, y: row, pixelX: max(0, x), pixelY: max(0, y))
+        } else {
+            terminal.sendEvent(buttonFlags: flags, x: column, y: row, pixelX: max(0, x), pixelY: max(0, y))
         }
     }
 
@@ -1191,7 +1294,10 @@ final class TerminalPane: WindowObject, TerminalDelegate {
             }
             if screenRow == cursorRow && cursorVisible { drawCursor(dc, line: line, column: cursor.x, x: inset.left + Int32(cursor.x) * cw, y: y) }
         }
-        if focused { SetCaretPos(inset.left + Int32(cursor.x) * cw, inset.top + Int32(cursorRow) * ch) }
+        if focused {
+            SetCaretPos(inset.left + Int32(cursor.x) * cw, inset.top + Int32(cursorRow) * ch)
+            if composing { placeInputMethod() }
+        }
         drawFlash(dc, width: width, height: height)
         if showingBadge { drawBadge(dc, width: width, height: height) }
         if outlined {

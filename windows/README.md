@@ -2,7 +2,7 @@
 
 A native Win32 version of Herb's Terminal, in Swift. The terminal emulator is SwiftTerm's engine (the same one the Mac app uses), shells run in a Windows pseudo console (ConPTY), and the screen is painted with GDI. The login vault is the Mac app's own code, compiled unchanged: small `CryptoKit`, `CommonCrypto`, `SQLite3` and `Darwin` modules give it Apple's names on Windows CNG, the system's `winsqlite3` and the Universal CRT, so a vault made on a Mac or on Linux opens here.
 
-**Status: early.** The window looks like the Mac and Linux versions, and the terminal, Settings and SSH with saved logins work; the file explorer and the rest are still to come (see the roadmap below).
+**Status:** the window, terminal, SSH, file explorer, saved logins, split panes, MultiExec, Tailcat peers and accessibility work as on the Mac and Linux; what's left is listed in `pending.md`.
 
 ## Running it
 
@@ -38,14 +38,16 @@ A development build is `windows\.build\out\Products\Debug-windows-x86_64\HerbsTe
 
 ## What works
 
-- **The window, laid out as on Linux:** the toolbar takes the title bar's place, with the Main Menu, New Tab and Connect via SSH on the left, the tab's title in the middle, Export Session, Take Screenshot, the explorer switch, MultiExec, Tailcat Peers and Search on the right, and minimize, maximize and close at the right end (with Windows 11's snap layouts on maximize). Toolbar buttons never take the keyboard from the terminal, and each shows a hover hint after about half a second. The explorer, MultiExec, Tailcat and Search buttons are there but greyed out until those features arrive
-- **Main Menu**, item for item as on Linux: New Tab, New Window, Connect via SSH, Open Tabs, Zoom, Appearance (System / Light / Dark, color presets, iTerm2 import, Restore Defaults), the Shell submenu (Export Session, Take Screenshot, tabs, Disconnect, Clear to Start, Clear Scrollback, Reset, Hard Reset; splits, profiles, MultiExec and Run Command on Hosts greyed out for now), Toggle Full Screen, Settings, Manage Logins, About and Quit. Menus and hints follow dark mode
+- **The window, laid out as on Linux:** the toolbar takes the title bar's place, with the Main Menu, New Tab and Connect via SSH on the left, the tab's title in the middle, Export Session, Take Screenshot, the explorer switch, MultiExec, Tailcat Peers and Search on the right, and minimize, maximize and close at the right end (with Windows 11's snap layouts on maximize). Toolbar buttons never take the keyboard from the terminal, and each shows a hover hint after about half a second.
+- **Main Menu**, item for item as on Linux: New Tab, New Window, Connect via SSH, Open Tabs, Zoom, Appearance (System / Light / Dark, color presets, iTerm2 import, Restore Defaults), the Shell submenu (Export Session, Take Screenshot, tabs, Disconnect, Clear to Start, Clear Scrollback, Reset, Hard Reset, splits, profiles, MultiExec and Run Command on Hosts), Toggle Full Screen, Settings, Manage Logins, About and Quit. Menus and hints follow dark mode
 - **Tab strip**: tabs are numbered "Terminal 1", "Terminal 2"… (the lowest free number), double-click or Ctrl+Shift+I to rename, drag to reorder, middle-click to close, right-click for Rename, Move Left/Right and Close. The title shows what the shell reports; double-click it for the default window size and zoom, right-click to make the current size the default
 - **Export Session** (Ctrl+Shift+S): everything in the terminal, scrollback included, to a text file named after the tab and the time
 - **Take Screenshot** (Ctrl+Alt+S): a picture of the whole window, toolbar and tabs included, to the clipboard, ready to paste; the button shows a check mark for a moment to confirm it
 - Each tab runs PowerShell 7 (`pwsh`) when it's installed, otherwise Windows PowerShell
 - Full color (16, 256 and 24-bit), bold, italic, underline, strikethrough, dim, inverse; wide (CJK) characters
 - Scrollback with the mouse wheel and Shift+Page Up / Down; full-screen programs scroll with the wheel
+- **Mouse reporting:** programs that track the mouse (vim, htop, tmux, mc, over SSH or in WSL) get clicks, drags, movement and the wheel; Shift+click and Shift+drag still select, as on the Mac
+- **Input methods:** the composition and candidate windows of Chinese, Japanese and Korean input methods sit at the terminal's cursor, in its font
 - Mouse selection (double-click selects a word), copy and paste as in Windows Terminal: Ctrl+C copies when text is selected, Ctrl+V pastes, right-click opens the terminal's menu (as on the Mac); bracketed paste
 - **File explorer** for this PC's files (the toolbar's folder button or Ctrl+Shift+X): places, location bar, sortable list with Windows' icons, open, Copy / Cut / Paste shared with File Explorer, Recycle Bin, rename, New Folder / New File, hidden files, Properties, and Open in New Terminal Tab. In an SSH tab it shows the host's files over its own SFTP channel (signed in with the tab's saved password or SSH keys): browse, copy and move on the host, delete, rename, New Folder / New File, and upload or download files and folders (menus, drops, or Copy here and Paste there) with a transfer strip showing progress, Cancel and Retry. Text files open in a **text editor** tab, on this PC or on the host: Find (Ctrl+F), Wrap Lines, Save (Ctrl+S) keeping the file's encoding and line endings, and a prompt before unsaved changes are lost. **Get Info** (Alt+Enter) on host items changes permissions, owner and group, optionally for everything inside a folder, and the lock turns on **Administrator mode** there: the explorer works as root through sudo, under a red bar with Leave
 - Dropping files or folders from File Explorer on a terminal types their paths, as on the Mac and Linux, quoted for the tab's shell: single quotes for PowerShell, double quotes for Command Prompt, `/mnt/c/…` for WSL, and POSIX quoting for Git Bash and SSH tabs
@@ -97,9 +99,4 @@ Steps run 1.5 s apart. `--type` sends text straight into the active terminal (`\
 
 ## Roadmap
 
-1. Named profiles (Settings edits the default profile today), dark-mode Settings and dialogs, Find in Terminal
-2. SSH follow-ups: noticing an `ssh` typed in a local tab, the connection details window, saved hosts and MultiExec targets
-3. File explorer: local files, then remote over SFTP, with the transfer queue and the text editor
-4. Split panes, MultiExec, session restore, Export Session
-5. Mouse reporting for full-screen programs, find in scrollback, IME composition window
-6. App icon, an installer (MSIX), and code signing
+What's left is in `pending.md`: the app icon, an installer (MSIX) and code signing, and the explorer's Find and in-place Rename.

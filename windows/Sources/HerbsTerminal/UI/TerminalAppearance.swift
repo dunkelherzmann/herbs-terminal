@@ -13,6 +13,9 @@ struct FontSet {
     private var boldItalic: HFONT?
     private(set) var cellWidth: Int32 = 8
     private(set) var cellHeight: Int32 = 16
+    /// The face and pixel height in use, for the input method's window.
+    private(set) var face = "Consolas"
+    private(set) var pixelHeight: Int32 = 13
 
     init() {}
 
@@ -21,6 +24,8 @@ struct FontSet {
         // would draw 13 pt as 17 px, about a third bigger than the Mac.
         let height = -Int32((points * Double(dpi) / 96).rounded())
         let face = Self.isInstalled(family) ? family : (Self.isInstalled(Self.stockFamily) ? Self.stockFamily : "Consolas")
+        self.face = face
+        pixelHeight = -height
         func make(_ weight: Int32, _ italic: Bool) -> HFONT? {
             withWide(face) {
                 CreateFontW(height, 0, 0, 0, weight, italic ? 1 : 0, 0, 0, DWORD(DEFAULT_CHARSET), DWORD(OUT_TT_PRECIS),

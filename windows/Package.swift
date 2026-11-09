@@ -13,9 +13,11 @@ let package = Package(
         .target(name: "Darwin", path: "Sources/Darwin", linkerSettings: [.linkedLibrary("ws2_32")]),
         .target(name: "CryptoKit", path: "Sources/CryptoKit", linkerSettings: [.linkedLibrary("bcrypt")]),
         .target(name: "CommonCrypto", dependencies: ["CryptoKit"], path: "Sources/CommonCrypto"),
-        // UI Automation for the drawn toolbar, tab strip and window buttons (screen readers, the parity check).
+        // UI Automation for the drawn controls and the terminal's text (screen readers, the parity check), and the
+        // input method's window at the terminal's cursor.
         .target(name: "CHerbUIA", path: "Sources/CHerbUIA",
-                linkerSettings: [.linkedLibrary("uiautomationcore"), .linkedLibrary("oleaut32"), .linkedLibrary("ole32")]),
+                linkerSettings: [.linkedLibrary("uiautomationcore"), .linkedLibrary("oleaut32"), .linkedLibrary("ole32"),
+                                 .linkedLibrary("imm32")]),
         .executableTarget(
             name: "HerbsTerminal",
             dependencies: ["SQLite3", "Darwin", "CryptoKit", "CommonCrypto", "CHerbUIA", .product(name: "SwiftTerm", package: "SwiftTerm")],

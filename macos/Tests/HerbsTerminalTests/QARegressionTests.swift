@@ -276,6 +276,15 @@ func exportSessionSavesTheWholeTextUnderTheTabNameAndTime() throws {
     #expect(Workspace.sessionFileName(title: "logs/prod: web", date: date) == "logs-prod- web 2026-11-06 09-05.txt")
 }
 
+@Test @MainActor
+func exportSessionKeepsWideCharactersWithoutEmptyCells() {
+    // SwiftTerm stores the cell after a wide character as a NUL; the exported text must not contain it.
+    let shell = LocalShell()
+    shell.view.feed(text: "\u{4f60}\u{597d} ok")
+    let text = Workspace.sessionText(shell)
+    #expect(text == "\u{4f60}\u{597d} ok\n")
+}
+
 @Test
 func aSavedPasswordAnswersKeyboardInteractivePrompts() throws {
     // PAM servers ask through keyboard-interactive: "(user@host) Password:" instead of "user@host's password:".

@@ -194,6 +194,39 @@ enum TestBridge {
         case "include":
             try workspace.setIncluded(number: request["pane"] as? Int ?? 0, request["on"] as? Bool ?? true)
             return true
+        case "mouse":
+            // Real mouse messages to the focused terminal, at the middle of a cell (column and row from 0).
+            guard let pane = try workspace.focusedPane, let hwnd = pane.hwnd else { throw Failure(description: "no terminal") }
+            let point = pane.cellCenter(column: request["column"] as? Int ?? 0, row: request["row"] as? Int ?? 0)
+            var keys = [UInt8](repeating: 0, count: 256), saved = [UInt8](repeating: 0, count: 256)
+            GetKeyboardState(&saved)
+            keys = saved
+            if request["shift"] as? Bool == true { keys[Int(VK_SHIFT)] = 0x80 }
+            SetKeyboardState(&keys)
+            defer { SetKeyboardState(&saved) }
+            let position = LPARAM(Int(UInt16(bitPattern: Int16(clamping: point.x))) | Int(UInt16(bitPattern: Int16(clamping: point.y))) << 16)
+            switch request["kind"] as? String ?? "" {
+            case "down": SendMessageW(hwnd, UINT(WM_LBUTTONDOWN), WPARAM(MK_LBUTTON), position)
+            case "up": SendMessageW(hwnd, UINT(WM_LBUTTONUP), 0, position)
+            case "move": SendMessageW(hwnd, UINT(WM_MOUSEMOVE), request["held"] as? Bool == true ? WPARAM(MK_LBUTTON) : 0, position)
+            case "wheel":
+                var screen = point
+                ClientToScreen(hwnd, &screen)
+                let delta = (request["delta"] as? Int ?? 120) & 0xFFFF
+                let screenPosition = LPARAM(Int(UInt16(bitPattern: Int16(clamping: screen.x))) | Int(UInt16(bitPattern: Int16(clamping: screen.y))) << 16)
+                SendMessageW(hwnd, UINT(WM_MOUSEWHEEL), WPARAM(delta << 16), screenPosition)
+            default: throw Failure(description: "unknown mouse kind")
+            }
+            return ["reports": pane.reportsMouse, "selection": pane.bridgeSelection]
+        case "ime":
+            // What an input method does: start composing (the app places its window), then type the result.
+            guard let pane = try workspace.focusedPane, let hwnd = pane.hwnd else { throw Failure(description: "no terminal") }
+            SendMessageW(hwnd, UINT(WM_IME_STARTCOMPOSITION), 0, 0)
+            let place = pane.inputMethodPlace()
+            SendMessageW(hwnd, UINT(WM_IME_ENDCOMPOSITION), 0, 0)
+            for unit in (request["text"] as? String ?? "").utf16 { SendMessageW(hwnd, UINT(WM_IME_CHAR), WPARAM(unit), 1) }
+            guard let place else { return ["window": NSNull()] }
+            return ["window": [place.window.x, place.window.y], "cursor": [place.cursor.x, place.cursor.y]]
         case "quit": PostQuitMessage(0); return true
         default: throw Failure(description: "unknown op")
         }
