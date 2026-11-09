@@ -418,7 +418,7 @@ final class ManageLoginsWindow: WindowObject {
                      "checked": ticked.contains(login.id), "selected": row == selected] as [String: Any]
                 },
                 "locked": store.isLocked, "lockedCount": store.lockedCount, "protection": "\(store.protection)",
-                "export": buttons[.exportData].map { String(windowText: $0) } ?? "", "notice": String(windowText: banner),
+                "export": buttons[.exportData].map { String(windowText: $0) } ?? "", "notice": banner.map { String(windowText: $0) } ?? "",
                 "checkAll": false]
     }
 

@@ -310,7 +310,11 @@ extension LocalExplorer {
     fileprivate func makeBridge() -> ExplorerBridge {
         let bridge = ExplorerBridge(owner: "local")
         // With symlinks resolved, as the tests write it (/private/var rather than /var).
-        bridge.path = { realpath(path, nil).map { defer { free($0) }; return String(cString: $0) } ?? path }
+        bridge.path = {
+            guard let resolved = realpath(path, nil) else { return path }
+            defer { free(resolved) }
+            return String(cString: resolved)
+        }
         bridge.items = { visibleEntries.map { $0.isDirectory ? $0.url.lastPathComponent + "/" : $0.url.lastPathComponent } }
         bridge.selected = { selectedURLs.map(\.lastPathComponent) }
         bridge.select = { names in selection.ids = Set(visibleEntries.map(\.url).filter { names.contains($0.lastPathComponent) }) }
