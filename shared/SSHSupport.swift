@@ -7,7 +7,10 @@ enum SSHControl {
     /// Sockets live in a short private folder: a Unix socket path must stay under 104 bytes, and ssh adds a
     /// 17-character temporary suffix to the 40-character %C hash while it sets the master up. A folder under
     /// ~/Library/Caches is too long for that.
-    static let directory: URL = privateDirectory(base: "/tmp/herbs-\(getuid())")
+    /// A feature-test copy gets one of its own (per process), so it never reuses a connection another copy, or the
+    /// user's own app, left open (ControlPersist), and a test can't pass on someone else's login.
+    static let directory: URL = privateDirectory(base: CommandLine.arguments.contains("--parity-scene")
+        ? "/tmp/herbs-\(getuid())-t\(getpid())" : "/tmp/herbs-\(getuid())")
 
     /// %C hashes host, port and user, so the path length doesn't depend on the destination.
     static var controlPath: String { directory.path + "/cm-%C" }

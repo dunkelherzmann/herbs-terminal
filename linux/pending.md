@@ -7,7 +7,7 @@ What the Linux version still needs before it can ship with as few bugs as possib
 - [x] **Main Menu matches the Mac's in-window menus** (#70). It holds the same menus, submenus, order and shortcuts (Edit, Shell and Window included), and no command is reachable only somewhere else; W19 checks it. (§2, §14, enhancements.md) *Asked 2026-11-09.*
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 18:48)
+## Feature test results (2026-11-09 19:17)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
@@ -15,7 +15,7 @@ Written by `parity/tests/report.py`; rerun the tests and the report rather than 
 
 A test ran and the feature didn't do what the Mac version does.
 
-- [ ] **U5** Only your own input is broadcast. (§7): With MultiExec on and a tab connected, connecting a new tab works and nothing crashes: the app stopped answering (no answer to connect in 10 s (did the app quit?))
+- [ ] **S5** Failed login or dropped link: a banner with the real state; title back to local. (§4): A failed login says so, and the title goes back to this computer: expected the failed login to leave the tab on this computer (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'herbs-test@192.168.1.241'…
 
 ### Not checked automatically (53)
 

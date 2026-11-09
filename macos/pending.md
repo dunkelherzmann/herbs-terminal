@@ -7,9 +7,15 @@ What the Mac version still needs before it can ship with as few bugs as possible
 - [x] **Every menu in the window, none in the macOS menu bar.** (#67) All menus and submenus (Shell, Edit, View, Window, Help and the rest) move into the Main Menu in the window, as on Linux and Windows, so nothing needs a trip to the top of a wide screen. The macOS menu bar keeps only the app menu macOS always shows. Every shortcut keeps working, Undo, Cut, Copy, Paste and Select All in text fields included, and every item keeps its hover text and VoiceOver label. Describe the new menu in `SPECIFICATION.md` in the same PR. (§2, enhancements.md) *Asked 2026-11-09.*
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 18:46)
+## Feature test results (2026-11-09 19:16)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
+
+### Broken (1)
+
+A test ran and the feature didn't do what the Mac version does.
+
+- [ ] **S5** Failed login or dropped link: a banner with the real state; title back to local. (§4): A failed login says so, and the title goes back to this computer: expected the failed login to leave the tab on this computer (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'herbs-test@192.168.1.241'…
 
 ### Not checked automatically (56)
 
