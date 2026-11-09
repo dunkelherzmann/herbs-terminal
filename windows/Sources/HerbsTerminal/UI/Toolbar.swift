@@ -34,12 +34,13 @@ final class WindowChrome {
         var multiExecOn = false
 
         func isUnavailable(_ item: Item) -> Bool {
-            WindowChrome.unavailable.contains(item) || (item == .explorer && !explorerAvailable)
+            // Search finds in the terminal's scrollback; finding files in the explorer isn't in the Windows version yet.
+            WindowChrome.unavailable.contains(item) || (item == .explorer && !explorerAvailable) || (item == .search && explorerShowing)
         }
     }
 
     /// The parts of the toolbar not yet in the Windows version: drawn as on the Mac and Linux, but dimmed.
-    nonisolated static let unavailable: Set<Item> = [.peers, .search]
+    nonisolated static let unavailable: Set<Item> = [.peers]
 
     private(set) var rects: [Item: RECT] = [:]
     var hover: Item?
@@ -312,7 +313,9 @@ final class WindowChrome {
             return state.multiExecOn ? "Exit MultiExec (Ctrl+Shift+M)\nBack to one tab at a time; typing goes to the current tab only."
                                      : "MultiExec (Ctrl+Shift+M)\nShow every tab side by side and type into all of them at once."
         case .peers: return "Tailcat Peers" + notYet
-        case .search: return "Search Terminal (Ctrl+Shift+F)" + notYet
+        case .search:
+            if state.explorerShowing { return "Find Files (Ctrl+Shift+F)" + notYet }
+            return "Search Terminal (Ctrl+Shift+F)\nFind text in this tab's scrollback."
         case .title:
             return [state.title, state.subtitle].filter { !$0.isEmpty }.joined(separator: " ")
                 + "\nDouble-click to return the window and text to their default size; right-click to make the current size the default."

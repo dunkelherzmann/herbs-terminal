@@ -313,7 +313,10 @@ def _(c):
 @test("W11", "Search")
 def _(c):
     c.probe("find")
-    c.unverified("the command is there; whether the search field opens isn't reported by the bridge yet")
+    c.command("find", settle=1)
+    if "find" not in (c.pane() or {}):
+        c.unverified("the command runs; whether the search field opens isn't reported by this platform's bridge yet")
+    c.until(lambda s: c.pane(s)["find"]["shown"], "expected the find bar to open")
 
 @test("W12", "Main Menu: New Tab, New Window, Connect via SSH")
 def _(c):
@@ -322,7 +325,10 @@ def _(c):
 @test("W13", "Find in Terminal")
 def _(c):
     c.probe("find-in-terminal")
-    c.unverified("the command is there; the search bar isn't reported by the bridge yet")
+    c.command("find-in-terminal", settle=1)
+    if "find" not in (c.pane() or {}):
+        c.unverified("the command runs; whether the search field opens isn't reported by this platform's bridge yet")
+    c.until(lambda s: c.pane(s)["find"]["shown"], "expected the find bar to open")
 
 @test("W14", "Zoom: Bigger, Smaller, Default")
 def _(c):
@@ -485,6 +491,12 @@ def check_copy_paste(c, run):
     c.type(c.app.enter, settle=1.2)
     c.until(lambda s: "PASTED" in c.text(s), "expected Paste to type the clipboard's command")
     if c.app.shell != "posix":
+        # Command Prompt: special characters, % included, are taken literally.
+        c.app.set_clipboard(text="a&b %PATH% (x)")
+        c.type("echo ", settle=0.4)
+        run("paste-escaped")
+        c.type(c.app.enter, settle=1.2)
+        c.until(lambda s: "a&b %PATH% (x)" in [l.strip() for l in c.text(s).splitlines()], "expected Paste Escaped Text to keep the text literal")
         return
     c.app.set_clipboard(text="it's $HOME; a b")
     c.type("printf '%s\\n' ", settle=0.4)
@@ -498,7 +510,9 @@ def _(c):
     titles = {"select-all": "Select All", "copy": "Copy", "paste": "Paste", "paste-escaped": "Paste Escaped Text"}
     check_copy_paste(c, lambda name: c.choose(titles[name]))
     c.choose("Find…")
-    c.unverified("Copy, Paste, Paste Escaped Text and Select All work; Find… runs, but the bridge doesn't report the find bar yet")
+    if "find" not in (c.pane() or {}):
+        c.unverified("Copy, Paste, Paste Escaped Text and Select All work; Find… runs, but this platform's bridge doesn't report the find bar yet")
+    c.until(lambda s: c.pane(s)["find"]["shown"], "expected Find… to open the find bar")
 
 @test("B2", "Right-click menu: Clear to Start, Clear Scrollback, Reset")
 def _(c):
@@ -579,7 +593,19 @@ manual("B7", "Size badge while resizing", "needs a window resize by the pointer"
 @test("B8", "Find in Terminal")
 def _(c):
     c.probe("find-in-terminal")
-    c.unverified("the command is there; the search bar and its matches aren't reported by the bridge yet")
+    first, second = c.say("FINDME"), c.say("FINDME")
+    c.until(lambda s: c.text(s).count(first) >= 2, "expected the word printed twice")
+    try:
+        c.bridge.call("find", text="findme")
+    except bridge_module.BridgeError as error:
+        if "unknown op" in str(error):
+            c.unverified("the command is there; this platform's bridge doesn't report the find bar and its matches yet")
+        raise
+    # Case is ignored, and only the printed words match (the typed lines hide the word).
+    s = c.until(lambda s: c.pane(s)["find"]["shown"] and c.pane(s)["find"]["matches"] == 2 and c.pane(s)["selection"] == "FINDME",
+                "expected the find bar with 2 matches and the last one selected")
+    c.bridge.call("find-step", up=True)
+    c.until(lambda s: c.pane(s)["selection"] == "FINDME", "expected Previous to select the other match")
 
 @test("B9", "Copy, Paste and Paste Escaped Text")
 def _(c):

@@ -3,7 +3,7 @@
 What the Linux version still needs before it can ship with as few bugs as possible: everything a feature test found broken or missing, and every feature no automatic test covers yet. Fix broken items first, one pull request each, and tick an item with its PR number once it is fixed and its test passes. `bugs.md` and `enhancements.md` stay the record of requests and releases.
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 05:14)
+## Feature test results (2026-11-09 05:51)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
@@ -13,16 +13,16 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 
 - [ ] **W2** Connect via SSH button; highlighted while connected, then shows the connection details (account,… (§2): checked as S10
 - [ ] **W6** Export Session button and shortcut: whole scrollback to `<tab> <date time>.txt`. (§2): the command is there; saving goes through the system's save dialog, which the bridge can't fill
-- [ ] **W11** Search button: searches files in the explorer, the scrollback otherwise. (§2): the command is there; whether the search field opens isn't reported by the bridge yet
-- [ ] **W13** Main Menu: Find in Terminal…. (§2): the command is there; the search bar isn't reported by the bridge yet
+- [ ] **W11** Search button: searches files in the explorer, the scrollback otherwise. (§2): the command runs; whether the search field opens isn't reported by this platform's bridge yet
+- [ ] **W13** Main Menu: Find in Terminal…. (§2): the command runs; whether the search field opens isn't reported by this platform's bridge yet
 - [ ] **W17** Hover hints on every control after about half a second, also in the background; screen readers get… (§2): covered by parity/check.sh (hover texts through the accessibility tree)
 - [ ] **T11** Session restore: tabs with folder, panes, explorer folder and name reopen at launch (on by… (§2): the test scene never saves or restores a session
 - [ ] **P5** Focused pane outlined; Zoom, Clear, Reset and Find act on it. (§2): visual: shown in the window's picture, not reported by the bridge
 - [ ] **P6** The tab's SSH connection and explorer belong to its first pane; the next pane takes over when it… (§2): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
-- [ ] **B1** Right-click menu: Copy, Paste, Paste Escaped Text, Select All, Find. (§2): Copy, Paste, Paste Escaped Text and Select All work; Find… runs, but the bridge doesn't report the find bar yet
+- [ ] **B1** Right-click menu: Copy, Paste, Paste Escaped Text, Select All, Find. (§2): Copy, Paste, Paste Escaped Text and Select All work; Find… runs, but this platform's bridge doesn't report the find bar yet
 - [ ] **B6** Bell: sound, flash, both or none; flash at most twice a second, gentle with Reduce Motion. (§2): sound and flash can't be observed by the bridge
 - [ ] **B7** Size badge (columns × rows) while resizing. (§2): needs a window resize by the pointer
-- [ ] **B8** Find in Terminal (scrollback search). (§2): the command is there; the search bar and its matches aren't reported by the bridge yet
+- [ ] **B8** Find in Terminal (scrollback search). (§2): the command is there; this platform's bridge doesn't report the find bar and its matches yet
 - [ ] **B14** Full color, bold/italic/underline, wide characters, mouse reporting for full-screen programs. (§2): visual: needs the window's picture compared with the Mac's
 - [ ] **R5** iTerm2 `.itermcolors` import (all colors); damaged files rejected; imported presets removable. (§3): needs the system's open dialog
 - [ ] **R7** Settings ▸ Profiles: add, duplicate, rename, delete, choose the default; startup command and start… (§3): Settings opens; its Profiles page isn't read by the bridge yet

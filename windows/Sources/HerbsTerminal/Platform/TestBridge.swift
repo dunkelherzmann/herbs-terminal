@@ -100,8 +100,29 @@ enum TestBridge {
             default: throw Failure(description: "unknown profile key")
             }
             return true
-        // The terminal has no right-click menu yet: right-click copies or pastes, as in Windows Terminal.
-        case "context-menu", "context-choose": return "missing"
+        case "find":
+            guard let pane = try workspace.focusedPane else { throw Failure(description: "no terminal") }
+            pane.bridgeFind(request["text"] as? String ?? "")
+            return true
+        case "find-step":
+            guard let pane = try workspace.focusedPane else { throw Failure(description: "no terminal") }
+            pane.bridgeFindStep(up: request["up"] as? Bool ?? true)
+            return true
+        case "context-menu":
+            // The focused terminal's right-click menu, as it would open now.
+            guard let pane = try workspace.focusedPane else { throw Failure(description: "no terminal") }
+            return try workspace.contextMenuEntries(for: pane).compactMap { $0 }.map {
+                ["title": String($0.title.split(separator: "\t").first ?? ""), "enabled": $0.enabled] as [String: Any]
+            }
+        case "context-choose":
+            guard let pane = try workspace.focusedPane else { throw Failure(description: "no terminal") }
+            let wanted = request["title"] as? String
+            guard let entry = try workspace.contextMenuEntries(for: pane).compactMap({ $0 })
+                .first(where: { String($0.title.split(separator: "\t").first ?? "") == wanted }) else { return "missing" }
+            guard entry.enabled else { return "disabled" }
+            // After this answer, as a click on the item would, since some items open dialogs.
+            pending.append("menu:\(entry.command.rawValue)")
+            return "ran"
         case "drop":
             // The same WM_DROPFILES message a drop from File Explorer sends the focused terminal.
             guard let pane = try workspace.focusedPane?.hwnd else { throw Failure(description: "no terminal") }
@@ -145,7 +166,7 @@ enum TestBridge {
         "fullscreen": .fullScreen, "settings": .settings, "about": .about, "restore-size": .restoreDefaultSize,
         "default-size": .makeSizeDefault, "close-tab": .closeTab, "take-screenshot": .takeScreenshot,
     ]
-    private static let greyedOut: Set<MenuCommand> = [.findInTerminal]
+    private static let greyedOut: Set<MenuCommand> = []
     private static let explorerCommands: [String: String] = [
         "cut": "cut", "copy": "copy", "paste": "paste", "delete": "delete", "new-folder": "newFolder", "new-file": "newFile",
         "select-all": "selectAll", "open": "open", "edit": "edit", "info": "info", "reveal": "reveal", "open-default": "openWith",
@@ -160,6 +181,10 @@ enum TestBridge {
             if run { _ = explorer.perform(named: named) }
             return run ? "ran" : "enabled"
         }
+        if name.hasPrefix("menu:"), let id = UINT(name.dropFirst(5)) {
+            if run { workspace.perform(id) }
+            return run ? "ran" : "enabled"
+        }
         if name.hasPrefix("tab-"), let number = Int(name.dropFirst(4)), (1...9).contains(number) {
             let count = workspace.tabNames.count
             if run { workspace.perform(MenuCommand.firstTab + UINT(number == 9 ? count - 1 : min(number - 1, count - 1))) }
@@ -170,6 +195,11 @@ enum TestBridge {
             // The toolbar's SSH button: connection details while connected, Connect via SSH otherwise.
             if run { workspace.connectButton() }
             return run ? "ran" : "enabled"
+        case "find":
+            // The toolbar's Search: the terminal's find bar (finding files in the explorer isn't here yet).
+            if workspace.activePane?.showingExplorer == true { return "missing" }
+            if run { workspace.perform(MenuCommand.findInTerminal.rawValue) }
+            return run ? "ran" : "enabled"
         case "close-all":
             // MultiExec ▸ Close All (it asks first).
             if run { workspace.closeAllTerminals() }
@@ -178,11 +208,10 @@ enum TestBridge {
             if run { workspace.toggleExplorer() }
             return run ? "ran" : "enabled"
         case "new-tab-profile", "use-profile": return "disabled"
-        case "copy", "paste", "select-all":
-            if run {
-                if name == "paste" { workspace.focusedPane?.paste() } else if name == "copy" { workspace.focusedPane?.copySelection() }
-            }
-            return name == "select-all" ? "missing" : (run ? "ran" : "enabled")
+        case "copy", "paste", "select-all", "paste-escaped":
+            let command: MenuCommand = name == "copy" ? .copy : name == "paste" ? .paste : name == "select-all" ? .selectAll : .pasteEscaped
+            if run { workspace.perform(command.rawValue) }
+            return run ? "ran" : "enabled"
         default: break
         }
         guard let command = menuCommands[name] else { return "missing" }
@@ -278,7 +307,8 @@ enum TestBridge {
                             number += 1
                             return ["number": number, "focused": shell === focused, "columns": shell.terminal.cols, "rows": shell.terminal.rows,
                                     "title": shell.title, "subtitle": shell.subtitle, "exited": !shell.isRunning, "text": shell.exportText(),
-                                    "fontSize": settings.effectiveSize]
+                                    "fontSize": settings.effectiveSize, "selection": shell.bridgeSelection,
+                                    "find": ["shown": shell.isFinding, "text": shell.findText, "matches": shell.findMatchCount]]
                         }
                         // A tab's connection, as the Mac and Linux report it.
                         if let remote = pane.remote {

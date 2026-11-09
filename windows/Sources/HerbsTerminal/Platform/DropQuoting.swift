@@ -41,6 +41,19 @@ enum DropQuoting: Equatable {
         }
     }
 
+    /// Paste Escaped Text: `text` quoted so the shell takes it literally, as the Mac's `shellQuote` does. Command
+    /// Prompt has no quoting that stops `%` expanding, so its special characters get a caret each, and line breaks
+    /// (which would run the line) become spaces.
+    func literal(_ text: String) -> String {
+        switch self {
+        case .powerShell, .posix, .wsl:
+            return self == .powerShell ? quote(text) : Self.posixQuote(text)
+        case .commandPrompt:
+            let flat = text.replacingOccurrences(of: "\r\n", with: " ").replacingOccurrences(of: "\n", with: " ").replacingOccurrences(of: "\r", with: " ")
+            return String(flat.flatMap { "^&|<>()%!\"".contains($0) ? ["^", $0] : [$0] })
+        }
+    }
+
     /// C:\Users\herb → /mnt/c/Users/herb, as WSL mounts Windows drives.
     static func wslPath(_ path: String) -> String {
         let characters = Array(path)
