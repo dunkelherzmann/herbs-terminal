@@ -609,7 +609,8 @@ final class ExplorerPane: WindowObject {
         case .copyPath:
             setClipboardText((selection.isEmpty ? [folder] : selection.map(\.path)).joined(separator: "\r\n"), owner: hwnd)
         case .rename:
-            if let row = selectedRows.first { SendMessageW(list, UINT(LVM_EDITLABELW), WPARAM(row), 0) }
+            // The list must have the focus for its edit box to stay open.
+            if let row = selectedRows.first { SetFocus(list); SendMessageW(list, UINT(LVM_EDITLABELW), WPARAM(row), 0) }
         case .delete: delete(selection, permanently: false)
         case .deletePermanently: delete(selection, permanently: true)
         case .properties: for entry in selection { _ = withWide(entry.path) { SHObjectProperties(hwnd, DWORD(SHOP_FILEPATH), $0, nil) } }
@@ -1479,7 +1480,7 @@ final class ExplorerPane: WindowObject {
             "cut": .cut, "copy": .copy, "paste": .paste, "delete": .delete, "deletePermanently": .deletePermanently,
             "newFolder": .newFolder, "newFile": .newFile, "showHidden": .showHidden, "reload": .reload, "selectAll": .selectAll,
             "open": .open, "edit": .openInEditor, "info": .properties, "reveal": .showInFileExplorer, "openWith": .openWith,
-            "undo": .undo, "redo": .redo, "bookmarkSelected": .bookmarkSelected, "find": .find, "rename": .rename,
+            "undo": .undo, "redo": .redo, "bookmarkSelected": .bookmarkSelected, "find": .find, "rename": .rename, "upload": .upload, "download": .download,
         ]
         guard let command = commands[name] else { return false }
         perform(command)
@@ -1548,7 +1549,9 @@ final class ExplorerPane: WindowObject {
         let menu = CreatePopupMenu()
         defer { DestroyMenu(menu) }
         let selection = selectedEntries
+        // Upload and Download are for a host's explorer: shown greyed out here, as on the Mac and Linux.
         let items: [(String, Command, Bool)] = [
+            ("Upload File/Folder…", .upload, false), ("Download File/Folder…", .download, false), ("", .reload, false),
             (undoLog.undoTitle + "\tCtrl+Z", .undo, !undoLog.undoStack.isEmpty), (undoLog.redoTitle + "\tCtrl+Shift+Z", .redo, !undoLog.redoStack.isEmpty),
             ("", .reload, false),
             ("Cut\tCtrl+X", .cut, !selection.isEmpty), ("Copy\tCtrl+C", .copy, !selection.isEmpty),
@@ -2117,6 +2120,9 @@ final class Locked<Value>: @unchecked Sendable {
 // MARK: Feature tests (TestBridge)
 
 extension ExplorerPane {
+    /// Whether this explorer shows a host (for commands that only work there).
+    var isRemote: Bool { remote != nil }
+
     var bridgeState: [String: Any] {
         ["shown": IsWindowVisible(hwnd), "path": folder, "items": rows.map { $0.isFolder ? $0.name + "/" : $0.name },
          "selected": selectedEntries.map(\.name), "hidden": showHidden, "administrator": isAdministrator, "remote": remote != nil,

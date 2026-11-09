@@ -262,7 +262,7 @@ enum TestBridge {
     private static let explorerCommands: [String: String] = [
         "cut": "cut", "copy": "copy", "paste": "paste", "delete": "delete", "new-folder": "newFolder", "new-file": "newFile",
         "select-all": "selectAll", "open": "open", "edit": "edit", "info": "info", "reveal": "reveal", "open-default": "openWith",
-        "administrator": "toggleAdmin", "undo": "undo", "redo": "redo", "bookmark-selected": "bookmarkSelected", "find": "find", "rename": "rename",
+        "administrator": "toggleAdmin", "undo": "undo", "redo": "redo", "bookmark-selected": "bookmarkSelected", "find": "find", "rename": "rename", "upload": "upload", "download": "download",
     ]
 
     private static func command(_ name: String, run: Bool) throws -> String {
@@ -270,6 +270,7 @@ enum TestBridge {
         if name.hasPrefix("explorer.") {
             guard let explorer = workspace.activePane?.explorer else { return "missing" }
             guard let named = explorerCommands[String(name.dropFirst("explorer.".count))] else { return "missing" }
+            if ["upload", "download"].contains(named), !explorer.isRemote { return "disabled" }
             if run { _ = explorer.perform(named: named) }
             return run ? "ran" : "enabled"
         }
