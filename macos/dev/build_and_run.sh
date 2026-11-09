@@ -6,10 +6,10 @@ APP_NAME="HerbsTerminal"
 DISPLAY_NAME="Herb's Terminal"
 BUNDLE_ID="org.herbsterminal.app"
 MIN_SYSTEM_VERSION="15.0"
-# The version rises with every commit on main; see script/version.sh.
-VERSION="$(sh "$(dirname "${BASH_SOURCE[0]}")/version.sh")"
+# The version rises with every commit on main; see scripts/version.sh.
+VERSION="$(sh "$(dirname "${BASH_SOURCE[0]}")/../../scripts/version.sh")"
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$DISPLAY_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
@@ -31,12 +31,12 @@ mkdir -p "$APP_MACOS"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
 mkdir -p "$APP_CONTENTS/Resources"
-cp "$ROOT_DIR/Assets/HerbsTerminal.icns" "$APP_CONTENTS/Resources/HerbsTerminal.icns"
+cp "$ROOT_DIR/macos/Assets/HerbsTerminal.icns" "$APP_CONTENTS/Resources/HerbsTerminal.icns"
 cp -R "$(dirname "$BUILD_BINARY")/SwiftTerm_SwiftTerm.bundle" "$APP_CONTENTS/Resources/"
 # Helpers the app runs itself, so it never depends on copies installed elsewhere on the system.
 mkdir -p "$APP_CONTENTS/Helpers"
-cp "$ROOT_DIR/Vendor/tailcat/tailcat" "$APP_CONTENTS/Helpers/tailcat"
-cp "$ROOT_DIR/Vendor/tailcat/LICENSE" "$APP_CONTENTS/Resources/tailcat-LICENSE.txt"
+cp "$ROOT_DIR/macos/Vendor/tailcat/tailcat" "$APP_CONTENTS/Helpers/tailcat"
+cp "$ROOT_DIR/macos/Vendor/tailcat/LICENSE" "$APP_CONTENTS/Resources/tailcat-LICENSE.txt"
 
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -75,7 +75,7 @@ PLIST
 #
 # With SIGN_IDENTITY set to a Developer ID Application certificate (for example
 # SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"), the helper and the app are signed with it,
-# with the hardened runtime and a secure timestamp, ready for script/notarize.sh. Otherwise the signature
+# with the hardened runtime and a secure timestamp, ready for macos/dev/notarize.sh. Otherwise the signature
 # is ad hoc, which runs on this Mac only.
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 SIGN_OPTIONS=(--force --sign "$SIGN_IDENTITY")

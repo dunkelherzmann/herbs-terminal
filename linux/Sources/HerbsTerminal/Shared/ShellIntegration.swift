@@ -1,1 +1,0 @@
-../../../../Sources/HerbsTerminal/ShellIntegration.swift

@@ -3,8 +3,8 @@
 # so a parity scene has its own settings domain and never touches the user's profiles, logins or session.
 # Prints the path of the copy's executable.
 set -euo pipefail
-cd "$(dirname "$0")/.."
-script/build_and_run.sh --bundle >/dev/null
+cd "$(dirname "$0")/../.."
+macos/dev/build_and_run.sh --bundle >/dev/null
 source_app="dist/Herb's Terminal.app"
 copy="dist/parity/Herb's Terminal Parity.app"
 rm -rf "$copy"

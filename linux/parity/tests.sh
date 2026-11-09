@@ -1,6 +1,6 @@
 #!/bin/sh
 # Runs the feature tests on Linux in their own KWin session, so the app's clipboard and windows are its own.
-#   parity/tests/linux.sh [run.py arguments]   (on the Linux machine, after building the Flatpak build folder)
+#   linux/parity/tests.sh [run.py arguments]   (on the Linux machine, after building the Flatpak build folder)
 # While a GNOME session is logged in, the session is shown in a window on the test workspace (Workspace 2,
 # HERBS_TEST_WORKSPACE counts from 1), in the foreground there and never on the workspace in use; switch to it to
 # watch. Without one it runs headless.

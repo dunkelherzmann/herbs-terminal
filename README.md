@@ -40,7 +40,7 @@ Then clone and build:
 ```bash
 git clone https://github.com/dunkelherzmann/herbs-terminal.git
 cd herbs-terminal
-script/build_and_run.sh
+macos/dev/build_and_run.sh
 ```
 
 The app is built and opened from `dist/Herb's Terminal.app`; drag it to your Applications folder to keep it. An app built on your own Mac isn't quarantined, so Gatekeeper opens it without any warning.
@@ -48,8 +48,8 @@ The app is built and opened from `dist/Herb's Terminal.app`; drag it to your App
 Other build commands:
 
 ```bash
-script/build_and_run.sh --bundle   # build the .app without opening it
-script/test.sh                     # run the test suite (includes real SFTP transfers)
+macos/dev/build_and_run.sh --bundle   # build the .app without opening it
+macos/dev/test.sh                     # run the test suite (includes real SFTP transfers)
 ```
 
 ### Option 2: use a prebuilt app
@@ -91,7 +91,7 @@ flatpak run org.herbsterminal.app
 Build it yourself on Linux (with flatpak and the Flathub remote; the first build fetches flatpak-builder, the GNOME SDK and the Swift SDK extension from Flathub):
 
 ```bash
-script/build_flatpak.sh --install
+linux/dev/build_flatpak.sh --install
 ```
 
 It records the version from git (the build itself sees the sources without git history), builds `linux/org.herbsterminal.app.yml` with flatpak-builder, writes `dist/Herbs-Terminal-<version>-linux-<arch>.flatpak` for your machine's architecture, and installs it for your user; leave out `--install` to only build the bundle. Development builds: `linux/dev/build.sh`, `run.sh`, `restart.sh` and `check.sh`.
@@ -113,17 +113,20 @@ Built with **Swift 6** and Swift Package Manager: on macOS with **SwiftUI + AppK
 ## Project layout
 
 ```
-Sources/
-  HerbsTerminal/       main app target (SwiftUI + AppKit)
-  HerbsTerminalUI/     shared UI components (toolbar, panes)
-Tests/
-  HerbsTerminalTests/  unit and integration tests
-linux/                 the Linux version: Swift package, Flatpak manifest, desktop file, icons
-  Sources/HerbsTerminal/Shared/   links to the macOS sources both versions share
-windows/               the Windows version (early): Swift package, Win32 UI, ConPTY
-Assets/                app icon source files
-Vendor/tailcat/        bundled tailcat binary + license
-script/                build, signing, icon generation, and test scripts
+macos/                 the macOS version (the reference)
+  Sources/HerbsTerminal/    main app target (SwiftUI + AppKit)
+  Sources/HerbsTerminalUI/  shared UI components (toolbar, panes)
+  Tests/HerbsTerminalTests/ unit and integration tests
+  Assets/                   app icon source files
+  Vendor/tailcat/           bundled tailcat binary + license
+  dev/                      build, signing, icon and test scripts
+  parity/                   the Mac side of the feature tests
+linux/                 the Linux version: Swift package, Flatpak manifest, desktop file, icons, dev scripts
+windows/               the Windows version: Swift package, Win32 UI, ConPTY, dev scripts
+shared/                SSH, SFTP, login-vault and shell-integration sources every version builds
+parity/                feature list and the feature tests all three versions share
+scripts/version.sh     the version number, for every platform
+Package.swift          the macOS package (SwiftPM keeps it at the root so it can reach shared/)
 dist/                  build output (gitignored)
 ```
 
@@ -145,7 +148,7 @@ dist/                  build output (gitignored)
 
 ## Versioning
 
-Versions are `major.minor.patch`. [`VERSION`](VERSION) holds the major and minor number, and the patch number is the count of commits since `VERSION` last changed, so it rises with every push to `main`. Editing `VERSION` (to `1.1`, say) starts the next series at `1.1.0`. `script/version.sh` prints the current version, and the builds use it.
+Versions are `major.minor.patch`. [`VERSION`](VERSION) holds the major and minor number, and the patch number is the count of commits since `VERSION` last changed, so it rises with every push to `main`. Editing `VERSION` (to `1.1`, say) starts the next series at `1.1.0`. `scripts/version.sh` prints the current version, and the builds use it.
 
 ## Open source
 

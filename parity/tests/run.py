@@ -4,7 +4,7 @@
   python3 parity/tests/run.py --platform linux [--only W1,T3] [--out results/linux.json]
 
 Run it on the machine that runs the app, inside its desktop session: on the Mac as is; on Linux inside a
-headless KWin (parity/tests/linux.sh does that); on Windows from the logged-in desktop (parity/tests/windows.ps1).
+headless KWin (linux/parity/tests.sh does that); on Windows from the logged-in desktop (windows/parity/tests.ps1).
 Each test starts a fresh private copy of the app and stops it afterwards.
 """
 import argparse, json, os, sys, time, traceback

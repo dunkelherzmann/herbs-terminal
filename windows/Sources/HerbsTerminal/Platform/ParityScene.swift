@@ -2,7 +2,7 @@ import Foundation
 import WinSDK
 
 /// A fixed, private state for comparing this app with the Mac and Linux versions (`parity/parity.json`). It needs
-/// both `--parity-scene <name>` and `HERBS_PARITY=1` (set by `parity/windows-scene.ps1`); either alone does nothing.
+/// both `--parity-scene <name>` and `HERBS_PARITY=1` (set by `windows/parity/scene.ps1`); either alone does nothing.
 /// The scene keeps every file of its own in a temporary folder, so it starts from the default settings and never
 /// reads or changes the user's settings, logins or files. Its window opens without taking focus.
 enum ParityScene {

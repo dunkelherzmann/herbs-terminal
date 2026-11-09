@@ -34,7 +34,7 @@ final class TailcatWindow {
         margins(content, 20)
         append(content, label("Tailcat Peers", classes: ["heading-text"]))
         if Tailcat.executable == nil {
-            append(content, label("This build is missing its bundled tailcat helper; rebuild Herb's Terminal with script/build_flatpak.sh.", classes: ["error-text"], wrap: true))
+            append(content, label("This build is missing its bundled tailcat helper; rebuild Herb's Terminal with linux/dev/build_flatpak.sh.", classes: ["error-text"], wrap: true))
         }
         append(content, label("Reach machines that can't see each other by IP. Each peer runs `tailcat serve 22`; paste the address it prints. Addresses are secrets; they are encrypted with your Administrator Password when one is set.",
                               classes: ["caption", "dim-label"], wrap: true))

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Opens one parity scene of the Linux build in a private, headless KWin session (nothing appears on the desktop),
 # saves its UI tree (AT-SPI) and the window's own picture, then closes it. The installed Flatpak is not used.
-# Run on the Linux machine: parity/linux-scene.sh <scene> <output folder> <flatpak-builder build folder>
+# Run on the Linux machine: linux/parity/scene.sh <scene> <output folder> <flatpak-builder build folder>
 set -eu
 scene="$1"; out="$2"; build="$3"
 here="$(cd "$(dirname "$0")/.." && pwd)"

@@ -4,10 +4,11 @@
 set -eu
 PREFIX="${1:-/app}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VERSION="$(sh "$ROOT/script/version.sh")"
+VERSION="$(sh "$ROOT/scripts/version.sh")"
 # flatpak-builder copies the sources without .git, so the version comes from the stamp written before the build
-# (script/build_flatpak.sh writes it with sh script/version.sh > linux/version.txt).
+# (linux/dev/build_flatpak.sh writes it with sh scripts/version.sh > linux/version.txt).
 if [ ! -e "$ROOT/.git" ] && [ -s "$ROOT/linux/version.txt" ]; then VERSION="$(tr -d ' \n\r' < "$ROOT/linux/version.txt")"; fi
+sh "$ROOT/linux/copy-shared.sh"
 cd "$ROOT/linux"
 printf 'let appVersion = "%s"\n' "$VERSION" > Sources/HerbsTerminal/Version.swift
 swift build -c release --static-swift-stdlib --product HerbsTerminal

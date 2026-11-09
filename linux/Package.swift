@@ -2,7 +2,7 @@
 import PackageDescription
 
 // Herb's Terminal for Linux: GTK 4, libadwaita and VTE, packaged as a Flatpak (see org.herbsterminal.app.yml).
-// The SSH, SFTP and login-vault code is the macOS app's own (Sources/HerbsTerminal/Shared links to it); the small
+// The SSH, SFTP and login-vault code is the macOS app's own (shared/ at the repository root, copied into Sources/HerbsTerminal/Shared by copy-shared.sh); the small
 // Darwin, CryptoKit and CommonCrypto modules here give that code the same names on Linux.
 let package = Package(
     name: "HerbsTerminalLinux",

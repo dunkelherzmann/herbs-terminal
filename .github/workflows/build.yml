@@ -1,0 +1,43 @@
+# Builds and tests every version on GitHub's own runners for each pull request and push to main.
+# Release builds are still made and installed on Herbert's own Mac, Linux and Windows machines.
+name: Build
+on:
+  pull_request:
+  push:
+    branches: [main]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - run: macos/dev/build_and_run.sh --bundle
+      - run: macos/dev/test.sh
+  linux:
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-49
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - run: git config --global --add safe.directory "$PWD" && sh scripts/version.sh > linux/version.txt
+      - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
+        with:
+          manifest-path: linux/org.herbsterminal.app.yml
+          bundle: herbs-terminal.flatpak
+          upload-artifact: false
+          cache: true
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: compnerd/gha-setup-swift@main
+        with:
+          branch: swift-6.4.2-release
+          tag: 6.4.2-RELEASE
+      - run: powershell -ExecutionPolicy Bypass -File windows\dev\build.ps1 -Release

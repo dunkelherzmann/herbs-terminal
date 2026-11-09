@@ -1,7 +1,7 @@
 // Draws Herb's Terminal's app icon in the style of the macOS Terminal icon: a dark glass tile with a centered
-// prompt that reads "> HT_". Writes Assets/HerbsTerminal.png (1024 px) and Assets/HerbsTerminal.icns.
+// prompt that reads "> HT_". Writes macos/Assets/HerbsTerminal.png (1024 px) and macos/Assets/HerbsTerminal.icns.
 //
-//   swift script/make_icon.swift
+//   swift macos/dev/make_icon.swift
 import AppKit
 
 let size: CGFloat = 1024
@@ -115,4 +115,4 @@ iconutil.arguments = ["-c", "icns", iconset.path, "-o", assets.appendingPathComp
 try iconutil.run()
 iconutil.waitUntilExit()
 try? FileManager.default.removeItem(at: iconset)
-print(iconutil.terminationStatus == 0 ? "Wrote Assets/HerbsTerminal.png and Assets/HerbsTerminal.icns" : "iconutil failed")
+print(iconutil.terminationStatus == 0 ? "Wrote macos/Assets/HerbsTerminal.png and macos/Assets/HerbsTerminal.icns" : "iconutil failed")

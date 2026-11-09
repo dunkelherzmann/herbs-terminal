@@ -4,7 +4,7 @@ import Foundation
 import Glibc
 
 /// A fixed, private state for comparing this app with the Mac version (`parity/parity.json`). It needs both
-/// `--parity-scene <name>` and `HERBS_PARITY=1` (set by `parity/linux-scene.sh`); either alone does nothing.
+/// `--parity-scene <name>` and `HERBS_PARITY=1` (set by `linux/parity/scene.sh`); either alone does nothing.
 /// The scene runs as its own non-unique application, keeps every file in a private folder and never touches the
 /// user's settings, logins or saved session.
 enum ParityScene {

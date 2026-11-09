@@ -39,10 +39,10 @@ mkdir -p "$out/mac" "$out/linux" "$project"
 [[ -n "$windows_host" ]] && mkdir -p "$out/windows"
 
 echo "Mac: capturing $scenes"
-for scene in $scenes; do parity/mac-scene.sh "$scene" "$out/mac" >/dev/null; done
+for scene in $scenes; do macos/parity/scene.sh "$scene" "$out/mac" >/dev/null; done
 
 echo "Linux: sending this tree and building"
-sh script/version.sh >/dev/null 2>&1 || true
+sh scripts/version.sh >/dev/null 2>&1 || true
 rsync -az --delete --exclude .build --exclude dist --exclude .git -e "ssh ${key_args[*]}" ./ "$linux_host:$remote_src/"
 if ! $skip_build; then
     ssh_linux "cd ~/$remote_src && flatpak run org.flatpak.Builder --user --state-dir=\$HOME/src/herbs-state --force-clean \
@@ -50,7 +50,7 @@ if ! $skip_build; then
         || { echo "Linux build failed; see ~/src/parity-build.log there" >&2; exit 1; }
 fi
 for scene in $scenes; do
-    ssh_linux "cd ~/$remote_src && sh parity/linux-scene.sh $scene /tmp/herbs-parity-out \$HOME/$remote_build" >/dev/null 2>&1 \
+    ssh_linux "cd ~/$remote_src && sh linux/parity/scene.sh $scene /tmp/herbs-parity-out \$HOME/$remote_build" >/dev/null 2>&1 \
         || echo "Linux: scene $scene didn't capture" >&2
 done
 scp -q "${key_args[@]}" "$linux_host:/tmp/herbs-parity-out/*.png" "$linux_host:/tmp/herbs-parity-out/*-tree.json" "$out/linux/" || true
@@ -72,7 +72,7 @@ if [[ -n "$windows_host" ]]; then
         fi
         exe="$remote_home/src/herbs-parity/windows/.build/out/Products/Debug-windows-x86_64/HerbsTerminal.exe"
         for scene in $scenes; do
-            ssh -o BatchMode=yes "$windows_host" "powershell -NoProfile -ExecutionPolicy Bypass -File $remote_home/src/herbs-parity/parity/windows-scene.ps1 \
+            ssh -o BatchMode=yes "$windows_host" "powershell -NoProfile -ExecutionPolicy Bypass -File $remote_home/src/herbs-parity/windows/parity/scene.ps1 \
                 -Scene $scene -Out $remote_home/src/herbs-parity-out -Exe $exe -Dump $remote_home/src/herbs-parity/parity-tools/uia-dump.ps1" \
                 >"$out/windows/$scene-scene.log" 2>&1 || echo "Windows: scene $scene didn't capture; see $out/windows/$scene-scene.log" >&2
             scp -q "$windows_host:$remote_home/src/herbs-parity-out/$scene.png" "$windows_host:$remote_home/src/herbs-parity-out/$scene-tree.json" \
