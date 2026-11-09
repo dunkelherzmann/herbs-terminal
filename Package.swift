@@ -18,7 +18,7 @@ let package = Package(
             name: "HerbsTerminal",
             dependencies: ["HerbsTerminalUI", .product(name: "SwiftTerm", package: "SwiftTerm")],
             path: ".",
-            exclude: ["linux", "windows", "parity", "scripts", "dist", "macos/Assets", "macos/Vendor", "macos/dev",
+            exclude: ["linux", "windows", "parity", "scripts", "dist", "macos/Assets", "macos/Sources/HerbsTerminalUI", "macos/Vendor", "macos/dev",
                       "macos/parity", "macos/Tests", "macos/pending.md", "README.md", "SPECIFICATION.md", "LICENSE",
                       "NOTICES", "VERSION", "bugs.md", "enhancements.md", "Package.resolved"],
             sources: ["macos/Sources/HerbsTerminal", "shared"]
