@@ -1288,7 +1288,7 @@ def local_tree(c, root):
 
 def upload(c, paths):
     try:
-        result = c.bridge.call("explorer-upload", timeout=300, paths=paths)
+        result = c.bridge.call("explorer-upload", timeout=45, paths=paths)
     except Exception as error:
         if "unknown op" in str(error):
             c.unverified("this platform's test bridge can't upload without the open dialog yet")
