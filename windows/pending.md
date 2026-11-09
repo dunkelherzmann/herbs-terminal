@@ -56,19 +56,15 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 16:07)
+## Feature test results (2026-11-09 16:11)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Broken (5)
+### Broken (1)
 
 A test ran and the feature didn't do what the Mac version does.
 
-- [ ] **L6** Manage Logins window: list with host, port, username, hidden password, encrypted or plain. (§6): Manage Logins: the list shows host, port, username, a hidden password and how it's stored: expected alice@alpha.example in the list (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs…
-- [ ] **L8** New and Edit form with Show password. (§6): Manage Logins: Edit changes a login: expected carol@gamma.example in the list (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs ['New Login'], last lines ['$'])
-- [ ] **L9** Import (CSV, all-or-nothing). (§6): Manage Logins: Import a CSV, all or nothing: expected both imported logins (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs ['Create an Administrator Password'], last lines ['$'])
-- [ ] **L10** Export ticked logins (checkbox column with select-all heading), file readable only by you,… (§6): Manage Logins: Export the ticked logins, readable only by you: expected hank@exp1.example in the list (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs ['New Login'], last lines ['$'])
-- [ ] **L11** Double-click edits; Delete key or right-click removes after a confirmation defaulting to Cancel. (§6): Manage Logins: Delete asks first, with Cancel as the default: expected jack@del.example in the list (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs ['New Login'], last lines ['$'])
+- [ ] **L10** Export ticked logins (checkbox column with select-all heading), file readable only by you,… (§6): Manage Logins: Export the ticked logins, readable only by you: expected Export (1), saw 'Export…' (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs [], last lines ['$'])
 
 ### Not checked automatically (44)
 

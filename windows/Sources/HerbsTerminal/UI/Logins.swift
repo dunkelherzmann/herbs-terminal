@@ -232,6 +232,9 @@ final class ManageLoginsWindow: WindowObject {
     private var buttons: [Action: HWND] = [:]
     private var font: HFONT?
     private var shown: [SSHLogin] = []
+    /// Logins ticked for Export, kept across refreshes of the list.
+    private var ticked = Set<SSHLogin.ID>()
+    private var updatingTicks = false
     private var observer: ObservationToken?
     private var store: CredentialStore { CredentialStore.shared ?? CredentialStore.unavailable() }
 
@@ -292,6 +295,20 @@ final class ManageLoginsWindow: WindowObject {
         list = control(WC_LISTVIEWW_NAME, "", DWORD(LVS_REPORT) | DWORD(LVS_SHOWSELALWAYS) | DWORD(WS_BORDER) | DWORD(WS_TABSTOP))
         SendMessageW(list, UINT(LVM_SETEXTENDEDLISTVIEWSTYLE), 0,
                      LPARAM(LVS_EX_FULLROWSELECT | LVS_EX_CHECKBOXES | LVS_EX_DOUBLEBUFFER))
+        // A checkbox in the first heading ticks or unticks every login, as on the Mac and Linux.
+        if let header = HWND(bitPattern: Int(SendMessageW(list, UINT(LVM_GETHEADER), 0, 0))) {
+            SetWindowLongPtrW(header, GWL_STYLE, GetWindowLongPtrW(header, GWL_STYLE) | LONG_PTR(0x0400) /* HDS_CHECKBOXES */)
+        }
+        // The heading's checkbox reports to the list; pass its clicks on to this window.
+        if let list {
+            SetWindowSubclass(list, { window, message, wParam, lParam, _, _ in
+                if message == UINT(WM_NOTIFY), let header = UnsafePointer<NMHDR>(bitPattern: UInt(lParam)),
+                   Int32(bitPattern: header.pointee.code) == -316 /* HDN_ITEMSTATEICONCLICK */ {
+                    return SendMessageW(GetParent(window), message, wParam, lParam)
+                }
+                return DefSubclassProc(window, message, wParam, lParam)
+            }, 0x4C_47, 0)
+        }
         for (index, column) in [("Host", 260.0), ("Port", 60.0), ("Username", 150.0), ("Password", 100.0), ("Stored", 110.0)].enumerated() {
             var item = LVCOLUMNW()
             item.mask = UINT(LVCF_TEXT | LVCF_WIDTH)
@@ -352,10 +369,12 @@ final class ManageLoginsWindow: WindowObject {
         guard hwnd != nil else { return }
         let store = self.store
         shown = store.logins
+        // Rebuilding the rows sends item-changed notices of its own; they mustn't touch the ticks.
+        updatingTicks = true
         SendMessageW(list, UINT(LVM_DELETEALLITEMS), 0, 0)
         for (row, login) in shown.enumerated() {
             let plain = store.plainTextIDs.contains(login.id)
-            let cells = [login.host, String(login.port), login.username, login.password.isEmpty ? "SSH keys" : "••••••••",
+            let cells = [login.host, String(login.port), login.username, login.password.isEmpty ? "None (keys)" : "••••••••",
                          plain ? "Plain text" : "Encrypted"]
             for (column, text) in cells.enumerated() {
                 var item = LVITEMW()
@@ -371,6 +390,9 @@ final class ManageLoginsWindow: WindowObject {
                 }
             }
         }
+        for (row, login) in shown.enumerated() where ticked.contains(login.id) { setTick(row, true) }
+        updatingTicks = false
+        updateTicks()
         var notice: String
         if let reason = CredentialStore.unavailableReason {
             notice = "Saved logins are unavailable: \(reason)"
@@ -396,13 +418,39 @@ final class ManageLoginsWindow: WindowObject {
         return index >= 0 && Int(index) < shown.count ? Int(index) : nil
     }
 
-    private var checkedIDs: Set<SSHLogin.ID> {
-        var ids = Set<SSHLogin.ID>()
-        for (row, login) in shown.enumerated() {
-            let state = SendMessageW(list, UINT(LVM_GETITEMSTATE), WPARAM(row), LPARAM(LVIS_STATEIMAGEMASK))
-            if (state >> 12) == 2 { ids.insert(login.id) }
-        }
-        return ids
+    private var checkedIDs: Set<SSHLogin.ID> { ticked.intersection(shown.map(\.id)) }
+
+    private func isTicked(_ row: Int) -> Bool {
+        (SendMessageW(list, UINT(LVM_GETITEMSTATE), WPARAM(row), LPARAM(LVIS_STATEIMAGEMASK)) >> 12) == 2
+    }
+
+    private func setTick(_ row: Int, _ on: Bool) {
+        var item = LVITEMW()
+        item.stateMask = UINT(LVIS_STATEIMAGEMASK)
+        item.state = UINT((on ? 2 : 1) << 12)
+        _ = withUnsafeMutablePointer(to: &item) { SendMessageW(list, UINT(LVM_SETITEMSTATE), WPARAM(row), LPARAM(Int(bitPattern: $0))) }
+    }
+
+    /// Export names how many logins are ticked, and is greyed out while none are; the heading's checkbox is
+    /// ticked when every login is.
+    private func updateTicks() {
+        let count = checkedIDs.count
+        withWide(count == 0 ? "Export…" : "Export (\(count))…") { _ = SetWindowTextW(buttons[.exportData], $0) }
+        EnableWindow(buttons[.exportData], count > 0)
+        guard let header = HWND(bitPattern: Int(SendMessageW(list, UINT(LVM_GETHEADER), 0, 0))) else { return }
+        var item = HDITEMW()
+        item.mask = UINT(HDI_FORMAT)
+        item.fmt = Int32(HDF_LEFT | HDF_STRING) | 0x0040 /* HDF_CHECKBOX */ | (count > 0 && count == shown.count ? 0x0080 /* HDF_CHECKED */ : 0)
+        _ = withUnsafeMutablePointer(to: &item) { SendMessageW(header, UINT(0x120C) /* HDM_SETITEMW */, 0, LPARAM(Int(bitPattern: $0))) }
+    }
+
+    /// The heading's checkbox: tick every login, or untick them all when all are ticked.
+    private func tickAll(_ on: Bool) {
+        ticked = on ? Set(shown.map(\.id)) : []
+        updatingTicks = true
+        for row in shown.indices { setTick(row, on) }
+        updatingTicks = false
+        updateTicks()
     }
 
     /// The window while it's open, for the feature tests' bridge.
@@ -419,7 +467,7 @@ final class ManageLoginsWindow: WindowObject {
                 },
                 "locked": store.isLocked, "lockedCount": store.lockedCount, "protection": "\(store.protection)",
                 "export": buttons[.exportData].map { String(windowText: $0) } ?? "", "notice": banner.map { String(windowText: $0) } ?? "",
-                "checkAll": false]
+                "checkAll": true]
     }
 
     /// Feature tests: presses the window's controls, through the same code they run. Actions that open a
@@ -439,6 +487,7 @@ final class ManageLoginsWindow: WindowObject {
                 let ticked = checkedIDs.contains(shown[index].id)
                 setState(index, mask: LVIS_STATEIMAGEMASK, state: (ticked ? 1 : 2) << 12)
             }
+        case "check-all": tickAll(value as? Bool ?? true)
         case "new": MainThread.async { self.perform(.new) }
         case "edit", "open":
             if let index, shown.indices.contains(index) { setState(index, mask: LVIS_SELECTED | LVIS_FOCUSED, state: LVIS_SELECTED | LVIS_FOCUSED) }
@@ -469,7 +518,8 @@ final class ManageLoginsWindow: WindowObject {
             if let summary = LoginVaultPrompts.importData(store, owner: hwnd) { FormDialog.tell(owner: hwnd, title: "Import Login Data", message: summary) }
         case .exportData:
             let ticked = checkedIDs
-            if let summary = LoginVaultPrompts.exportData(store, only: ticked.isEmpty ? nil : ticked, owner: hwnd) {
+            guard !ticked.isEmpty else { return }
+            if let summary = LoginVaultPrompts.exportData(store, only: ticked, owner: hwnd) {
                 FormDialog.tell(owner: hwnd, title: "Export Login Data", message: summary)
             }
         case .password: LoginVaultPrompts.createOrModify(store, owner: hwnd)
@@ -520,8 +570,22 @@ final class ManageLoginsWindow: WindowObject {
             if let action = Action(rawValue: id) { perform(action) }
             return 0
         case WM_NOTIFY:
-            if let header = UnsafePointer<NMHDR>(bitPattern: UInt(lParam)), header.pointee.hwndFrom == list,
-               Int32(bitPattern: header.pointee.code) == -3 /* NM_DBLCLK */, let row = selectedRow {
+            guard let header = UnsafePointer<NMHDR>(bitPattern: UInt(lParam)) else { return nil }
+            let code = Int32(bitPattern: header.pointee.code)
+            if code == -316 /* HDN_ITEMSTATEICONCLICK, passed on from the list */ {
+                tickAll(checkedIDs.count != shown.count)
+                return 0
+            }
+            if header.pointee.hwndFrom == list, code == -101 /* LVN_ITEMCHANGED */, !updatingTicks {
+                let change = UnsafePointer<NMLISTVIEW>(bitPattern: UInt(lParam))!.pointee
+                let row = Int(change.iItem)
+                if change.uChanged & UINT(LVIF_STATE) != 0, (change.uNewState ^ change.uOldState) & UINT(LVIS_STATEIMAGEMASK) != 0,
+                   shown.indices.contains(row) {
+                    if isTicked(row) { ticked.insert(shown[row].id) } else { ticked.remove(shown[row].id) }
+                    updateTicks()
+                }
+            }
+            if header.pointee.hwndFrom == list, code == -3 /* NM_DBLCLK */, let row = selectedRow {
                 edit(shown[row])
                 refresh()
             }

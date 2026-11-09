@@ -7,15 +7,9 @@ What the Mac version still needs before it can ship with as few bugs as possible
 - [x] **Every menu in the window, none in the macOS menu bar.** (#67) All menus and submenus (Shell, Edit, View, Window, Help and the rest) move into the Main Menu in the window, as on Linux and Windows, so nothing needs a trip to the top of a wide screen. The macOS menu bar keeps only the app menu macOS always shows. Every shortcut keeps working, Undo, Cut, Copy, Paste and Select All in text fields included, and every item keeps its hover text and VoiceOver label. Describe the new menu in `SPECIFICATION.md` in the same PR. (§2, enhancements.md) *Asked 2026-11-09.*
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 16:08)
+## Feature test results (2026-11-09 16:11)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
-
-### Broken (1)
-
-A test ran and the feature didn't do what the Mac version does.
-
-- [ ] **E3** Back, Forward, Up, Home, Reload, show hidden files; Delete/BackSpace goes back. (§5): Navigate: go into a folder and back: expected Back to return to the first folder (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title 'parity@scene' '~', dialogs [], last lines ["$ mkdir -p sub && printf 'hello\\n'…
 
 ### Not checked automatically (57)
 
