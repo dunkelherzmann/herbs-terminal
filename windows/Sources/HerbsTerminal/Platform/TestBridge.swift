@@ -86,6 +86,14 @@ enum TestBridge {
             guard let explorer = try workspace.activePane?.explorer else { throw Failure(description: "no explorer") }
             _ = explorer.perform(named: "filter=" + (request["text"] as? String ?? ""))
             return explorer.bridgeState["items"] ?? []
+        case "explorer-upload":
+            // Upload with the files given instead of picked in the open dialog.
+            guard let explorer = try workspace.activePane?.explorer, explorer.isRemote else { throw Failure(description: "no host explorer") }
+            return explorer.perform(named: "upload=" + (request["paths"] as? [String] ?? []).joined(separator: "|"))
+        case "explorer-download":
+            // Download the selection into the folder given instead of picked in the folder dialog.
+            guard let explorer = try workspace.activePane?.explorer, explorer.isRemote else { throw Failure(description: "no host explorer") }
+            return explorer.perform(named: "download=" + (request["into"] as? String ?? ""))
         case "explorer-rename":
             // Types the new name into the in-place edit box Rename opened, and presses Return.
             guard let explorer = try workspace.activePane?.explorer else { throw Failure(description: "no explorer") }

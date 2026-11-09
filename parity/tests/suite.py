@@ -8,6 +8,7 @@ Each test gets a fresh app (`Context`) and ends in one outcome:
 Tests registered with `manual` don't start the app.
 """
 import os
+import shutil
 import time
 
 import bridge as bridge_module
@@ -1220,9 +1221,13 @@ def _(c):
     s = c.until(lambda s: "note.txt" in items(c, s) and "sub" not in names(c, s), "expected Find to keep note.txt and hide sub")
     c.expect(all("note" in i.lower() for i in items(c, s)), f"expected only names with 'note', saw {items(c, s)}")
     c.expect(c.tab(s)["explorer"].get("finding") is not False, "expected the Find field to be open")
-    # Changing folder closes Find and shows everything again.
+    # Going to another folder closes Find; coming back shows everything again.
+    sub = c.app.home.rstrip("/\\") + ("/sub" if c.platform != "windows" else "\\sub")
+    c.bridge.call("explorer-go", path=sub)
+    c.until(lambda s: c.tab(s)["explorer"]["path"].rstrip("/\\").endswith("sub") and not c.tab(s)["explorer"].get("filter")
+            and not c.tab(s)["explorer"].get("finding"), "expected going to another folder to close Find")
     c.bridge.call("explorer-go", path=c.app.home)
-    c.until(lambda s: "sub" in names(c, s) and not c.tab(s)["explorer"].get("filter"), "expected going to a folder to close Find")
+    c.until(lambda s: "sub" in names(c, s), "expected every item back in the first folder")
 
 @test("E15", "Open in Text Editor, Open with Default App, Show in the file manager")
 def _(c):
@@ -1235,8 +1240,120 @@ manual("E16", "Open with Administrator Mode", "needs a sudo password (not automa
 
 # ---------------------------------------------------------------- X, D, G, A
 
-for fid in ("X1", "X2", "X3", "X4", "X6", "X7"):
-    manual(fid, "Transfers", NEEDS_SSH)
+def host_folder(c, account, prefix):
+    """A fresh folder in the test account's home on the host, made with New Folder, shown in the explorer."""
+    home = f"/home/{account['user']}"
+    c.bridge.call("explorer-go", path=home)
+    c.until(lambda s: c.tab(s)["explorer"].get("path", "").rstrip("/") == home and not c.tab(s)["explorer"].get("loading"),
+            "expected the account's home on the host", timeout=15)
+    name = f"{prefix}-{int(time.time())}"
+    c.command("explorer.new-folder", settle=1.2)
+    s = c.until(lambda s: s.get("dialogs"), "expected the New Folder dialog")
+    c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() != "cancel"), [name])
+    c.until(lambda s: name in names(c, s), "expected the new folder on the host", timeout=10)
+    c.bridge.call("explorer-go", path=f"{home}/{name}")
+    c.until(lambda s: c.tab(s)["explorer"].get("path", "").rstrip("/") == f"{home}/{name}", "expected the new folder open", timeout=10)
+    return home, name
+
+def remove_host_folder(c, home, name):
+    """Deletes a folder host_folder made (best effort: a failed clean-up doesn't fail the test)."""
+    try:
+        c.bridge.call("explorer-go", path=home)
+        c.until(lambda s: name in names(c, s), "expected the folder", timeout=10)
+        c.bridge.call("explorer-select", names=[name + "/", name])
+        c.command("explorer.delete", settle=1.2)
+        s = c.state()
+        if s.get("dialogs"):
+            c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() != "cancel"))
+    except Exception:
+        pass
+
+def transfers_done(c, s, count):
+    """At least `count` transfers in the strip, and every one finished."""
+    items_ = c.tab(s)["explorer"].get("transfers") or []
+    return len(items_) >= count and all(t["state"].startswith(("completed", "failed", "cancelled")) for t in items_)
+
+def local_tree(c, root):
+    """A file and a folder tree with a nested folder, in a fresh local folder; returns the paths to upload."""
+    shutil.rmtree(root, ignore_errors=True)
+    os.makedirs(os.path.join(root, "tree", "deep"))
+    with open(os.path.join(root, "one.txt"), "w", encoding="utf-8") as f: f.write("one\n")
+    with open(os.path.join(root, "tree", "a.txt"), "w", encoding="utf-8") as f: f.write("alpha\n")
+    with open(os.path.join(root, "tree", "deep", "b.txt"), "w", encoding="utf-8") as f: f.write("beta " * 4000)
+    return [os.path.join(root, "one.txt"), os.path.join(root, "tree")]
+
+def upload(c, paths):
+    try:
+        result = c.bridge.call("explorer-upload", paths=paths)
+    except Exception as error:
+        if "unknown op" in str(error):
+            c.unverified("this platform's test bridge can't upload without the open dialog yet")
+        raise
+    if result == "unsupported":
+        c.unverified("this platform's test bridge can't upload without the open dialog yet")
+
+@test("X1", "Upload and download single files and folder trees")
+def _(c):
+    account = host_explorer(c)
+    home, name = host_folder(c, account, "x1")
+    try:
+        source = os.path.join(c.app.home, "x1-source")
+        upload(c, local_tree(c, source))
+        c.until(lambda s: {"one.txt", "tree"} <= set(names(c, s)) and transfers_done(c, s, 1), "expected one.txt and tree on the host", timeout=30)
+        failed = [t for t in c.tab()["explorer"]["transfers"] if not t["state"].startswith("completed")]
+        c.expect(not failed, f"expected every upload to finish, saw {failed}")
+        c.bridge.call("explorer-go", path=f"{home}/{name}/tree")
+        c.until(lambda s: {"a.txt", "deep"} <= set(names(c, s)), "expected the tree's files and its nested folder on the host", timeout=10)
+        # And back down again, into a fresh local folder.
+        c.bridge.call("explorer-go", path=f"{home}/{name}")
+        c.until(lambda s: {"one.txt", "tree"} <= set(names(c, s)), "expected the uploaded items", timeout=10)
+        c.bridge.call("explorer-select", names=["one.txt", "tree/", "tree"])
+        target = os.path.join(c.app.home, "x1-back")
+        shutil.rmtree(target, ignore_errors=True); os.makedirs(target)
+        c.bridge.call("explorer-download", into=target)
+        def same():
+            try:
+                return (open(os.path.join(target, "one.txt"), encoding="utf-8").read() == "one\n"
+                        and open(os.path.join(target, "tree", "a.txt"), encoding="utf-8").read() == "alpha\n"
+                        and open(os.path.join(target, "tree", "deep", "b.txt"), encoding="utf-8").read() == "beta " * 4000)
+            except OSError:
+                return False
+        c.until(lambda s: same(), "expected the file and the whole tree downloaded unchanged", timeout=30)
+    finally:
+        remove_host_folder(c, home, name)
+
+@test("X2", "Progress strip lists each transfer and its outcome")
+def _(c):
+    account = host_explorer(c)
+    home, name = host_folder(c, account, "x2")
+    try:
+        upload(c, local_tree(c, os.path.join(c.app.home, "x2-source"))[:1])
+        s = c.until(lambda s: transfers_done(c, s, 1), "expected the upload in the transfer strip, finished", timeout=30)
+        c.expect(any(t["name"] == "one.txt" and t["state"].startswith("completed") for t in c.tab(s)["explorer"]["transfers"]),
+                 f"expected one.txt listed as completed, saw {c.tab(s)['explorer']['transfers']}")
+    finally:
+        remove_host_folder(c, home, name)
+
+manual("X2", "Cancel, Retry and Clear Finished", "needs a transfer slow enough to cancel; not automated yet")
+
+@test("X7", "Name clashes get new names, never overwrites")
+def _(c):
+    account = host_explorer(c)
+    home, name = host_folder(c, account, "x7")
+    try:
+        one = local_tree(c, os.path.join(c.app.home, "x7-source"))[0]
+        upload(c, [one])
+        c.until(lambda s: "one.txt" in names(c, s) and transfers_done(c, s, 1), "expected one.txt on the host", timeout=30)
+        upload(c, [one])
+        s = c.until(lambda s: len([n for n in names(c, s) if n.startswith("one")]) == 2 and transfers_done(c, s, 2),
+                    "expected the second upload under a new name beside one.txt", timeout=30)
+        c.expect("one.txt" in names(c, s), f"expected the first one.txt kept, saw {names(c, s)}")
+    finally:
+        remove_host_folder(c, home, name)
+
+for fid, title in (("X3", "Up to 16 requests in flight"), ("X6", "Staged uploads")):
+    manual(fid, title, "inside the SFTP client, where the bridge can't see its requests; not automated yet")
+manual("X4", "A silent server ends the request after 30 s", "needs a dropped connection (fault injection, not automated yet)")
 manual("X5", "Local copies in the background", "needs a large folder and timing; not automated yet")
 
 @test("D1", "Text files open as a tab")

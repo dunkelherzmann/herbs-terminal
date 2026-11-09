@@ -44,6 +44,8 @@ final class WindowState: ObservableObject {
     @Published var adminTarget: PrivilegedAccess.Target?
     @Published var adminPath = "/"
     @Published var adminHistory = NavigationHistory("/")
+    /// The explorer showing in this tab, for the feature tests' bridge (nil while none is on screen).
+    var explorerBridge: ExplorerBridge?
 }
 
 struct SessionView: View {
@@ -97,14 +99,14 @@ struct SessionView: View {
                                findRequest: state.explorerFindRequest, localFolder: state.directory,
                                home: state.adminTarget == .local ? FileManager.default.homeDirectoryForCurrentUser.path : state.remoteHome,
                                sidebarWidth: sidebarWidth,
-                               administratorToggle: { AdministratorMode.leave(state) }, isAdministrator: true)
+                               administratorToggle: { AdministratorMode.leave(state) }, isAdministrator: true, bridgeHost: state)
                     .id(ObjectIdentifier(admin))
             } else {
                 switch state.endpoint {
                 case .local:
                     LocalExplorer(directory: $state.directory, history: $state.localHistory,
                                   log: state.localLog, findRequest: state.explorerFindRequest, sidebarWidth: sidebarWidth,
-                                  administratorToggle: { Task { await AdministratorMode.enter(state) } })
+                                  administratorToggle: { Task { await AdministratorMode.enter(state) } }, bridgeHost: state)
                 case .remote(let ep):
                     RemoteExplorer(
                         currentPath: $state.remoteDirectory,
@@ -118,7 +120,8 @@ struct SessionView: View {
                         localFolder: state.directory,
                         home: state.remoteHome,
                         sidebarWidth: sidebarWidth,
-                        administratorToggle: { Task { await AdministratorMode.enter(state) } }
+                        administratorToggle: { Task { await AdministratorMode.enter(state) } },
+                        bridgeHost: state
                     )
                 }
             }

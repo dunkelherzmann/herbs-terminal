@@ -62,6 +62,15 @@ enum TestBridge {
         case "explorer-go":
             guard let explorer = try workspace.selected.explorer else { throw Failure(description: "no explorer") }
             return explorer.bridgeGo(request["path"] as? String ?? "")
+        case "explorer-filter":
+            guard let explorer = try workspace.selected.explorer else { throw Failure(description: "no explorer") }
+            return explorer.bridgeFilter(request["text"] as? String ?? "")
+        case "explorer-upload":
+            guard let explorer = try workspace.selected.explorer else { throw Failure(description: "no explorer") }
+            return explorer.bridgeUpload(request["paths"] as? [String] ?? [])
+        case "explorer-download":
+            guard let explorer = try workspace.selected.explorer else { throw Failure(description: "no explorer") }
+            return explorer.bridgeDownload(into: request["into"] as? String ?? "")
         case "explorer-select":
             guard let explorer = try workspace.selected.explorer else { throw Failure(description: "no explorer") }
             return explorer.bridgeSelect(request["names"] as? [String] ?? [])

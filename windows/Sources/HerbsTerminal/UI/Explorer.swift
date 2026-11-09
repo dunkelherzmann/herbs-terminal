@@ -2127,6 +2127,7 @@ extension ExplorerPane {
         ["shown": IsWindowVisible(hwnd), "path": folder, "items": rows.map { $0.isFolder ? $0.name + "/" : $0.name },
          "selected": selectedEntries.map(\.name), "hidden": showHidden, "administrator": isAdministrator, "remote": remote != nil,
          "bookmarked": isBookmarked, "status": status, "finding": filterVisible, "filter": filterText,
+         "transfers": transfers.items.map { ["name": $0.name, "state": "\($0.state)"] as [String: Any] },
          "renaming": SendMessageW(list, UINT(LVM_GETEDITCONTROL), 0, 0) != 0, "canUndo": !undoLog.undoStack.isEmpty, "canRedo": !undoLog.redoStack.isEmpty, "undoTitle": undoLog.undoTitle, "redoTitle": undoLog.redoTitle]
     }
 }

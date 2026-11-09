@@ -63,7 +63,26 @@ enum TestBridge {
             // As the keyboard does: through the view, so MultiExec forwards it like real typing.
             try workspace.selected.focusedShell.view.send(txt: request["text"] as? String ?? "")
             return true
-        case "explorer-go", "explorer-select": return "unsupported"
+        case "explorer-go":
+            guard let explorer = try workspace.selected.state.explorerBridge else { return "unsupported" }
+            explorer.go(request["path"] as? String ?? "")
+            return true
+        case "explorer-select":
+            guard let explorer = try workspace.selected.state.explorerBridge else { return "unsupported" }
+            explorer.select(request["names"] as? [String] ?? [])
+            return explorer.selected()
+        case "explorer-upload":
+            guard let upload = try workspace.selected.state.explorerBridge?.upload else { return "unsupported" }
+            upload(request["paths"] as? [String] ?? [])
+            return true
+        case "explorer-download":
+            guard let download = try workspace.selected.state.explorerBridge?.download else { return "unsupported" }
+            download(request["into"] as? String ?? "")
+            return true
+        case "explorer-filter":
+            guard let explorer = try workspace.selected.state.explorerBridge else { return "unsupported" }
+            explorer.setFilter(request["text"] as? String ?? "")
+            return explorer.items()
         case "include":
             let workspace = try workspace
             let shells = workspace.tabs.flatMap(\.shells)
@@ -205,7 +224,10 @@ enum TestBridge {
             let state = workspace.selected.state
             if state.adminViewModel != nil { AdministratorMode.leave(state) } else { Task { await AdministratorMode.enter(state) } }
         }
-        if name.hasPrefix("explorer."), name != "explorer.administrator" { return "unsupported" }
+        if name.hasPrefix("explorer."), name != "explorer.administrator" {
+            guard let explorer = workspace.selected.state.explorerBridge else { return "unsupported" }
+            return explorer.command(String(name.dropFirst("explorer.".count)), run)
+        }
         guard let action = actions[name] else { return "missing" }
         if name == "disconnect", workspace.selected.state.connection == .local { return "disabled" }
         // Run after this request is answered: an alert's modal loop would otherwise hold the answer back.
@@ -291,10 +313,17 @@ enum TestBridge {
                         ]
                         entry["connection"] = bridgeConnection(tab.state.connection)
                         let remote: Bool = { if case .remote = tab.state.endpoint { return true }; return false }()
-                        entry["explorer"] = ["shown": tab.state.layout == .explorer, "remote": remote,
-                                             "administrator": tab.state.adminViewModel != nil,
-                                             "path": remote ? tab.state.remoteDirectory : tab.state.directory.path,
-                                             "items": [String](), "selected": [String]()] as [String: Any]
+                        var explorer: [String: Any] = ["shown": tab.state.layout == .explorer, "remote": remote,
+                                                       "administrator": tab.state.adminViewModel != nil,
+                                                       "path": remote ? tab.state.remoteDirectory : tab.state.directory.path,
+                                                       "items": [String](), "selected": [String]()]
+                        if let bridge = tab.state.explorerBridge {
+                            explorer.merge(bridge.extra()) { _, new in new }
+                            explorer["path"] = bridge.path()
+                            explorer["items"] = bridge.items()
+                            explorer["selected"] = bridge.selected()
+                        }
+                        entry["explorer"] = explorer
                         if let editor = tab.editor { entry["editor"] = ["name": editor.source.name, "edited": editor.isEdited, "text": editor.bridgeText] }
                         return entry
                     },
@@ -318,4 +347,24 @@ func bridgeConnection(_ state: ConnectionState) -> [String: Any] {
     case .connected(let endpoint): ["state": "connected", "account": endpoint.label]
     case .failed(let reason): ["state": "failed", "reason": reason]
     }
+}
+
+/// One explorer as the feature tests' bridge sees it: its folder, list and selection, and its commands by their
+/// shared names. The explorer on screen fills it in with closures over its own state.
+@MainActor
+final class ExplorerBridge {
+    let owner: String
+    var path: () -> String = { "" }
+    var items: () -> [String] = { [] }
+    var selected: () -> [String] = { [] }
+    var select: ([String]) -> Void = { _ in }
+    var go: (String) -> Void = { _ in }
+    var setFilter: (String) -> Void = { _ in }
+    /// A host's explorer: uploads these local paths into its folder, or downloads the selection into a local folder.
+    var upload: (([String]) -> Void)?
+    var download: ((String) -> Void)?
+    var extra: () -> [String: Any] = { [:] }
+    /// Runs (or only checks, when the flag is false) a command: "ran", "enabled", "disabled" or "missing".
+    var command: (String, Bool) -> String = { _, _ in "missing" }
+    init(owner: String) { self.owner = owner }
 }
