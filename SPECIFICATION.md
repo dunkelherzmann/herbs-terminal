@@ -34,7 +34,7 @@ It covers the everyday features of the stock macOS Terminal and Ptyxis. It adds:
 
 ### Toolbar
 
-- **Left:** after the traffic lights come **New Tab** and **Connect via SSH**.
+- **Left:** after the traffic lights come **New Tab**, **Connect via SSH** and **Saved Passwords** (a lock; section 6).
   - While the tab is connected, the SSH button is highlighted. It then opens the connection details instead: account, host, port, route, remote home and how long it has been connected. From there you can **Disconnect**, or start a **New Connection** in a new tab.
 - **Center:** the tab's title and location, for example `user@host ~`.
   - It follows the titles the shell reports, the current folder and the program in the foreground, and shows home as `~`.
@@ -338,13 +338,22 @@ Right-click one or more items and choose **Get Info…**.
 
 - The format is CSV with the header `host,port,username,password`, in UTF-8. Commas, quotes and line breaks are quoted.
 - Importing is all-or-nothing: a rejected import leaves the saved logins as they were.
-- **Export** writes readable passwords, so it needs the Administrator Password (or a confirmation for plain-text logins). It always includes every login.
+- **Export** writes readable passwords, so it needs the Administrator Password (or a confirmation for plain-text logins). It includes only the ticked logins.
   - The file is suggested as `logins_export.csv`.
   - Only your account can read it.
 
+**Saved Passwords** keeps passwords you type often, such as sudo passwords, and types them for you.
+
+- **The button:** a lock in the toolbar, right after Connect via SSH (`toolbar.savedPasswords`; hover: "Saved Passwords — Type a saved password, such as a sudo password, into the terminal."). Clicking it opens a menu: the saved passwords by name, each with its description as a hover hint, then **Manage Passwords…**.
+  - Choosing a name types only its password into the focused terminal, through the same path as the keyboard, without pressing Return, so it can answer a `sudo` or `ssh` prompt. With MultiExec on, it goes to every included terminal, as typing does.
+  - While the passwords are locked, the menu offers **Unlock…** instead (the Administrator Password), then shows them. With none saved it says so.
+- **Storage:** a vault of its own, the `passwords` table in the same database, separate from the logins but under the same protection: encrypted with the Administrator Password (unlocking either unlocks both), or plain text after that same choice. Creating, changing or removing the Administrator Password re-encrypts both in one step. Names and descriptions are stored as plain text; passwords never are when an Administrator Password is set.
+- **Manage Passwords** (from the menu) lists the saved passwords with their name, description, a hidden password and how each is stored. **New** and **Edit** open a form with **Name** (required, unique, case ignored), **Password** (required) and **Description** (optional), and **Show password** as for logins. Double-click edits; Delete or right-click removes one after a confirmation whose default is Cancel. While locked it shows a bar to unlock.
+- The first save asks how to protect saved passwords, as the first saved login does, when neither has been chosen.
+
 **Privacy and recovery**
 
-- Passwords never appear in process arguments, terminal output, shell history or logs. SSH private keys never go into the CSV.
+- Passwords never appear in process arguments, terminal output, shell history or logs. SSH private keys never go into the CSV. A saved password reaches only the terminal you choose it for.
 - A forgotten Administrator Password can't be recovered; the logins have to be deleted and entered again.
 - To move to another Mac, export the logins and import them there.
 
