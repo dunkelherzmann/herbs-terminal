@@ -107,6 +107,7 @@ enum TestScript {
             if let logins = ManageLoginsWindow.openWindow { capture(logins, to: base + "-logins.bmp") }
             if let dialog = FormDialog.current?.window { capture(dialog, to: base + "-dialog.bmp") }
             if let info = GetInfoWindow.current?.window { capture(info, to: base + "-info.bmp") }
+            if let hosts = RunOnHostsWindow.open?.hwnd { capture(hosts, to: base + "-hosts.bmp") }
             // An open popup menu (class #32768) is captured from the screen, since it doesn't draw for PrintWindow.
             if let menu = withWide("#32768", { FindWindowW($0, nil) }), IsWindowVisible(menu) {
                 captureScreen(of: menu, to: base + "-menu.bmp")

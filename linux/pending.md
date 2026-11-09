@@ -3,7 +3,7 @@
 What the Linux version still needs before it can ship with as few bugs as possible: everything a feature test found broken or missing, and every feature no automatic test covers yet. Fix broken items first, one pull request each, and tick an item with its PR number once it is fixed and its test passes. `bugs.md` and `enhancements.md` stay the record of requests and releases.
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 04:37)
+## Feature test results (2026-11-09 05:14)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
@@ -73,7 +73,7 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **L9** Import (CSV, all-or-nothing). (§6): the Manage Logins window isn't driven by the bridge yet
 - [ ] **L10** Export ticked logins (checkbox column with select-all heading), file readable only by you,… (§6): the Manage Logins window isn't driven by the bridge yet
 - [ ] **L11** Double-click edits; Delete key or right-click removes after a confirmation defaulting to Cancel. (§6): the Manage Logins window isn't driven by the bridge yet
-- [ ] **U7** Results per host: outcome, exit code, duration, output (64 KB cap, marked truncated). (§7): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
+- [ ] **U7** Results per host: outcome, exit code, duration, output (64 KB cap, marked truncated). (§7): this platform's test bridge can't drive Run Command on Hosts yet
 - [ ] **C1** Add a peer: name, username, secret address, One-time or Persistent; addresses protected like logins. (§8): the window opens; adding a peer needs its form, which the bridge doesn't fill yet
 - [ ] **C2** Ping: Direct or Relayed with latency. (§8): needs a second machine running tailcat
 - [ ] **C3** Connect: shell and explorer through Tailcat, address never in arguments or history. (§8): needs a second machine running tailcat

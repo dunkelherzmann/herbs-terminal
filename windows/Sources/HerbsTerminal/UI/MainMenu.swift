@@ -90,7 +90,7 @@ enum MainMenu {
             item(sub, "Select Previous Pane\tCtrl+Alt+Left", .previousPane, enabled: terminal && split)
             divider(sub)
             item(sub, "MultiExec\tCtrl+Shift+M", .multiExec, checked: workspace.multiExec)
-            item(sub, "Run Command on Hosts…", .runOnHosts, enabled: false)
+            item(sub, "Run Command on Hosts…", .runOnHosts)
             item(sub, "New Remote Connection…", .newRemoteConnection)
             item(sub, "Disconnect", .disconnect, enabled: pane?.isConnected ?? false)
             divider(sub)

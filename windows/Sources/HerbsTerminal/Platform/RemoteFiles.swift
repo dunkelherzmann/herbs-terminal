@@ -67,7 +67,7 @@ final class RemoteSession: @unchecked Sendable {
 
     /// ssh's options for this host, and the relay's first input line: the password helper's pipe and a one-time
     /// token, or "-" for keys only.
-    private func relaySetup() throws -> (arguments: [String], preamble: String) {
+    func relaySetup() throws -> (arguments: [String], preamble: String) {
         guard SSH.executable != nil else {
             throw FileIssue("Windows' OpenSSH client isn't installed. Add it in Settings ▸ System ▸ Optional features ▸ OpenSSH Client.")
         }

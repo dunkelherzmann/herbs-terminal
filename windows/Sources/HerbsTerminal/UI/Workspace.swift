@@ -392,6 +392,29 @@ final class Workspace: WindowObject {
         SetFocus(window)
     }
 
+    // MARK: Run Command on Hosts
+
+    /// Kept for the window's life, so the command and the chosen hosts are still there when it opens again.
+    let multiHost = MultiHostRunner()
+
+    /// The tab's live connection first, then every saved login (once each), as on the Mac and Linux.
+    var hostTargets: [HostTarget] {
+        var targets: [HostTarget] = []
+        if let pane = activePane, pane.isConnected, let endpoint = pane.remote {
+            targets.append(HostTarget(endpoint: endpoint, password: pane.remotePassword, source: "this tab's connection"))
+        }
+        for login in CredentialStore.shared?.logins ?? [] {
+            let target = HostTarget(endpoint: RemoteEndpoint(host: login.host, port: login.port, username: login.username),
+                                    password: login.password.isEmpty ? nil : login.password, source: "saved login")
+            if !targets.contains(target) { targets.append(target) }
+        }
+        return targets
+    }
+
+    func showRunOnHosts() {
+        RunOnHostsWindow.show(owner: hwnd, runner: multiHost, targets: hostTargets)
+    }
+
     // MARK: File explorer
 
     /// Show File Explorer / Show Terminal (Ctrl+Shift+X): the tab switches between its shell and its explorer,
@@ -750,7 +773,8 @@ final class Workspace: WindowObject {
         case .nextPane: cyclePane(1)
         case .previousPane: cyclePane(-1)
         case .multiExec: setMultiExec(!multiExec)
-        case .findInTerminal, .runOnHosts:
+        case .runOnHosts: showRunOnHosts()
+        case .findInTerminal:
             break // Not in the Windows version yet; shown greyed out.
         }
     }

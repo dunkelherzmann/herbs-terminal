@@ -113,6 +113,14 @@ enum TestBridge {
             TestClipboard.clear()
             if let files = request["files"] as? [String] { TestClipboard.files = (files, false) } else { TestClipboard.text = request["text"] as? String ?? "" }
             return true
+        case "hosts-run":
+            // Run Command on Hosts, as ticking hosts, typing the command and pressing Run would.
+            guard let window = RunOnHostsWindow.open else { throw Failure(description: "the Run Command on Hosts window isn't open") }
+            window.bridgeRun(hosts: request["hosts"] as? [String] ?? [], command: request["command"] as? String ?? "")
+            return true
+        case "hosts-state":
+            guard let window = RunOnHostsWindow.open else { throw Failure(description: "the Run Command on Hosts window isn't open") }
+            return window.bridgeState
         case "include":
             try workspace.setIncluded(number: request["pane"] as? Int ?? 0, request["on"] as? Bool ?? true)
             return true
@@ -137,7 +145,7 @@ enum TestBridge {
         "fullscreen": .fullScreen, "settings": .settings, "about": .about, "restore-size": .restoreDefaultSize,
         "default-size": .makeSizeDefault, "close-tab": .closeTab, "take-screenshot": .takeScreenshot,
     ]
-    private static let greyedOut: Set<MenuCommand> = [.findInTerminal, .runOnHosts]
+    private static let greyedOut: Set<MenuCommand> = [.findInTerminal]
     private static let explorerCommands: [String: String] = [
         "cut": "cut", "copy": "copy", "paste": "paste", "delete": "delete", "new-folder": "newFolder", "new-file": "newFile",
         "select-all": "selectAll", "open": "open", "edit": "edit", "info": "info", "reveal": "reveal", "open-default": "openWith",

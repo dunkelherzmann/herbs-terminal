@@ -27,16 +27,21 @@ enum SFTPRelay {
         }
         guard let ssh = SSH.executable else { return 3 }
 
-        // ssh gets the relay's own standard input and output, and no error output (it would only reach a pipe
-        // nobody reads).
+        // ssh gets the relay's own standard input and output. Its error output goes nowhere, except for Run Command
+        // on Hosts, which asks for it (HERBSTERMINAL_RELAY_ERRORS) to show why a host wasn't reached.
         let output = GetStdHandle(STD_OUTPUT_HANDLE)
-        for handle in [input, output] { SetHandleInformation(handle, DWORD(HANDLE_FLAG_INHERIT), DWORD(HANDLE_FLAG_INHERIT)) }
+        var errors: HANDLE? = nil
+        if ProcessInfo.processInfo.environment["HERBSTERMINAL_RELAY_ERRORS"] == "1" {
+            errors = GetStdHandle(STD_ERROR_HANDLE)
+            if errors == INVALID_HANDLE_VALUE { errors = nil }
+        }
+        for handle in [input, output, errors] where handle != nil { SetHandleInformation(handle, DWORD(HANDLE_FLAG_INHERIT), DWORD(HANDLE_FLAG_INHERIT)) }
         var startup = STARTUPINFOW()
         startup.cb = DWORD(MemoryLayout<STARTUPINFOW>.size)
         startup.dwFlags = DWORD(STARTF_USESTDHANDLES)
         startup.hStdInput = input
         startup.hStdOutput = output
-        startup.hStdError = nil
+        startup.hStdError = errors
         var info = PROCESS_INFORMATION()
         var command = ([ssh] + sshArguments).map(quoteArgument).joined(separator: " ").wide
         let job = CreateJobObjectW(nil, nil)

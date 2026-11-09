@@ -116,19 +116,11 @@ final class MultiExecControls {
             MoveWindow(box, captionRect.left + s(8), captionRect.top + s(3), captionRect.right - captionRect.left - s(16), caption - s(6), true)
             SendMessageW(box, UINT(BM_SETCHECK), WPARAM(included[index] ? BST_CHECKED : BST_UNCHECKED), 0)
         }
-        var entries: [(id: UINT_PTR, rect: RECT, text: String)] = []
-        for (action, button) in buttons {
-            var rect = RECT()
-            GetWindowRect(button, &rect)
-            MapWindowPoints(nil, owner, withUnsafeMutablePointer(to: &rect) { UnsafeMutableRawPointer($0).assumingMemoryBound(to: POINT.self) }, 2)
-            entries.append((UINT_PTR(action.rawValue), rect, action.hint))
+        for (action, button) in buttons { hints.set(button, action.hint, owner: owner) }
+        for (index, box) in checkboxes.enumerated() {
+            hints.set(box, included[index] ? "Included\nTyping in MultiExec goes to this terminal. Uncheck to leave it out."
+                                           : "Left out\nThis terminal only takes what you type into it. Check to include it.", owner: owner)
         }
-        for (index, captionRect) in captionRects.enumerated() {
-            entries.append((UINT_PTR(100 + index), captionRect, included[index]
-                ? "Included\nTyping in MultiExec goes to this terminal. Uncheck to leave it out."
-                : "Left out\nThis terminal only takes what you type into it. Check to include it."))
-        }
-        hints.update(owner: owner, entries)
         return frames
     }
 
