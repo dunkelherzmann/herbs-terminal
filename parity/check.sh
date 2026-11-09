@@ -62,7 +62,7 @@ if [[ -n "$windows_host" ]]; then
         echo "Windows: sending this tree and building"
         ssh -o BatchMode=yes "$windows_host" 'powershell -NoProfile -Command "New-Item -ItemType Directory -Force $env:USERPROFILE\src\herbs-parity\parity-tools, $env:USERPROFILE\src\herbs-parity-out | Out-Null; Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $env:USERPROFILE\src\herbs-parity\windows\Sources"'
         remote_home=$(ssh -o BatchMode=yes "$windows_host" 'echo %USERPROFILE%' | tr -d '\r' | tr '\\' '/')
-        COPYFILE_DISABLE=1 tar -C "$windows_tree" -cf - --exclude .git --exclude dist --exclude .build VERSION Sources linux windows \
+        COPYFILE_DISABLE=1 tar -C "$windows_tree" -cf - --exclude .git --exclude dist --exclude .build VERSION shared linux windows \
             | ssh -o BatchMode=yes "$windows_host" "tar -xf - -C $remote_home/src/herbs-parity"
         COPYFILE_DISABLE=1 tar -cf - parity | ssh -o BatchMode=yes "$windows_host" "tar -xf - -C $remote_home/src/herbs-parity"
         scp -q "$skills/uia-dump.ps1" "$windows_host:$remote_home/src/herbs-parity/parity-tools/uia-dump.ps1"

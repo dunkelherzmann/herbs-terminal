@@ -75,7 +75,7 @@ enum TestBridge {
         case "type":
             let workspace = try workspace
             let text = (request["text"] as? String ?? "")
-            if let editor = workspace.activeEditor { editor.type(text) } else { workspace.focusedPane?.send(text) }
+            if let editor = workspace.activeEditor { editor.type(text) } else { workspace.focusedPane?.type(text) }
             return true
         case "explorer-go":
             guard let explorer = try workspace.activePane?.explorer else { throw Failure(description: "no explorer") }
@@ -98,6 +98,9 @@ enum TestBridge {
             // The focused terminal's profile, as on the Mac and Linux.
             case "startupCommand": try TerminalProfile.shared.update(workspace.focusedPane?.profileID) { $0.startupCommand = value }
             case "startDirectory": try TerminalProfile.shared.update(workspace.focusedPane?.profileID) { $0.startDirectory = value }
+            case "bell":
+                guard let bell = TerminalBell(rawValue: value) else { throw Failure(description: "unknown bell") }
+                try TerminalProfile.shared.update(workspace.focusedPane?.profileID) { $0.bell = bell }
             default: throw Failure(description: "unknown profile key")
             }
             return true
@@ -363,7 +366,8 @@ enum TestBridge {
                                     "fontSize": TerminalProfile.shared.settings(for: shell.profileID).effectiveSize,
                                     "profile": TerminalProfile.shared.name(of: shell.profileID), "selection": shell.bridgeSelection,
                                     "badge": shell.showingBadge ? shell.badgeText : NSNull(),
-                                    "find": ["shown": shell.isFinding, "text": shell.findText, "matches": shell.findMatchCount]]
+                                    "find": ["shown": shell.isFinding, "text": shell.findText, "matches": shell.findMatchCount],
+                                    "bellFlashes": shell.bellFlashes, "announcement": shell.lastAnnouncement ?? NSNull()]
                         }
                         // A tab's connection, as the Mac and Linux report it.
                         if let remote = pane.remote {

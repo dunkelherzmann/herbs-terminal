@@ -22,6 +22,7 @@ typedef struct Item {
     wchar_t *automationId, *name, *help, *accelerator;
     RECT rect;
     int controlType, enabled, hasPopup, invokable, tag;
+    int toggle, selected;  // -1 when the item has no such state
 } Item;
 
 typedef struct Root {
@@ -40,6 +41,8 @@ typedef struct Element {
     IRawElementProviderFragment fragment;
     IInvokeProvider invoke;
     IExpandCollapseProvider expandCollapse;
+    IToggleProvider toggle;
+    ISelectionItemProvider selection;
     LONG refs;
     Root *root;
     int tag;
@@ -89,6 +92,8 @@ static HRESULT STDMETHODCALLTYPE element_query(Element *self, REFIID riid, void 
     else if (IsEqualIID(riid, &IID_IRawElementProviderFragment)) *out = &self->fragment;
     else if (IsEqualIID(riid, &IID_IInvokeProvider)) *out = &self->invoke;
     else if (IsEqualIID(riid, &IID_IExpandCollapseProvider)) *out = &self->expandCollapse;
+    else if (IsEqualIID(riid, &IID_IToggleProvider)) *out = &self->toggle;
+    else if (IsEqualIID(riid, &IID_ISelectionItemProvider)) *out = &self->selection;
     else return E_NOINTERFACE;
     InterlockedIncrement(&self->refs);
     return S_OK;
@@ -123,7 +128,12 @@ static HRESULT STDMETHODCALLTYPE es_pattern(IRawElementProviderSimple *This, PAT
     int index = index_of(self->root, self->tag);
     if (index < 0) return UIA_E_ELEMENTNOTAVAILABLE;
     Item *item = &self->root->items[index];
-    if (pattern == UIA_InvokePatternId && item->invokable && !item->hasPopup) {
+    // A toggle button offers Toggle instead of Invoke, and a tab Select (as UI Automation's guidelines ask).
+    if (pattern == UIA_TogglePatternId && item->toggle >= 0) {
+        *out = (IUnknown *)&self->toggle;
+    } else if (pattern == UIA_SelectionItemPatternId && item->selected >= 0) {
+        *out = (IUnknown *)&self->selection;
+    } else if (pattern == UIA_InvokePatternId && item->invokable && !item->hasPopup && item->toggle < 0 && item->selected < 0) {
         *out = (IUnknown *)&self->invoke;
     } else if (pattern == UIA_ExpandCollapsePatternId && item->hasPopup) {
         *out = (IUnknown *)&self->expandCollapse;
@@ -280,6 +290,48 @@ static IExpandCollapseProviderVtbl element_expand_vtbl = {
     ec_query, ec_add_ref, ec_release, ec_expand, ec_collapse, ec_state,
 };
 
+// MARK: Element: Toggle and SelectionItem
+
+static HRESULT STDMETHODCALLTYPE et_query(IToggleProvider *This, REFIID riid, void **out) { return element_query(ELEMENT(This, toggle), riid, out); }
+static ULONG STDMETHODCALLTYPE et_add_ref(IToggleProvider *This) { return element_add_ref(ELEMENT(This, toggle)); }
+static ULONG STDMETHODCALLTYPE et_release(IToggleProvider *This) { return element_release(ELEMENT(This, toggle)); }
+static HRESULT STDMETHODCALLTYPE et_toggle(IToggleProvider *This) { return press(ELEMENT(This, toggle)); }
+static HRESULT STDMETHODCALLTYPE et_state(IToggleProvider *This, enum ToggleState *out) {
+    Element *self = ELEMENT(This, toggle);
+    *out = ToggleState_Off;
+    int index = index_of(self->root, self->tag);
+    if (index < 0) return UIA_E_ELEMENTNOTAVAILABLE;
+    *out = self->root->items[index].toggle > 0 ? ToggleState_On : ToggleState_Off;
+    return S_OK;
+}
+
+static IToggleProviderVtbl element_toggle_vtbl = { et_query, et_add_ref, et_release, et_toggle, et_state };
+
+static HRESULT STDMETHODCALLTYPE el_query(ISelectionItemProvider *This, REFIID riid, void **out) { return element_query(ELEMENT(This, selection), riid, out); }
+static ULONG STDMETHODCALLTYPE el_add_ref(ISelectionItemProvider *This) { return element_add_ref(ELEMENT(This, selection)); }
+static ULONG STDMETHODCALLTYPE el_release(ISelectionItemProvider *This) { return element_release(ELEMENT(This, selection)); }
+static HRESULT STDMETHODCALLTYPE el_select(ISelectionItemProvider *This) { return press(ELEMENT(This, selection)); }
+static HRESULT STDMETHODCALLTYPE el_add(ISelectionItemProvider *This) { return press(ELEMENT(This, selection)); }
+static HRESULT STDMETHODCALLTYPE el_remove(ISelectionItemProvider *This) { (void)This; return UIA_E_INVALIDOPERATION; }
+static HRESULT STDMETHODCALLTYPE el_is_selected(ISelectionItemProvider *This, BOOL *out) {
+    Element *self = ELEMENT(This, selection);
+    *out = FALSE;
+    int index = index_of(self->root, self->tag);
+    if (index < 0) return UIA_E_ELEMENTNOTAVAILABLE;
+    *out = self->root->items[index].selected > 0;
+    return S_OK;
+}
+static HRESULT STDMETHODCALLTYPE el_container(ISelectionItemProvider *This, IRawElementProviderSimple **out) {
+    Element *self = ELEMENT(This, selection);
+    *out = &self->root->simple;
+    root_add_ref(self->root);
+    return S_OK;
+}
+
+static ISelectionItemProviderVtbl element_selection_vtbl = {
+    el_query, el_add_ref, el_release, el_select, el_add, el_remove, el_is_selected, el_container,
+};
+
 static Element *element_new(Root *root, int tag) {
     Element *element = calloc(1, sizeof(Element));
     if (!element) return NULL;
@@ -287,6 +339,8 @@ static Element *element_new(Root *root, int tag) {
     element->fragment.lpVtbl = &element_fragment_vtbl;
     element->invoke.lpVtbl = &element_invoke_vtbl;
     element->expandCollapse.lpVtbl = &element_expand_vtbl;
+    element->toggle.lpVtbl = &element_toggle_vtbl;
+    element->selection.lpVtbl = &element_selection_vtbl;
     element->refs = 1;
     element->root = root;
     element->tag = tag;
@@ -468,6 +522,33 @@ void herb_uia_set_items(void *window, const HerbUIAItem *items, int count) {
         copies[i].hasPopup = items[i].hasPopup;
         copies[i].invokable = items[i].invokable;
         copies[i].tag = items[i].tag;
+        copies[i].toggle = items[i].toggle;
+        copies[i].selected = items[i].selected;
+    }
+    // Screen readers announce a button turning on or off, and a newly selected tab, from these events.
+    if (UiaClientsAreListening()) {
+        for (int i = 0; i < count; i++) {
+            int old = index_of(root, copies[i].tag);
+            if (old < 0) continue;
+            Item *before = &root->items[old];
+            if (copies[i].toggle >= 0 && before->toggle >= 0 && copies[i].toggle != before->toggle) {
+                Element *element = element_new(root, copies[i].tag);
+                if (!element) continue;
+                VARIANT was, now;
+                VariantInit(&was); VariantInit(&now);
+                was.vt = now.vt = VT_I4;
+                was.lVal = before->toggle > 0 ? ToggleState_On : ToggleState_Off;
+                now.lVal = copies[i].toggle > 0 ? ToggleState_On : ToggleState_Off;
+                UiaRaiseAutomationPropertyChangedEvent(&element->simple, UIA_ToggleToggleStatePropertyId, was, now);
+                element_release(element);
+            }
+            if (copies[i].selected > 0 && before->selected == 0) {
+                Element *element = element_new(root, copies[i].tag);
+                if (!element) continue;
+                UiaRaiseAutomationEvent(&element->simple, UIA_SelectionItem_ElementSelectedEventId);
+                element_release(element);
+            }
+        }
     }
     free_items(root->items, root->count);
     root->items = copies;
@@ -498,3 +579,6 @@ void herb_uia_window_destroyed(void *window) {
     root->count = 0;
     root_release(root);
 }
+
+// The terminal's text provider.
+#include "herb_text_part.h"

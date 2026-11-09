@@ -1,3 +1,4 @@
+import CHerbUIA
 import Foundation
 import WinSDK
 
@@ -1285,7 +1286,7 @@ final class ExplorerPane: WindowObject {
             .actions: "File Actions\n" + (remote == nil ? "Cut, copy, paste, move to the Recycle Bin, select all, new folder or file, hidden files and reload."
                                                          : "Upload, download, cut, copy, paste, delete, select all, new folder or file, hidden files and reload."),
         ]
-        for (index, item) in [BarItem.back, .forward, .up, .home, .actions, .admin, .bookmark].enumerated() {
+        for (index, item) in Self.barOrder.map(\.0).enumerated() {
             if let rect = barRects[item], let text = bar[item] { entries.append((UINT_PTR(1 + index), rect, text)) }
         }
         if isAdministrator { entries.append((UINT_PTR(50), leaveRect, "Leave Administrator Mode\nGo back to working with your own account's access.")) }
@@ -1302,6 +1303,70 @@ final class ExplorerPane: WindowObject {
             entries.append((UINT_PTR(1000 + index), button.rect, text))
         }
         hints.update(owner: hwnd, entries)
+        updateAccessibility(hwnd, hints: entries)
+    }
+
+    /// The order and identifiers of the bar's drawn buttons, for UI Automation (the hint ids follow this order).
+    private static let barOrder: [(BarItem, String)] = [(.back, "explorer.back"), (.forward, "explorer.forward"), (.up, "explorer.up"),
+                                                        (.home, "explorer.home"), (.actions, "explorer.actions"),
+                                                        (.admin, "explorer.administratorMode"), (.bookmark, "explorer.bookmarkFolder")]
+
+    /// The drawn bar, places and transfer buttons as UI Automation sees them, named and described by their hover
+    /// hints; Bookmark and Administrator mode are toggle buttons, and the current place is selected.
+    private func updateAccessibility(_ hwnd: HWND, hints: [(id: UINT_PTR, rect: RECT, text: String)]) {
+        var items: [AccessibleItem] = []
+        let enabled = barEnabled
+        // In reading order: places, then the bar left to right, then the transfer strip.
+        for hint in hints where hint.id >= 100 && hint.id < 1000 {
+            let index = Int(hint.id) - 100
+            let place = placeRects[index].1
+            items.append(AccessibleItem(identifier: "explorer.place.\(index + 1)", name: place.name, help: place.path, accelerator: nil,
+                                        rect: hint.rect, controlType: AccessibleItem.listItem, tag: Int(hint.id),
+                                        selected: place.path.lowercased() == folder.lowercased() ? 1 : 0))
+        }
+        let byID = Dictionary(hints.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for item in [BarItem.back, .forward, .up, .home, .bookmark, .admin, .actions] {
+            guard let order = Self.barOrder.firstIndex(where: { $0.0 == item }), let hint = byID[UINT_PTR(1 + order)] else { continue }
+            let parts = WindowChrome.hintParts(hint.text)
+            var entry = AccessibleItem(identifier: Self.barOrder[order].1, name: parts.name, help: parts.help, accelerator: parts.accelerator,
+                                       rect: hint.rect, controlType: AccessibleItem.button, enabled: enabled[item] == true,
+                                       popup: item == .actions, tag: Int(hint.id))
+            // Toggle buttons keep one name, as on the Mac and Linux; their state says whether they're on.
+            if item == .bookmark { entry.name = "Bookmark This Folder"; entry.toggle = isBookmarked ? 1 : 0 }
+            if item == .admin { entry.name = "Administrator Mode"; entry.toggle = isAdministrator ? 1 : 0 }
+            items.append(entry)
+        }
+        if let leave = byID[50] {
+            let parts = WindowChrome.hintParts(leave.text)
+            items.append(AccessibleItem(identifier: "explorer.leaveAdministrator", name: "Leave", help: parts.help, accelerator: nil,
+                                        rect: leave.rect, controlType: AccessibleItem.button, tag: 50))
+        }
+        for hint in hints where hint.id >= 1000 {
+            let parts = WindowChrome.hintParts(hint.text)
+            items.append(AccessibleItem(identifier: "explorer.transfer.\(Int(hint.id) - 1000 + 1)", name: parts.name, help: parts.help,
+                                        accelerator: nil, rect: hint.rect, controlType: AccessibleItem.button, tag: Int(hint.id)))
+        }
+        AccessibleItem.publish(items, owner: hwnd)
+    }
+
+    /// What pressing a drawn control does, for a click and for an assistive tool (by its UI Automation tag).
+    private func press(tag: Int) {
+        switch tag {
+        case 1...7:
+            switch Self.barOrder[tag - 1].0 {
+            case .admin: if isAdministrator { leaveAdministrator() } else { enterAdministrator() }
+            case .back: goBack()
+            case .forward: goForward()
+            case .up: goUp()
+            case .home: goHome()
+            case .bookmark: toggleBookmark(folder)
+            case .actions: fileActionsMenu()
+            }
+        case 50: if isAdministrator { leaveAdministrator() }
+        case 100..<1000 where tag - 100 < placeRects.count: navigate(to: placeRects[tag - 100].1.path)
+        case 1000...: if tag - 1000 < stripButtons.count { stripClick(stripButtons[tag - 1000].action) }
+        default: break
+        }
     }
 
     // MARK: Scripted runs
@@ -1552,9 +1617,7 @@ final class ExplorerPane: WindowObject {
         let glyphs: [BarItem: String] = [.back: "\u{E72B}", .forward: "\u{E72A}", .up: "\u{E74A}", .home: "\u{E80F}", .actions: "\u{E712}",
                                          .bookmark: isBookmarked ? "\u{E735}" : "\u{E734}",
                                          .admin: isAdministrator ? "\u{E785}" : "\u{E72E}"]
-        let enabled: [BarItem: Bool] = [.back: !history.isEmpty, .forward: !future.isEmpty,
-                                        .up: remote == nil ? (folder as NSString).deletingLastPathComponent != folder : folder != "/",
-                                        .home: true, .actions: true, .bookmark: true, .admin: !enteringAdministrator]
+        let enabled = barEnabled
         for (item, rect) in barRects {
             if hover == item, enabled[item] == true { roundFill(dc, rect, blend(barBackground, colors.text, 0.1), radius: s(4)) }
             let color = item == .admin && isAdministrator ? colorRef(196, 43, 28) : colors.text
@@ -1594,6 +1657,12 @@ final class ExplorerPane: WindowObject {
         DeleteObject(brush); DeleteObject(pen)
     }
 
+    private var barEnabled: [BarItem: Bool] {
+        [.back: !history.isEmpty, .forward: !future.isEmpty,
+         .up: remote == nil ? (folder as NSString).deletingLastPathComponent != folder : folder != "/",
+         .home: true, .actions: true, .bookmark: true, .admin: !enteringAdministrator]
+    }
+
     private func barItem(at point: POINT) -> BarItem? {
         barRects.first { point.x >= $0.value.left && point.x < $0.value.right && point.y >= $0.value.top && point.y < $0.value.bottom }?.key
     }
@@ -1613,22 +1682,23 @@ final class ExplorerPane: WindowObject {
         case WM_SETFOCUS:
             SetFocus(list)
             return 0
+        case WM_GETOBJECT:
+            var result: Int = 0
+            return herb_uia_get_object(UnsafeMutableRawPointer(hwnd), UInt(wParam), Int(lParam), &result) != 0 ? LRESULT(result) : nil
+        case Int32(HERB_UIA_INVOKE_MESSAGE):
+            press(tag: Int(wParam))
+            return 0
+        case WM_DESTROY:
+            herb_uia_window_destroyed(UnsafeMutableRawPointer(hwnd))
+            return nil
         case WM_LBUTTONDOWN:
             let point = POINT(x: Int32(loWord(lParam)), y: Int32(hiWord(lParam)))
             if let action = stripButtons.first(where: { point.x >= $0.rect.left && point.x < $0.rect.right && point.y >= $0.rect.top && point.y < $0.rect.bottom })?.action {
                 stripClick(action)
             } else if isAdministrator, point.x >= leaveRect.left, point.x < leaveRect.right, point.y >= leaveRect.top, point.y < leaveRect.bottom {
                 leaveAdministrator()
-            } else if let item = barItem(at: point) {
-                switch item {
-                case .admin: if isAdministrator { leaveAdministrator() } else { enterAdministrator() }
-                case .back: goBack()
-                case .forward: goForward()
-                case .up: goUp()
-                case .home: goHome()
-                case .bookmark: toggleBookmark(folder)
-                case .actions: fileActionsMenu()
-                }
+            } else if let item = barItem(at: point), let order = Self.barOrder.firstIndex(where: { $0.0 == item }) {
+                press(tag: order + 1)
             } else if let place = placeRects.first(where: { point.x >= $0.0.left && point.x < $0.0.right && point.y >= $0.0.top && point.y < $0.0.bottom })?.1 {
                 navigate(to: place.path)
             }
