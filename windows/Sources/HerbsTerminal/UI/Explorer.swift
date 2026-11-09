@@ -1423,6 +1423,7 @@ final class ExplorerPane: WindowObject {
     }
 
     private func filterChanged() {
+        guard let filter else { return }
         let text = String(windowText: filter)
         guard filterVisible, text != filterText else { return }
         filterText = text
