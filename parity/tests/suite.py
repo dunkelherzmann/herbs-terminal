@@ -442,7 +442,32 @@ def _(c):
     c.pwd()
     c.until(lambda s: any(l.strip() in ("/", "C:\\") for l in c.text(s).splitlines()), "expected the new tab to start in /")
 
-manual("T11", "Session restore", "the test scene never saves or restores a session")
+@test("T11", "Session restore reopens tabs with their names, folders, splits and explorer")
+def _(c):
+    c.cd_root()
+    c.command("new-tab", settle=1.5)
+    c.command("rename-tab", settle=1.2)
+    s = c.until(lambda s: s.get("dialogs"), "expected the Rename dialog")
+    c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() != "cancel"), ["Saved Tab"])
+    c.command("split-vertical", settle=1.5)
+    c.command("new-tab", settle=1.5)
+    c.command("toggle-explorer", settle=1.5)
+    try:
+        # The test copy never writes the session file; the bridge hands over what would be saved instead.
+        snapshot = c.bridge.call("session-snapshot")
+    except bridge_module.BridgeError as error:
+        if "unknown op" in str(error):
+            c.unverified("this platform's test bridge can't read or reopen a session yet")
+        raise
+    c.bridge.call("session-open", windows=snapshot)
+    s = c.until(lambda s: len(s["windows"]) == 2 and len(c.tabs(s)) == 3, "expected a second window with the three tabs", timeout=10)
+    tabs = c.tabs(s)
+    c.expect(tabs[1]["name"] == "Saved Tab", f"expected the renamed tab back, saw {[t['name'] for t in tabs]}")
+    c.expect([len(t["panes"]) for t in tabs[:2]] == [1, 2], f"expected the split back, saw {[len(t['panes']) for t in tabs]}")
+    c.expect(tabs[2]["layout"] == "explorer", f"expected the third tab's explorer back, saw {tabs[2]['layout']}")
+    c.command("tab-1", settle=1)
+    c.pwd()
+    c.until(lambda s: any(l.strip() in ("/", "C:\\") for l in c.text(s).splitlines()), "expected the first tab back in /")
 
 # ---------------------------------------------------------------- P: Split panes
 
@@ -588,7 +613,16 @@ def _(c):
     c.until(lambda s: all(any(line.strip() == item for line in c.text(s).splitlines()) for item in expected),
             f"expected the shell to list {', '.join(expected)} from the dropped paths")
 manual("B6", "Bell", "sound and flash can't be observed by the bridge")
-manual("B7", "Size badge while resizing", "needs a window resize by the pointer")
+@test("B7", "Size badge while resizing")
+def _(c):
+    try:
+        c.bridge.call("resize-grid", columns=90, rows=26)
+    except bridge_module.BridgeError as error:
+        if "unknown op" in str(error):
+            c.unverified("this platform's test bridge can't resize the window yet")
+        raise
+    c.until(lambda s: c.pane(s).get("badge") == "90 × 26", "expected the badge to show 90 × 26")
+    c.until(lambda s: c.pane(s).get("badge") is None, "expected the badge to go away after the resize", timeout=5)
 
 @test("B8", "Find in Terminal")
 def _(c):

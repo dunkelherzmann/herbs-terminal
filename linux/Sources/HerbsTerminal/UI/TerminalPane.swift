@@ -17,6 +17,8 @@ final class TerminalPane {
     private let overlay: Widget
     private let padding: Widget
     private let badge: Widget
+    /// The size badge's text while it shows, for the feature tests' bridge.
+    var bridgeBadge: String? { gtk_widget_get_visible(badge) != 0 ? "\(columns) × \(rows)" : nil }
     private let flashLayer: Widget
     private let findBar: Widget
     private let findEntry: Widget

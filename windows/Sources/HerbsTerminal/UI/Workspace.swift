@@ -32,7 +32,7 @@ final class Workspace: WindowObject {
     /// The placement to return to when leaving full screen.
     private var fullScreenRestore: WINDOWPLACEMENT?
 
-    init() {
+    init(restoring saved: SavedWindow? = nil) {
         hwnd = createWindow(self, className: Self.className, title: "Herb's Terminal",
                             style: DWORD(WS_OVERLAPPEDWINDOW) | DWORD(WS_CLIPCHILDREN))
         guard let hwnd else { return }
@@ -42,9 +42,11 @@ final class Workspace: WindowObject {
         // Settings changes reach open terminals at once.
         observers.append(TerminalProfile.shared.objectWillChange.observe { [weak self] in self?.applySettings() })
         observers.append(ThemeLibrary.shared.objectWillChange.observe { [weak self] in self?.applySettings() })
-        newTab()
+        if let saved, restore(saved) {} else { newTab() }
         sizeToGrid()
         ShowWindow(hwnd, TestScript.active || ParityScene.isActive ? SW_SHOWNOACTIVATE : SW_SHOWDEFAULT)
+        // From here on, a change of grid is a resize the size badge shows.
+        for pane in panes { pane.markSized() }
         if TestScript.active { SetTimer(hwnd, TestScript.timer, 1500, nil) }
         UpdateWindow(hwnd)
     }
@@ -70,12 +72,17 @@ final class Workspace: WindowObject {
     /// Opens a tab with `profile`, or the current tab's profile, as on the Mac.
     func newTab(profile: Foundation.UUID? = nil) {
         let chosen = profile ?? focusedPane?.profileID
+        // Worked out before the new tab becomes the current one: it may start in the current tab's folder.
         let directory = newTabDirectory(chosen)
+        if let pane = addPane(profile: chosen) { startShell(pane, in: directory) }
+    }
+
+    /// Starts a local shell in `directory` (the home folder when nil); a parity copy starts its own scene shell.
+    private func startShell(_ pane: TerminalPane, in directory: String?) {
         if ParityScene.isActive {
-            addPane(profile: chosen)?.start(commandLine: ParityScene.commandLine, directory: directory ?? ParityScene.home,
-                                            environment: ParityScene.shellEnvironment)
+            pane.start(commandLine: ParityScene.commandLine, directory: directory ?? ParityScene.home, environment: ParityScene.shellEnvironment)
         } else {
-            addPane(profile: chosen)?.start(directory: directory)
+            pane.start(directory: directory)
         }
     }
 
@@ -170,11 +177,7 @@ final class Workspace: WindowObject {
         } : nil
         layout()
         select(active)
-        if ParityScene.isActive {
-            pane.start(commandLine: ParityScene.commandLine, directory: folder ?? ParityScene.home, environment: ParityScene.shellEnvironment)
-        } else {
-            pane.start(directory: folder)
-        }
+        startShell(pane, in: folder)
     }
 
     /// Close Pane: asks first when a program is running in it, as closing a tab does.
@@ -395,6 +398,73 @@ final class Workspace: WindowObject {
         guard all.indices.contains(index), let window = all[index].hwnd else { return }
         SetFocus(window)
     }
+
+    // MARK: Session restore
+
+    /// This window as session restore saves it: each terminal tab's folder, layout, name, explorer folder, profile
+    /// and split panes. An SSH tab reopens as a local shell in the home folder; logins are never replayed. Editor
+    /// tabs aren't reopened.
+    var savedWindow: SavedWindow {
+        let terminals = tabs.compactMap { $0 as? TerminalPane }
+        let home = FileManager.default.homeDirectoryForCurrentUser.path.windowsPath
+        return SavedWindow(tabs: terminals.map { head in
+            let localExplorer = head.explorer.flatMap { $0.remote == nil ? $0.folder : nil }
+            return SavedTab(directory: (head.remote == nil ? head.location : nil) ?? home,
+                            layout: head.showingExplorer && localExplorer != nil ? "explorer" : "terminal",
+                            title: head.customName, explorerPath: localExplorer ?? "", profile: head.profileID?.uuidString,
+                            panes: head.group?.isSplit == true ? head.group?.root.saved : nil)
+        }, selected: terminals.firstIndex { $0 === activeTab } ?? 0)
+    }
+
+    /// Saves every window (Settings ▸ Terminal ▸ Restore windows and tabs). Parity copies never touch the session.
+    static func saveSession() {
+        guard !ParityScene.isActive else { return }
+        guard TerminalProfile.shared.restoreSession else { SavedSession.clear(); return }
+        SavedSession.write(App.allWorkspaces.map(\.savedWindow).filter { !$0.tabs.isEmpty })
+    }
+
+    /// Reopens a saved window's tabs. Folders that no longer exist start in the home folder instead.
+    private func restore(_ saved: SavedWindow) -> Bool {
+        func folder(_ path: String?) -> String? {
+            var isFolder: ObjCBool = false
+            guard let path, FileManager.default.fileExists(atPath: path, isDirectory: &isFolder), isFolder.boolValue else { return nil }
+            return path
+        }
+        for tab in saved.tabs {
+            let profile = tab.profile.flatMap(Foundation.UUID.init(uuidString:)).flatMap { id in
+                TerminalProfile.shared.profiles.contains { $0.id == id } ? id : nil
+            }
+            guard let head = addPane(profile: profile) else { continue }
+            head.customName = tab.title
+            startShell(head, in: folder(tab.directory))
+            if let shape = tab.panes {
+                var first: TerminalPane? = head
+                var others: [(TerminalPane, String?)] = []
+                let root = PaneNode.restore(shape, first: &first) { directory in
+                    guard let pane = self.makePane(profile: profile) else { return nil }
+                    others.append((pane, directory))
+                    return pane
+                }
+                if let root, root.leaves.count > 1 {
+                    head.group = PaneGroup(root: root)
+                    layout()
+                    // Started once they have their size, so each shell starts with the right grid.
+                    for (pane, directory) in others { startShell(pane, in: folder(directory)) }
+                }
+            }
+            if tab.layout == "explorer" {
+                select(tabs.count - 1)
+                toggleExplorer()
+                if let path = folder(tab.explorerPath) { head.explorer?.navigate(to: path) }
+            }
+        }
+        layout()
+        select(max(0, min(saved.selected, tabs.count - 1)))
+        return !tabs.isEmpty
+    }
+
+    /// For the feature tests: sizes the window so its terminal shows `columns` × `rows`.
+    func resize(columns: Int, rows: Int) { sizeToGrid(columns: columns, rows: rows) }
 
     // MARK: Right-click menu
 
@@ -998,7 +1068,7 @@ final class Workspace: WindowObject {
     }
 
     /// Sizes the window so the terminal shows the grid from Settings (default 100 × 30).
-    private func sizeToGrid() {
+    private func sizeToGrid(columns: Int? = nil, rows: Int? = nil) {
         guard let hwnd, let pane = activePane else { return }
         if IsZoomed(hwnd) { ShowWindow(hwnd, SW_RESTORE) }
         let cell = pane.cellSize
@@ -1010,8 +1080,8 @@ final class Workspace: WindowObject {
         let frameWidth = (window.right - window.left) - client.right, frameHeight = (window.bottom - window.top) - client.bottom
         var work = RECT()
         SystemParametersInfoW(UINT(SPI_GETWORKAREA), 0, &work, 0)
-        let width = min(Int32(profile.windowColumns) * cell.width + inset.left + inset.right + frameWidth, work.right - work.left)
-        let height = min(Int32(profile.windowRows) * cell.height + inset.top + inset.bottom + chrome.height(dpi) + frameHeight, work.bottom - work.top)
+        let width = min(Int32(columns ?? profile.windowColumns) * cell.width + inset.left + inset.right + frameWidth, work.right - work.left)
+        let height = min(Int32(rows ?? profile.windowRows) * cell.height + inset.top + inset.bottom + chrome.height(dpi) + frameHeight, work.bottom - work.top)
         SetWindowPos(hwnd, nil, 0, 0, width, height, UINT(SWP_NOMOVE | SWP_NOZORDER))
     }
 
@@ -1256,6 +1326,10 @@ final class Workspace: WindowObject {
                 info.pointee.ptMinTrackSize = POINT(x: scaled(520, dpi: GetDpiForWindow(hwnd)), y: scaled(240, dpi: GetDpiForWindow(hwnd)))
             }
             return 0
+        case WM_QUERYENDSESSION:
+            // Signing out or shutting down: keep the session, as Quit does.
+            Self.saveSession()
+            return 1
         case WM_CLOSE:
             // Unsaved files first: each asks, and saving finishes before the window closes.
             let unsaved = editors.filter(\.isEdited)
@@ -1269,6 +1343,8 @@ final class Workspace: WindowObject {
                 return 0
             }
             if !confirmClosing(panes, scope: "this window") { return 0 }
+            // The last window closing (and not the app quitting, which saved every window already) keeps its tabs.
+            if App.allWorkspaces.count == 1 && !App.isQuitting { Self.saveSession() }
             closeAll()
             DestroyWindow(hwnd)
             return 0

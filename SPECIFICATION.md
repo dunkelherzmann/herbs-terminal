@@ -559,6 +559,9 @@ The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In 
 
 - **Profiles** work as in section 3: each tab uses a named profile and new tabs and split panes keep the current one; the Main Menu's Shell submenu has New Tab with Profile and Use Profile (which changes the focused terminal's profile at once). Zoom, the color preset and Restore Defaults change the focused terminal's profile. Settings starts with a Profile section: the profile it edits ("(default)" marks the default), New, Duplicate, Rename…, Delete… (asks first; tabs using it switch to the default) and Use as Default, and the profile's Run command and Start in folder; the Text, Colors and scrollback settings below apply to that profile.
 
+- **Session restore** works as in section 2 (Settings ▸ Shell ▸ "Restore windows and tabs when Herb's Terminal opens", on by default): Quit, closing the last window, and signing out of Windows save each window's terminal tabs with their folder, name, profile, split panes and, for this PC's files, the explorer and its folder; the next launch reopens them. SSH tabs reopen as local shells in the home folder (logins are never replayed), editor tabs aren't reopened, and a folder that no longer exists starts in the home folder. Turning the setting off forgets the saved session.
+- **Size badge:** while the terminal's grid changes size (resizing the window or splitting), each pane shows its columns × rows in the middle, in its own font at 18 px on a rounded card, and hides it 1.2 seconds after the last change (Settings ▸ Window ▸ "Show columns × rows while resizing").
+
 ### Files
 
 - **The explorer** shows this PC's files in a local tab and the host's files in an SSH tab: the toolbar's folder button or Ctrl+Shift+X switches between the tab's shell and its explorer, which keeps its folder while hidden.
@@ -592,7 +595,7 @@ The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In 
 
 ### Not yet on Windows
 
-Session restore; following an `ssh` typed in a local tab; Tailcat peers; finding files in the explorer. Their toolbar buttons and menu commands are shown dimmed.
+Following an `ssh` typed in a local tab; Tailcat peers; finding files in the explorer. Their toolbar buttons and menu commands are shown dimmed.
 
 ## References
 

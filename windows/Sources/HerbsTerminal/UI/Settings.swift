@@ -17,7 +17,7 @@ final class SettingsWindow: WindowObject {
     private enum Control: Int32, CaseIterable {
         case font = 100, size, cursor, blink, theme, importTheme, appearance, shell, scrollback, columns, rows, askBeforeClosing,
              restore, close, newTabs, profile, newProfile, duplicateProfile, renameProfile, deleteProfile, defaultProfile,
-             startupCommand, startDirectory
+             startupCommand, startDirectory, restoreSession, sizeBadge
     }
 
     /// The profile this page edits (Settings ▸ Profiles on the Mac).
@@ -43,7 +43,7 @@ final class SettingsWindow: WindowObject {
 
     private init(owner: HWND?) {
         let dpi = owner.map { GetDpiForWindow($0) } ?? 96
-        var rect = RECT(left: 0, top: 0, right: scaled(460, dpi: dpi), bottom: scaled(660, dpi: dpi))
+        var rect = RECT(left: 0, top: 0, right: scaled(460, dpi: dpi), bottom: scaled(720, dpi: dpi))
         let style = DWORD(WS_OVERLAPPED) | DWORD(WS_CAPTION) | DWORD(WS_SYSMENU) | DWORD(WS_MINIMIZEBOX)
         AdjustWindowRectExForDpi(&rect, style, false, 0, dpi)
         var x = CW_USEDEFAULT, y = CW_USEDEFAULT
@@ -138,6 +138,7 @@ final class SettingsWindow: WindowObject {
         label("Scrollback lines")
         number(.scrollback, x: fieldX, width: s(90))
         y += rowHeight
+        check(.restoreSession)
 
         heading("Window")
         label("New window size")
@@ -146,6 +147,7 @@ final class SettingsWindow: WindowObject {
         number(.rows, x: fieldX + s(144), width: s(60))
         add("STATIC", "rows", style: DWORD(SS_LEFT), x: fieldX + s(210), y: y + s(4), width: s(60), height: s(20))
         y += rowHeight
+        check(.sizeBadge)
         check(.askBeforeClosing)
 
         y += s(6)
@@ -161,7 +163,8 @@ final class SettingsWindow: WindowObject {
     private static let labels: [Control: String] = [
         .font: "Font", .size: "Size", .cursor: "Cursor", .blink: "Blinking cursor", .appearance: "Appearance",
         .shell: "Shell", .newTabs: "New tabs open in", .askBeforeClosing: "Ask before closing a tab with running processes",
-        .profile: "Edit profile",
+        .profile: "Edit profile", .restoreSession: "Restore windows and tabs when Herb's Terminal opens",
+        .sizeBadge: "Show columns × rows while resizing",
     ]
 
     @discardableResult
@@ -227,6 +230,8 @@ final class SettingsWindow: WindowObject {
         setText(.columns, String(profile.windowColumns))
         setText(.rows, String(profile.windowRows))
         setCheck(.askBeforeClosing, profile.askBeforeClosing)
+        setCheck(.restoreSession, profile.restoreSession)
+        setCheck(.sizeBadge, profile.showSizeWhileResizing)
     }
 
     private func fillCombo(_ id: Control, _ items: [String], selected: String, editable: Bool = false) {
@@ -315,6 +320,12 @@ final class SettingsWindow: WindowObject {
             setText(id, String(clamped))
         case .askBeforeClosing:
             profile.askBeforeClosing = isChecked(.askBeforeClosing)
+        case .restoreSession:
+            profile.restoreSession = isChecked(.restoreSession)
+            // Off forgets the saved session at once.
+            if !profile.restoreSession { SavedSession.clear() }
+        case .sizeBadge:
+            profile.showSizeWhileResizing = isChecked(.sizeBadge)
         case .importTheme:
             importTheme()
         case .restore:
@@ -382,7 +393,7 @@ final class SettingsWindow: WindowObject {
             guard let id = Control(rawValue: rawID) else { return nil }
             switch code {
             case CBN_SELCHANGE: commit(id, fromList: true)
-            case BN_CLICKED where [.blink, .askBeforeClosing, .importTheme, .restore, .close, .newProfile, .duplicateProfile,
+            case BN_CLICKED where [.blink, .askBeforeClosing, .restoreSession, .sizeBadge, .importTheme, .restore, .close, .newProfile, .duplicateProfile,
                                    .renameProfile, .deleteProfile, .defaultProfile].contains(id): commit(id)
             case CBN_KILLFOCUS where id == .size || id == .shell: commit(id)
             case EN_KILLFOCUS: commit(id)

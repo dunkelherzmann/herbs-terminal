@@ -25,7 +25,10 @@ enum App {
         registerClass(MainThread.className)
         MainThread.start()
         DarkMenus.apply(dark: appIsDark)
-        newWindow()
+        // The last session's windows, when Settings asks for that; otherwise one new window.
+        let saved = ParityScene.isActive || TestScript.active || !TerminalProfile.shared.restoreSession
+            ? [] : SavedSession.read().filter { !$0.tabs.isEmpty }
+        if saved.isEmpty { newWindow() } else { for window in saved { workspaces.append(Workspace(restoring: window)) } }
         TestBridge.start()
 
         var message = MSG()
@@ -43,12 +46,18 @@ enum App {
         ExitProcess(UINT(message.wParam))
     }
 
-    static func newWindow() {
-        workspaces.append(Workspace())
+    static func newWindow(restoring saved: SavedWindow? = nil) {
+        workspaces.append(Workspace(restoring: saved))
     }
 
     /// Quit: asks each window to close (each asks first if shells are running); stops at the first that stays.
+    /// Set while Quit closes the windows one by one, after the session was saved with all of them.
+    private(set) static var isQuitting = false
+
     static func quit() {
+        Workspace.saveSession()
+        isQuitting = true
+        defer { isQuitting = false }
         for workspace in workspaces {
             guard let hwnd = workspace.hwnd else { continue }
             SendMessageW(hwnd, UINT(WM_CLOSE), 0, 0)

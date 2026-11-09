@@ -7,7 +7,8 @@ import WinSDK
 /// connection and explorer.
 @MainActor
 final class PaneNode {
-    enum Axis { case horizontal, vertical }
+    /// The same names Linux saves, so a session file reads the same.
+    enum Axis: String { case horizontal, vertical }
 
     private(set) var pane: TerminalPane?
     private(set) var axis: Axis = .horizontal
@@ -15,6 +16,33 @@ final class PaneNode {
     private(set) weak var parent: PaneNode?
 
     init(pane: TerminalPane) { self.pane = pane }
+
+    init(axis: Axis, children: [PaneNode]) {
+        self.axis = axis
+        self.children = children
+        children.forEach { $0.parent = self }
+    }
+
+    /// The shape to save for session restore: each shell's folder, and how the panes are split.
+    var saved: SavedPane {
+        if let pane { return SavedPane(directory: pane.remote == nil ? pane.location : nil) }
+        return SavedPane(axis: axis.rawValue, children: children.map(\.saved))
+    }
+
+    /// Rebuilds a saved shape. `first` is the tab's own shell, used for the first leaf; `make` starts the others,
+    /// each in its saved folder.
+    static func restore(_ saved: SavedPane, first: inout TerminalPane?, make: (String?) -> TerminalPane?) -> PaneNode? {
+        if let children = saved.children, !children.isEmpty, let axis = saved.axis.flatMap(Axis.init(rawValue:)) {
+            let nodes = children.compactMap { restore($0, first: &first, make: make) }
+            if nodes.count == 1 { return nodes[0] }
+            return nodes.isEmpty ? nil : PaneNode(axis: axis, children: nodes)
+        }
+        if let pane = first {
+            first = nil
+            return PaneNode(pane: pane)
+        }
+        return make(saved.directory).map(PaneNode.init(pane:))
+    }
 
     /// Every shell in display order (left to right, top to bottom).
     var leaves: [TerminalPane] { pane.map { [$0] } ?? children.flatMap(\.leaves) }
@@ -84,6 +112,11 @@ final class PaneGroup {
     init(first: TerminalPane) {
         root = PaneNode(pane: first)
         focused = first
+    }
+
+    init(root: PaneNode) {
+        self.root = root
+        focused = root.leaves.first
     }
 
     var panes: [TerminalPane] { root.leaves }
