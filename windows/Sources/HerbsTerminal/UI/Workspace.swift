@@ -107,13 +107,12 @@ final class Workspace: WindowObject {
         guard let hwnd else { return nil }
         let pane = TerminalPane(parent: hwnd, profileID: profile)
         pane.onTitleChange = { [weak self] pane in
-            // Administrator mode on a host ends with the tab's SSH session.
-            if pane.remote != nil, !pane.isConnected { pane.explorer?.leaveAdministrator() }
             self?.refreshChrome()
         }
         pane.onExit = { [weak self] pane in self?.shellExited(pane) }
         pane.onFocus = { [weak self] pane in self?.paneFocused(pane) }
         pane.onContextMenu = { [weak self] pane, point in self?.showContextMenu(for: pane, at: point) }
+        pane.onRemoteChange = { [weak self] pane in self?.remoteChanged(pane) }
         return pane
     }
 
@@ -676,11 +675,35 @@ final class Workspace: WindowObject {
         }
     }
 
-    /// Opens the login in a new tab running Windows' ssh. A saved or typed password reaches ssh only through the
-    /// askpass broker.
+    /// Starts the login in the focused terminal's own shell, as on the Mac and Linux; a terminal already in an SSH
+    /// session or running a program (or an editor tab) gets a new tab instead. A saved or typed password reaches ssh
+    /// only through the password helper.
     func connectSSH(_ login: SSHLogin) {
         let endpoint = RemoteEndpoint(host: login.host, port: login.port, username: login.username)
-        addPane()?.startSSH(endpoint, password: login.password.isEmpty ? nil : login.password)
+        let password = login.password.isEmpty ? nil : login.password
+        if let pane = focusedPane, activePane?.showingExplorer == false, pane.remote == nil, pane.isRunning, pane.runningProgram == nil {
+            pane.connectSSH(endpoint, password: password)
+        } else {
+            newTab()
+            focusedPane?.connectSSH(endpoint, password: password)
+        }
+    }
+
+    /// The tab's connection started or ended: its explorer moves to the host or back to this PC, in the same place
+    /// on screen. Only the tab's first pane owns the connection, as on the Mac.
+    private func remoteChanged(_ pane: TerminalPane) {
+        guard let index = tabIndex(holding: pane), let head = tabs[index] as? TerminalPane, head === pane else { return }
+        guard let explorer = head.explorer, explorer.endpoint != head.remote else { refreshChrome(); return }
+        let showing = head.showingExplorer
+        explorer.close()
+        head.explorer = nil
+        head.showingExplorer = false
+        if showing {
+            select(index)
+            toggleExplorer()
+        } else if index == active {
+            select(active)
+        }
     }
 
     func showLogins() {

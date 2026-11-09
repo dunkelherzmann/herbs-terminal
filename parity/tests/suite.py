@@ -213,7 +213,7 @@ def expect_connected(c, account, s):
 
 
 def connect_test_host(c, password=None):
-    """Connects the selected tab (Windows: a new tab) to the test host, answering a first host-key question."""
+    """Connects the selected tab to the test host, answering a first host-key question."""
     account = ssh_account()
     if not account:
         c.unverified(NEEDS_SSH)
@@ -800,7 +800,35 @@ def _(c):
     c.until(lambda s: has_window(s, "Connection") or any(account["label"] in d["heading"] or "Connection" in d["heading"] for d in s.get("dialogs", [])),
             "expected the connection details")
 
-for fid, what in (("S3", "Following a typed ssh"), ("S6", "Shared connection and keepalive"), ("S8", "Host-key questions in the terminal"),
+@test("S3", "A typed ssh is followed, and exit returns the tab")
+def _(c):
+    account = ssh_account()
+    if not account:
+        c.unverified(NEEDS_SSH)
+    if c.app.shell == "posix":
+        c.unverified("the test scene's /bin/sh runs ssh unchanged by design; zsh and bash tabs follow it")
+    c.run(f"ssh -p {account['port']} {account['user']}@{account['host']}", settle=2)
+    deadline, typed_password = time.time() + 30, False
+    while time.time() < deadline:
+        s = c.state()
+        text = c.text(s)
+        last = text.rstrip().splitlines()[-1] if text.strip() else ""
+        if "(yes/no" in last:
+            c.type("yes" + c.app.enter, settle=1)
+        elif not typed_password and last.lower().endswith("password:"):
+            c.type(account["password"] + c.app.enter, settle=2)
+            typed_password = True
+        elif connection(c, s).get("state") == "connected" and any(l.startswith(account["user"] + "@") for l in text.splitlines()):
+            break
+        time.sleep(0.5)
+    s = c.state()
+    expect_connected(c, account, s)
+    c.expect(account["label"] in c.window(s)["title"], f"the title doesn't name {account['label']}: {c.window(s)['title']!r}")
+    c.run("exit", settle=2)
+    c.until(lambda s: connection(c, s).get("state") == "local" and account["label"] not in c.window(s)["title"],
+            "expected exit to return the tab to this computer", timeout=15)
+
+for fid, what in (("S6", "Shared connection and keepalive"), ("S8", "Host-key questions in the terminal"),
                   ("S9", "Your own ssh configuration")):
     manual(fid, what, "needs the user's own ssh setup or a dropped link; not automated yet")
 

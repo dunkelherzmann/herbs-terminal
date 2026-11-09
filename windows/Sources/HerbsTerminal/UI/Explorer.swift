@@ -134,6 +134,9 @@ final class ExplorerPane: WindowObject {
         navigate(to: start, record: false)
     }
 
+    /// The host this explorer shows (the tab's login, also in Administrator mode); nil for this PC.
+    var endpoint: RemoteEndpoint? { userRemote?.endpoint }
+
     func close() {
         if isAdministrator { remote?.disconnect() }
         hints.release()

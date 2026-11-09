@@ -25,6 +25,7 @@ enum App {
         registerClass(MainThread.className)
         MainThread.start()
         DarkMenus.apply(dark: appIsDark)
+        SSHLauncher.sweep()
         // The last session's windows, when Settings asks for that; otherwise one new window.
         let saved = ParityScene.isActive || TestScript.active || !TerminalProfile.shared.restoreSession
             ? [] : SavedSession.read().filter { !$0.tabs.isEmpty }
