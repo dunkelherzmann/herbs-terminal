@@ -933,7 +933,8 @@ final class Workspace: WindowObject {
         case .selectAll: pane?.selectAll()
         case .showExplorer: if activePane?.showingExplorer == false { toggleExplorer() }
         case .findInTerminal:
-            if activePane?.showingExplorer == false { pane?.showFind() }
+            // In the explorer, Find filters the folder by name (the toolbar's Search does the same).
+            if activePane?.showingExplorer == true { activePane?.explorer?.showFilter() } else { pane?.showFind() }
         }
     }
 

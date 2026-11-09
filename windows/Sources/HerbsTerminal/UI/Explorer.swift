@@ -13,6 +13,10 @@ final class ExplorerPane: WindowObject {
     private(set) var hwnd: HWND?
     private var list: HWND?
     private var location: HWND?
+    /// Find: the field that filters this folder by name, shown under the location bar while in use.
+    private var filter: HWND?
+    private var filterText = ""
+    private var filterVisible = false
     private var fonts: (ui: HFONT?, glyph: HFONT?, heading: HFONT?) = (nil, nil, nil)
     private(set) var folder: String
     /// Set when the explorer shows an SSH tab's host instead of this PC.
@@ -60,13 +64,13 @@ final class ExplorerPane: WindowObject {
     }
 
     private enum BarItem: Hashable {
-        case back, forward, up, home, bookmark, admin, actions
+        case back, forward, up, home, bookmark, admin, actions, closeFind
     }
 
     private enum Command: UINT {
         case open = 3100, openInTerminal, openWith, cut, copy, paste, copyPath, rename, delete, deletePermanently
         case properties, showInFileExplorer, newFolder, newFile, showHidden, reload, selectAll, folderProperties
-        case upload, uploadFolder, download, openInEditor, undo, redo, bookmarkSelected
+        case upload, uploadFolder, download, openInEditor, undo, redo, bookmarkSelected, find
     }
 
     // MARK: Transfers
@@ -99,6 +103,12 @@ final class ExplorerPane: WindowObject {
                             0, 0, 10, 10, hwnd, HMENU(bitPattern: 1), GetModuleHandleW(nil), nil)
         }
         SendMessageW(location, UINT(WM_SETFONT), WPARAM(UInt(bitPattern: Int(bitPattern: UnsafeRawPointer(fonts.ui)))), 1)
+        filter = withWide("EDIT") { cls in
+            CreateWindowExW(0, cls, nil, DWORD(WS_CHILD) | DWORD(ES_AUTOHSCROLL) | DWORD(WS_TABSTOP),
+                            0, 0, 10, 10, hwnd, HMENU(bitPattern: 3), GetModuleHandleW(nil), nil)
+        }
+        SendMessageW(filter, UINT(WM_SETFONT), WPARAM(UInt(bitPattern: Int(bitPattern: UnsafeRawPointer(fonts.ui)))), 1)
+        withWide("Filter by name") { _ = SendMessageW(filter, UINT(0x1501) /* EM_SETCUEBANNER */, 1, LPARAM(Int(bitPattern: $0))) }
         list = withWide(WC_LISTVIEWW_NAME) { cls in
             CreateWindowExW(0, cls, nil, DWORD(WS_CHILD) | DWORD(WS_VISIBLE) | DWORD(WS_TABSTOP) | DWORD(LVS_REPORT) |
                             DWORD(LVS_SHOWSELALWAYS) | DWORD(LVS_EDITLABELS) | DWORD(LVS_SHAREIMAGELISTS),
@@ -192,7 +202,7 @@ final class ExplorerPane: WindowObject {
         SendMessageW(list, UINT(LVM_SETTEXTBKCOLOR), 0, LPARAM(background))
         SendMessageW(list, UINT(LVM_SETTEXTCOLOR), 0, LPARAM(colors.text))
         HeaderColors.text = colors.text
-        withWide(dark ? "DarkMode_CFD" : "CFD") { _ = SetWindowTheme(location, $0, nil) }
+        withWide(dark ? "DarkMode_CFD" : "CFD") { _ = SetWindowTheme(location, $0, nil); _ = SetWindowTheme(filter, $0, nil) }
         if let hwnd { InvalidateRect(hwnd, nil, true) }
         if let list { InvalidateRect(list, nil, true) }
     }
@@ -204,6 +214,8 @@ final class ExplorerPane: WindowObject {
     private var barHeight: Int32 { scaled(40, dpi: dpi) }
     private var bannerHeight: Int32 { isAdministrator ? scaled(34, dpi: dpi) : 0 }
     private var statusHeight: Int32 { scaled(24, dpi: dpi) }
+    /// Find's row under the location bar, while it's open.
+    private var filterHeight: Int32 { filterVisible ? scaled(38, dpi: dpi) : 0 }
     /// The transfer strip: a heading and up to four transfers, while there are any.
     private var stripHeight: Int32 {
         transfers.items.isEmpty ? 0 : scaled(30, dpi: dpi) + Int32(min(4, transfers.items.count)) * scaled(26, dpi: dpi) + scaled(4, dpi: dpi)
@@ -226,6 +238,10 @@ final class ExplorerPane: WindowObject {
         }
         let beside = (rects[.admin] ?? rects[.actions]!).left - s(4)
         rects[.bookmark] = RECT(left: beside - s(30), top: top, right: beside, bottom: top + s(28))
+        if filterVisible {
+            let row = bannerHeight + barHeight + (filterHeight - s(28)) / 2
+            rects[.closeFind] = RECT(left: client.right - s(8) - s(30), top: row, right: client.right - s(8), bottom: row + s(28))
+        }
         return rects
     }
 
@@ -237,7 +253,11 @@ final class ExplorerPane: WindowObject {
         let bar = barRects
         let left = (bar[.home]?.right ?? 0) + s(8), right = (bar[.bookmark]?.left ?? client.right) - s(8)
         MoveWindow(location, left, bannerHeight + (barHeight - s(26)) / 2, max(10, right - left), s(26), true)
-        let top = bannerHeight + barHeight
+        if filterVisible, let close = bar[.closeFind] {
+            MoveWindow(filter, placesWidth + s(10), bannerHeight + barHeight + (filterHeight - s(26)) / 2,
+                       max(10, close.left - s(6) - placesWidth - s(10)), s(26), true)
+        }
+        let top = bannerHeight + barHeight + filterHeight
         MoveWindow(list, placesWidth, top, client.right - placesWidth, client.bottom - top - statusHeight - stripHeight, true)
         InvalidateRect(hwnd, nil, false)
     }
@@ -363,6 +383,7 @@ final class ExplorerPane: WindowObject {
     }
 
     func navigate(to path: String, record: Bool = true) {
+        closeFilter(refresh: false)
         if remote != nil { remoteNavigate(to: path, record: record); return }
         let target = Self.fullPath(path)
         do {
@@ -395,7 +416,7 @@ final class ExplorerPane: WindowObject {
     }
 
     private var shown: [FileEntry] {
-        let visible = showHidden ? entries : entries.filter { !$0.isHidden }
+        let visible = entries.filter { (showHidden || !$0.isHidden) && (filterText.isEmpty || $0.name.localizedCaseInsensitiveContains(filterText)) }
         return visible.sorted { a, b in
             // Folders first, then the chosen column, names compared the way File Explorer does ("file2" < "file10").
             if a.isFolder != b.isFolder { return a.isFolder }
@@ -564,6 +585,7 @@ final class ExplorerPane: WindowObject {
             if let entry = selection.first(where: \.isFolder) { toggleBookmark(entry.path) }
             return
         }
+        if command == .find { showFilter(); return }
         if remote != nil, remotePerform(command, selection) { return }
         switch command {
         case .open: selection.forEach(open)
@@ -594,7 +616,7 @@ final class ExplorerPane: WindowObject {
         case .folderProperties: _ = withWide(folder) { SHObjectProperties(hwnd, DWORD(SHOP_FILEPATH), $0, nil) }
         case .openInEditor: for entry in selection where !entry.isFolder { onOpenInEditor?(.local(entry.path)) }
         case .upload, .uploadFolder, .download: break // Host explorers only.
-        case .undo, .redo, .bookmarkSelected: break // Handled before the switch.
+        case .undo, .redo, .bookmarkSelected, .find: break // Handled before the switch.
         case .showInFileExplorer:
             let argument = selection.first.map { "/select,\(quoteArgument($0.path))" } ?? quoteArgument(folder)
             _ = withWide("explorer.exe") { exe in withWide(argument) { args in ShellExecuteW(hwnd, nil, exe, args, nil, SW_SHOWNORMAL) } }
@@ -1038,6 +1060,10 @@ final class ExplorerPane: WindowObject {
             item("Show Hidden Files\tCtrl+H", .showHidden, checked: showHidden)
             item("Reload\tF5", .reload)
         }
+        if rightAligned {
+            divider()
+            item("Find\tCtrl+F", .find)
+        }
         let chosen = MainMenu.trackPopup(menu, at: screen, owner: owner, rightAligned: rightAligned)
         if let command = Command(rawValue: chosen) { perform(command) }
     }
@@ -1283,6 +1309,7 @@ final class ExplorerPane: WindowObject {
                                     : "Bookmark This Folder (Ctrl+D)\nAdd it to the side pane's Bookmarks.",
             .admin: isAdministrator ? "Leave Administrator Mode\nGo back to working with your own account's access."
                                     : "Administrator Mode\nWork as root with sudo on this host: open and change any file. Asks for the sudo password.",
+            .closeFind: "Close Find\nShow every item in this folder again (Esc).",
             .actions: "File Actions\n" + (remote == nil ? "Cut, copy, paste, move to the Recycle Bin, select all, new folder or file, hidden files and reload."
                                                          : "Upload, download, cut, copy, paste, delete, select all, new folder or file, hidden files and reload."),
         ]
@@ -1309,7 +1336,8 @@ final class ExplorerPane: WindowObject {
     /// The order and identifiers of the bar's drawn buttons, for UI Automation (the hint ids follow this order).
     private static let barOrder: [(BarItem, String)] = [(.back, "explorer.back"), (.forward, "explorer.forward"), (.up, "explorer.up"),
                                                         (.home, "explorer.home"), (.actions, "explorer.actions"),
-                                                        (.admin, "explorer.administratorMode"), (.bookmark, "explorer.bookmarkFolder")]
+                                                        (.admin, "explorer.administratorMode"), (.bookmark, "explorer.bookmarkFolder"),
+                                                        (.closeFind, "explorer.closeFind")]
 
     /// The drawn bar, places and transfer buttons as UI Automation sees them, named and described by their hover
     /// hints; Bookmark and Administrator mode are toggle buttons, and the current place is selected.
@@ -1352,7 +1380,7 @@ final class ExplorerPane: WindowObject {
     /// What pressing a drawn control does, for a click and for an assistive tool (by its UI Automation tag).
     private func press(tag: Int) {
         switch tag {
-        case 1...7:
+        case 1...Self.barOrder.count:
             switch Self.barOrder[tag - 1].0 {
             case .admin: if isAdministrator { leaveAdministrator() } else { enterAdministrator() }
             case .back: goBack()
@@ -1361,12 +1389,44 @@ final class ExplorerPane: WindowObject {
             case .home: goHome()
             case .bookmark: toggleBookmark(folder)
             case .actions: fileActionsMenu()
+            case .closeFind: closeFilter()
             }
         case 50: if isAdministrator { leaveAdministrator() }
         case 100..<1000 where tag - 100 < placeRects.count: navigate(to: placeRects[tag - 100].1.path)
         case 1000...: if tag - 1000 < stripButtons.count { stripClick(stripButtons[tag - 1000].action) }
         default: break
         }
+    }
+
+    // MARK: Find
+
+    /// Find (Ctrl+F, File Actions, the toolbar's Search): shows only the items whose name contains the text, as
+    /// on the Mac and Linux. Changing folder closes it.
+    func showFilter() {
+        if !filterVisible {
+            filterVisible = true
+            ShowWindow(filter, SW_SHOW)
+            layout()
+        }
+        SetFocus(filter)
+        SendMessageW(filter, UINT(EM_SETSEL), 0, -1)
+    }
+
+    private func closeFilter(refresh: Bool = true) {
+        guard filterVisible || !filterText.isEmpty else { return }
+        filterVisible = false
+        filterText = ""
+        withWide("") { _ = SetWindowTextW(filter, $0) }
+        ShowWindow(filter, SW_HIDE)
+        layout()
+        if refresh { refill(keepSelection: true, select: Set(selectedEntries.map(\.name))); SetFocus(list) }
+    }
+
+    private func filterChanged() {
+        let text = String(windowText: filter)
+        guard filterVisible, text != filterText else { return }
+        filterText = text
+        refill(keepSelection: true, select: Set(selectedEntries.map(\.name)))
     }
 
     // MARK: Scripted runs
@@ -1391,6 +1451,19 @@ final class ExplorerPane: WindowObject {
             download(selectedEntries.map(\.path), from: remote, into: URL(fileURLWithPath: String(name.dropFirst(9))))
             return true
         }
+        if name.hasPrefix("filter=") {
+            showFilter()
+            withWide(String(name.dropFirst(7))) { _ = SetWindowTextW(filter, $0) } // EN_CHANGE filters the list.
+            return true
+        }
+        if name.hasPrefix("rename=") {
+            // Types into the in-place edit box Rename opened and presses Return, as a person would.
+            let edit = HWND(bitPattern: Int(SendMessageW(list, UINT(LVM_GETEDITCONTROL), 0, 0)))
+            guard let edit else { return false }
+            withWide(String(name.dropFirst(7))) { _ = SetWindowTextW(edit, $0) }
+            SendMessageW(edit, UINT(WM_KEYDOWN), WPARAM(VK_RETURN), 0)
+            return true
+        }
         if name.hasPrefix("admin=") { enterAdministrator(password: String(name.dropFirst(6))); return true }
         switch name {
         case "admin": enterAdministrator(); return true
@@ -1405,7 +1478,7 @@ final class ExplorerPane: WindowObject {
             "cut": .cut, "copy": .copy, "paste": .paste, "delete": .delete, "deletePermanently": .deletePermanently,
             "newFolder": .newFolder, "newFile": .newFile, "showHidden": .showHidden, "reload": .reload, "selectAll": .selectAll,
             "open": .open, "edit": .openInEditor, "info": .properties, "reveal": .showInFileExplorer, "openWith": .openWith,
-            "undo": .undo, "redo": .redo, "bookmarkSelected": .bookmarkSelected,
+            "undo": .undo, "redo": .redo, "bookmarkSelected": .bookmarkSelected, "find": .find, "rename": .rename,
         ]
         guard let command = commands[name] else { return false }
         perform(command)
@@ -1482,6 +1555,7 @@ final class ExplorerPane: WindowObject {
             ("", .reload, false), ("Select All\tCtrl+A", .selectAll, true), ("New Folder\tCtrl+Shift+N", .newFolder, true),
             ("New File", .newFile, true), ("", .reload, false),
             (showHidden ? "Hide Hidden Files\tCtrl+H" : "Show Hidden Files\tCtrl+H", .showHidden, true), ("Reload\tF5", .reload, true),
+            ("", .reload, false), ("Find\tCtrl+F", .find, true),
         ]
         for (title, command, enabled) in items {
             if title.isEmpty { AppendMenuW(menu, UINT(MF_SEPARATOR), 0, nil); continue }
@@ -1510,10 +1584,16 @@ final class ExplorerPane: WindowObject {
                     return true
                 }
             }
+            // In Find's field: Return goes to the list, Escape closes Find.
+            if let filter, message.hwnd == filter, message.message == UINT(WM_KEYDOWN) {
+                if message.wParam == WPARAM(VK_RETURN) || message.wParam == WPARAM(VK_DOWN) { SetFocus(list); return true }
+                if message.wParam == WPARAM(VK_ESCAPE) { closeFilter(); return true }
+            }
             return false
         }
         guard message.message == UINT(WM_KEYDOWN) || message.message == UINT(WM_SYSKEYDOWN) else { return false }
         if SendMessageW(list, UINT(LVM_GETEDITCONTROL), 0, 0) != 0 { return false } // Renaming: keys go to the edit box.
+        if filterVisible, message.wParam == WPARAM(VK_ESCAPE), message.message == UINT(WM_KEYDOWN) { closeFilter(); return true }
         let key = Int32(message.wParam)
         let control = isPressed(VK_CONTROL), shift = isPressed(VK_SHIFT), alt = isPressed(VK_MENU)
         func letter(_ c: Character) -> Bool { key == Int32(c.asciiValue!) }
@@ -1547,6 +1627,7 @@ final class ExplorerPane: WindowObject {
             else if letter("L") { SetFocus(location); SendMessageW(location, UINT(EM_SETSEL), 0, -1) }
             else if letter("Z") { perform(.undo) }
             else if letter("D") { toggleBookmark(folder) }
+            else if letter("F") { showFilter() }
             else { return false }
         case (true, true, false) where letter("N"): perform(.newFolder)
         case (true, true, false) where letter("Z"): perform(.redo)
@@ -1576,6 +1657,10 @@ final class ExplorerPane: WindowObject {
         fill(dc, RECT(left: 0, top: 0, right: placesWidth, bottom: client.bottom), sideBackground)
         fill(dc, RECT(left: placesWidth - 1, top: 0, right: placesWidth, bottom: client.bottom), colors.border)
         fill(dc, RECT(left: placesWidth, top: bannerHeight + barHeight - 1, right: client.right, bottom: bannerHeight + barHeight), colors.border)
+        if filterVisible {
+            let bottom = bannerHeight + barHeight + filterHeight
+            fill(dc, RECT(left: placesWidth, top: bottom - 1, right: client.right, bottom: bottom), colors.border)
+        }
         SetBkMode(dc, TRANSPARENT)
 
         // Administrator mode: a red bar across the top until you leave it.
@@ -1616,7 +1701,7 @@ final class ExplorerPane: WindowObject {
         // Location bar buttons.
         let glyphs: [BarItem: String] = [.back: "\u{E72B}", .forward: "\u{E72A}", .up: "\u{E74A}", .home: "\u{E80F}", .actions: "\u{E712}",
                                          .bookmark: isBookmarked ? "\u{E735}" : "\u{E734}",
-                                         .admin: isAdministrator ? "\u{E785}" : "\u{E72E}"]
+                                         .admin: isAdministrator ? "\u{E785}" : "\u{E72E}", .closeFind: "\u{E711}"]
         let enabled = barEnabled
         for (item, rect) in barRects {
             if hover == item, enabled[item] == true { roundFill(dc, rect, blend(barBackground, colors.text, 0.1), radius: s(4)) }
@@ -1631,7 +1716,7 @@ final class ExplorerPane: WindowObject {
         // Status line: item counts, or the last problem.
         let selected = selectedRows.count
         let counts = "\(rows.count) item\(rows.count == 1 ? "" : "s")" + (selected > 0 ? ", \(selected) selected" : "")
-            + (showHidden ? "" : (entries.count > rows.count ? " (\(entries.count - rows.count) hidden)" : ""))
+            + (showHidden ? "" : { let hidden = entries.filter(\.isHidden).count; return hidden > 0 ? " (\(hidden) hidden)" : "" }())
         let statusRect = RECT(left: placesWidth + s(10), top: client.bottom - statusHeight, right: client.right - s(10), bottom: client.bottom)
         draw(dc, status.isEmpty ? counts : status, statusRect, font: fonts.ui, color: status.isEmpty || !statusIsError ? colors.dim : colorRef(196, 43, 28), ellipsis: true)
         BitBlt(screen, 0, 0, client.right, client.bottom, dc, 0, 0, DWORD(SRCCOPY))
@@ -1660,7 +1745,7 @@ final class ExplorerPane: WindowObject {
     private var barEnabled: [BarItem: Bool] {
         [.back: !history.isEmpty, .forward: !future.isEmpty,
          .up: remote == nil ? (folder as NSString).deletingLastPathComponent != folder : folder != "/",
-         .home: true, .actions: true, .bookmark: true, .admin: !enteringAdministrator]
+         .home: true, .actions: true, .bookmark: true, .admin: !enteringAdministrator, .closeFind: true]
     }
 
     private func barItem(at point: POINT) -> BarItem? {
@@ -1797,6 +1882,9 @@ final class ExplorerPane: WindowObject {
                 pendingRename = nil
                 finishRename(row: rename.row, to: rename.name)
             }
+            return 0
+        case WM_COMMAND where Int(wParam & 0xFFFF) == 3 && Int((wParam >> 16) & 0xFFFF) == Int(EN_CHANGE):
+            filterChanged()
             return 0
         case WM_CTLCOLOREDIT:
             let dc = HDC(bitPattern: UInt(wParam))
@@ -2031,6 +2119,7 @@ extension ExplorerPane {
     var bridgeState: [String: Any] {
         ["shown": IsWindowVisible(hwnd), "path": folder, "items": rows.map { $0.isFolder ? $0.name + "/" : $0.name },
          "selected": selectedEntries.map(\.name), "hidden": showHidden, "administrator": isAdministrator, "remote": remote != nil,
-         "bookmarked": isBookmarked, "status": status, "canUndo": !undoLog.undoStack.isEmpty, "canRedo": !undoLog.redoStack.isEmpty, "undoTitle": undoLog.undoTitle, "redoTitle": undoLog.redoTitle]
+         "bookmarked": isBookmarked, "status": status, "finding": filterVisible, "filter": filterText,
+         "renaming": SendMessageW(list, UINT(LVM_GETEDITCONTROL), 0, 0) != 0, "canUndo": !undoLog.undoStack.isEmpty, "canRedo": !undoLog.redoStack.isEmpty, "undoTitle": undoLog.undoTitle, "redoTitle": undoLog.redoTitle]
     }
 }

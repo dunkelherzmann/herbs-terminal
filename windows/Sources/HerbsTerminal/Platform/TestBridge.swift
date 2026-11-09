@@ -81,6 +81,16 @@ enum TestBridge {
             guard let explorer = try workspace.activePane?.explorer else { throw Failure(description: "no explorer") }
             explorer.navigate(to: request["path"] as? String ?? "")
             return true
+        case "explorer-filter":
+            // Types into the explorer's Find field (opening it first).
+            guard let explorer = try workspace.activePane?.explorer else { throw Failure(description: "no explorer") }
+            _ = explorer.perform(named: "filter=" + (request["text"] as? String ?? ""))
+            return explorer.bridgeState["items"] ?? []
+        case "explorer-rename":
+            // Types the new name into the in-place edit box Rename opened, and presses Return.
+            guard let explorer = try workspace.activePane?.explorer else { throw Failure(description: "no explorer") }
+            guard explorer.perform(named: "rename=" + (request["name"] as? String ?? "")) else { throw Failure(description: "not renaming") }
+            return true
         case "explorer-select":
             guard let explorer = try workspace.activePane?.explorer else { throw Failure(description: "no explorer") }
             explorer.select(names: request["names"] as? [String] ?? [])
@@ -252,7 +262,7 @@ enum TestBridge {
     private static let explorerCommands: [String: String] = [
         "cut": "cut", "copy": "copy", "paste": "paste", "delete": "delete", "new-folder": "newFolder", "new-file": "newFile",
         "select-all": "selectAll", "open": "open", "edit": "edit", "info": "info", "reveal": "reveal", "open-default": "openWith",
-        "administrator": "toggleAdmin", "undo": "undo", "redo": "redo", "bookmark-selected": "bookmarkSelected",
+        "administrator": "toggleAdmin", "undo": "undo", "redo": "redo", "bookmark-selected": "bookmarkSelected", "find": "find", "rename": "rename",
     ]
 
     private static func command(_ name: String, run: Bool) throws -> String {
@@ -282,8 +292,7 @@ enum TestBridge {
             if run { TailcatPeersWindow.show(owner: workspace.hwnd, workspace: workspace) }
             return run ? "ran" : "enabled"
         case "find":
-            // The toolbar's Search: the terminal's find bar (finding files in the explorer isn't here yet).
-            if workspace.activePane?.showingExplorer == true { return "missing" }
+            // The toolbar's Search: Find in the explorer while it shows, the terminal's find bar otherwise.
             if run { workspace.perform(MenuCommand.findInTerminal.rawValue) }
             return run ? "ran" : "enabled"
         case "close-all":
