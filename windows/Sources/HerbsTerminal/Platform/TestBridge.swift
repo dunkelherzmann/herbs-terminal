@@ -98,6 +98,13 @@ enum TestBridge {
             default: throw Failure(description: "unknown profile key")
             }
             return true
+        // The terminal has no right-click menu yet: right-click copies or pastes, as in Windows Terminal.
+        case "context-menu", "context-choose": return "missing"
+        case "drop":
+            // The same WM_DROPFILES message a drop from File Explorer sends the focused terminal.
+            guard let pane = try workspace.activePane?.hwnd else { throw Failure(description: "no terminal") }
+            TestScript.drop(request["paths"] as? [String] ?? [], on: pane)
+            return true
         case "include": throw Failure(description: "MultiExec isn't in the Windows version")
         case "quit": PostQuitMessage(0); return true
         default: throw Failure(description: "unknown op")

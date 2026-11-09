@@ -57,6 +57,11 @@ final class HerbsTerminalView: LocalProcessTerminalView {
 
     override func menu(for event: NSEvent) -> NSMenu? {
         onFocus?()
+        return contextMenu()
+    }
+
+    /// The right-click menu; the feature tests' bridge lists and chooses from this same menu.
+    func contextMenu() -> NSMenu {
         let menu = NSMenu()
         menu.addItem(withTitle: "Copy", action: #selector(copy(_:)), keyEquivalent: "c").target = self
         menu.addItem(withTitle: "Paste", action: #selector(paste(_:)), keyEquivalent: "v").target = self
@@ -151,9 +156,14 @@ final class HerbsTerminalView: LocalProcessTerminalView {
         guard let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self],
                                                                 options: [.urlReadingFileURLsOnly: true]) as? [URL],
               !urls.isEmpty else { return false }
-        send(txt: urls.map { shellQuote($0.path) }.joined(separator: " ") + " ")
-        window?.makeFirstResponder(self)
+        drop(paths: urls.map(\.path))
         return true
+    }
+
+    /// What a drop of these files does (the bridge's drop goes through here too).
+    func drop(paths: [String]) {
+        send(txt: paths.map(shellQuote).joined(separator: " ") + " ")
+        window?.makeFirstResponder(self)
     }
 }
 

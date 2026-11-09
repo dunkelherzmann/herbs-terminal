@@ -81,6 +81,25 @@ enum TestBridge {
             default: throw Failure(description: "unknown profile key")
             }
             return true
+        case "context-menu":
+            // The focused terminal's right-click menu, as it would open now.
+            let workspace = try workspace
+            let menu = workspace.selected.focused.contextMenu()
+            defer { g_object_unref(raw(menu)) }
+            return menuItems(menu).map { ["title": $0.title, "enabled": actionState(workspace, $0.action) == "enabled"] as [String: Any] }
+        case "context-choose":
+            let workspace = try workspace
+            let menu = workspace.selected.focused.contextMenu()
+            defer { g_object_unref(raw(menu)) }
+            guard let item = menuItems(menu).first(where: { $0.title == request["title"] as? String }) else { return "missing" }
+            guard actionState(workspace, item.action) == "enabled" else { return "disabled" }
+            // As a menu item does: the action, found from the terminal up through its window and the app.
+            gtk_widget_activate_action_variant(workspace.selected.focused.terminal, item.action, nil)
+            return "ran"
+        case "drop":
+            // Files dropped on the focused terminal, through the same code a drop from a file manager runs.
+            try workspace.selected.focused.drop(paths: request["paths"] as? [String] ?? [])
+            return true
         case "quit":
             idle { exit(0) }
             return true
@@ -103,6 +122,34 @@ enum TestBridge {
             return true
         default: throw Failure(description: "unknown op")
         }
+    }
+
+    /// A menu model's items in order, sections flattened: their labels and actions ("win.copy").
+    private static func menuItems(_ model: OpaquePointer) -> [(title: String, action: String)] {
+        var items: [(title: String, action: String)] = []
+        for index in 0..<g_menu_model_get_n_items(c(model)) {
+            if let section = g_menu_model_get_item_link(c(model), index, "section") {
+                items += menuItems(c(section))
+                g_object_unref(raw(section))
+                continue
+            }
+            func attribute(_ name: String) -> String {
+                guard let value = g_menu_model_get_item_attribute_value(c(model), index, name, nil) else { return "" }
+                defer { g_variant_unref(value) }
+                return String(cString: g_variant_get_string(value, nil))
+            }
+            items.append((attribute("label"), attribute("action")))
+        }
+        return items
+    }
+
+    /// "enabled", "disabled" or "missing" for an action named as a menu item names it ("win.copy", "app.settings").
+    private static func actionState(_ workspace: Workspace, _ action: String) -> String {
+        let parts = action.split(separator: ".", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return "missing" }
+        let group: OpaquePointer? = parts[0] == "win" ? OpaquePointer(workspace.window) : parts[0] == "app" ? App.shared.application : nil
+        guard let group, g_action_group_has_action(group, parts[1]) != 0 else { return "missing" }
+        return g_action_group_get_action_enabled(group, parts[1]) != 0 ? "enabled" : "disabled"
     }
 
     /// Like `command`, without running it.

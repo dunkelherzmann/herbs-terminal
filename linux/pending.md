@@ -3,11 +3,11 @@
 What the Linux version still needs before it can ship with as few bugs as possible: everything a feature test found broken or missing, and every feature no automatic test covers yet. Fix broken items first, one pull request each, and tick an item with its PR number once it is fixed and its test passes. `bugs.md` and `enhancements.md` stay the record of requests and releases.
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-08 19:33)
+## Feature test results (2026-11-09 03:01)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Not checked automatically (87)
+### Not checked automatically (83)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -19,11 +19,7 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **T11** Session restore: tabs with folder, panes, explorer folder and name reopen at launch (on by… (§2): the test scene never saves or restores a session
 - [ ] **P5** Focused pane outlined; Zoom, Clear, Reset and Find act on it. (§2): visual: shown in the window's picture, not reported by the bridge
 - [ ] **P6** The tab's SSH connection and explorer belong to its first pane; the next pane takes over when it… (§2): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
-- [ ] **B1** Right-click menu: Copy, Paste, Paste Escaped Text, Select All, Find. (§2): the right-click menu needs a pointer click the bridge doesn't make yet
-- [ ] **B2** Right-click menu: Clear to Start, Clear Scrollback, Reset. (§2): the right-click menu needs a pointer click the bridge doesn't make yet
-- [ ] **B3** Right-click menu: Split Vertically, Split Horizontally, Close Pane, New Tab, Show File Explorer. (§2): the right-click menu needs a pointer click the bridge doesn't make yet
-- [ ] **B4** Right-click menu: Connect via SSH / Disconnect; Bigger, Smaller, Settings. (§2): the right-click menu needs a pointer click the bridge doesn't make yet
-- [ ] **B5** Dropping files types their paths, quoted for the shell. (§2): needs pointer or keyboard input the test bridge doesn't reach yet
+- [ ] **B1** Right-click menu: Copy, Paste, Paste Escaped Text, Select All, Find. (§2): the items are there and Select All and Find… run; Copy and Paste aren't chosen, since they'd use the system clipboard, and the bridge doesn't report a selection or the find bar
 - [ ] **B6** Bell: sound, flash, both or none; flash at most twice a second, gentle with Reduce Motion. (§2): sound and flash can't be observed by the bridge
 - [ ] **B7** Size badge (columns × rows) while resizing. (§2): needs a window resize by the pointer
 - [ ] **B8** Find in Terminal (scrollback search). (§2): the command is there; the search bar and its matches aren't reported by the bridge yet

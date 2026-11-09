@@ -119,7 +119,7 @@ enum TestScript {
 
     /// Sends the pane the same WM_DROPFILES message a drop from File Explorer does: a DROPFILES block in global
     /// memory, which the pane's DragFinish frees.
-    private static func drop(_ paths: [String], on pane: HWND?) {
+    static func drop(_ paths: [String], on pane: HWND?) {
         guard let pane else { return }
         let list: [UInt16] = paths.flatMap { Array($0.utf16) + [0] } + [0]
         let headerSize = MemoryLayout<DROPFILES>.size

@@ -83,6 +83,22 @@ enum TestBridge {
             default: throw Failure(description: "unknown profile key")
             }
             return true
+        case "context-menu":
+            // The focused terminal's right-click menu, as it would open now.
+            let menu = try workspace.selected.focusedShell.view.contextMenu()
+            menu.update()
+            return menu.items.filter { !$0.isSeparatorItem }.map { ["title": $0.title, "enabled": $0.isEnabled] as [String: Any] }
+        case "context-choose":
+            let menu = try workspace.selected.focusedShell.view.contextMenu()
+            menu.update()
+            guard let index = menu.items.firstIndex(where: { $0.title == request["title"] as? String }) else { return "missing" }
+            guard menu.items[index].isEnabled else { return "disabled" }
+            menu.performActionForItem(at: index)
+            return "ran"
+        case "drop":
+            // Files dropped on the focused terminal, through the same code a drop from Finder runs.
+            try workspace.selected.focusedShell.view.drop(paths: request["paths"] as? [String] ?? [])
+            return true
         case "quit":
             DispatchQueue.main.async { exit(0) }
             return true
