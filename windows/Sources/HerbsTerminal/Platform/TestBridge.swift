@@ -22,6 +22,8 @@ enum TestBridge {
     private static var pending: [String] = []
 
     private static func poll() {
+        // Windows the app didn't make itself (message boxes, system dialogs) go to the test desktop too.
+        if TestDesktop.isActive { for window in threadWindows() where IsWindowVisible(window) && GetParent(window) == nil { TestDesktop.place(window) } }
         if !busy, !pending.isEmpty {
             // Not marked busy: a dialog this opens runs its own message loop, and requests answer it from there.
             let name = pending.removeFirst()
@@ -249,6 +251,7 @@ enum TestBridge {
         let settings = profile.settings(for: nil)
         return [
             "platform": "windows",
+            "testDesktop": ["active": TestDesktop.isActive, "moved": TestDesktop.moved, "failed": TestDesktop.failed],
             "windows": App.allWorkspaces.map { workspace -> [String: Any] in
                 var number = 0
                 let tabs = workspace.allTabs.enumerated().map { index, tab -> [String: Any] in

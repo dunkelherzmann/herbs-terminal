@@ -181,7 +181,7 @@ class MacApp(App):
         subprocess.run(["defaults", "delete", self.bundle_id], capture_output=True)
         shutil.rmtree(self.home, ignore_errors=True)
         os.makedirs(self.home, exist_ok=True)
-        subprocess.run(["open", "-n", "-g", "-a", self.app_path, "--args", "--parity-scene", "main", "--test-bridge"])
+        subprocess.run(["open", "-n", "-g", "-a", self.app_path, "--args", "--parity-scene", "main", "--test-bridge", "--test-desktop"])
 
     def quit_running(self):
         for _ in range(20):
@@ -219,7 +219,7 @@ class WindowsApp(App):
             shutil.rmtree(os.path.join(os.environ["TEMP"], folder), ignore_errors=True)
         os.makedirs(self.home, exist_ok=True)
         environment = dict(os.environ, HERBS_PARITY="1")
-        self.process = subprocess.Popen([self.exe, "--parity-scene", "main", "--test-bridge"], env=environment)
+        self.process = subprocess.Popen([self.exe, "--parity-scene", "main", "--test-bridge", "--test-desktop"], env=environment)
 
     def stop(self):
         if self.process:

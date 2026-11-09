@@ -906,7 +906,8 @@ private struct ActiveWorkspace: View {
             workspace.window = window
             // A test copy's window is on every desktop, so accessibility tools (REA) reach it from whichever
             // desktop is in use (not over a full-screen app, which macOS keeps to itself); it never takes the focus.
-            if ParityScene.isActive { window.collectionBehavior.insert(.canJoinAllSpaces) }
+            // Feature-test runs keep it on their own desktop instead (`TestDesktop`).
+            if ParityScene.isActive && !TestDesktop.isActive { window.collectionBehavior.insert(.canJoinAllSpaces) }
             workspace.selected.shell.settings.applyTransparency(to: window)
             guard workspace.closeGuard == nil else { return }
             workspace.closeGuard = WindowCloseGuard(window: window, workspace: workspace)

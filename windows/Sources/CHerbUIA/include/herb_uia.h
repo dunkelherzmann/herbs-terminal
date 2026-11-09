@@ -35,4 +35,8 @@ int herb_uia_get_object(void *hwnd, uintptr_t wParam, intptr_t lParam, intptr_t 
 /// Call from WM_DESTROY: disconnects the window's providers and frees its items.
 void herb_uia_window_destroyed(void *hwnd);
 
+/// Feature tests: moves a top-level window of this process to the virtual desktop named `name` (made once by the
+/// test setup). Returns 0 when there is no such desktop or the move failed, so the window stays where it is.
+int herb_move_to_named_desktop(void *hwnd, const uint16_t *name);
+
 #endif
