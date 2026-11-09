@@ -7,7 +7,7 @@ What the Linux version still needs before it can ship with as few bugs as possib
 - [x] **Main Menu matches the Mac's in-window menus** (#70). It holds the same menus, submenus, order and shortcuts (Edit, Shell and Window included), and no command is reachable only somewhere else; W19 checks it. (§2, §14, enhancements.md) *Asked 2026-11-09.*
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 23:28)
+## Feature test results (2026-11-09 23:33)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
@@ -15,7 +15,7 @@ Written by `parity/tests/report.py`; rerun the tests and the report rather than 
 
 A test ran and the feature didn't do what the Mac version does.
 
-- [ ] **C3** Connect: shell and explorer through Tailcat, address never in arguments or history. (§8): Connect through Tailcat: the shell, and the address nowhere on screen: expected a login through Tailcat; the terminal shows: ['Connecting to herbs-test@tailcat-testhost…', "The authenticity of host 'tailcat-testhost…
+- [ ] **C3** Connect: shell and explorer through Tailcat, address never in arguments or history. (§8): Connect through Tailcat: the shell, and the address nowhere on screen: expected a login through Tailcat; the terminal shows: ['Connecting to herbs-test@tailcat-testhost…', 'herbs-test@tailcat-testhost: Permission…
 - [ ] **C4** Clear message when nothing answers SSH on the peer. (§8): A peer reached through Tailcat where nothing answers SSH says so clearly: expected the terminal to say the peer was reached but nothing answered SSH (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title…
 
 ### Not checked automatically (43)

@@ -528,6 +528,13 @@ enum TailcatProxy {
     }
 
     private static func report(_ message: String) {
-        FileHandle.standardError.write(Data(("Herb's Terminal: " + message + "\n").utf8))
+        let line = Data(("Herb's Terminal: " + message + "\n").utf8)
+        FileHandle.standardError.write(line)
+        // With ControlPersist, ssh sends a ProxyCommand's error output nowhere, so the person would see only
+        // "Connection closed by UNKNOWN port 65535": say it on the terminal itself as well.
+        if isatty(STDERR_FILENO) == 0, let terminal = FileHandle(forWritingAtPath: "/dev/tty") {
+            terminal.write(Data("\r\n".utf8) + line.dropLast() + Data("\r\n".utf8))
+            try? terminal.close()
+        }
     }
 }
