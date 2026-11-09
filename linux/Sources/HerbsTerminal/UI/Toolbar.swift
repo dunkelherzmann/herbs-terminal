@@ -10,6 +10,7 @@ final class SessionToolbar {
     weak var workspace: Workspace?
     private let menuButton: Widget
     private let connect: Widget
+    private var savedPasswords: Widget?
     private let explorer: Widget
     private let multiExec: Widget
     private let search: Widget
@@ -52,6 +53,10 @@ final class SessionToolbar {
         let newTab = glyph("ht-tab-new-symbolic", "New Tab", id: "newTab") { $0.add() }
         hint(newTab, "New Tab (Ctrl+Shift+T)\nOpen another local terminal in this window.")
         connect = glyph("ht-network-symbolic", "Connect via SSH", id: "connect") { $0.connectButton() }
+        let passwords = glyph("ht-lock-symbolic", "Saved Passwords", id: "savedPasswords") { workspace in
+            if let anchor = weakSelf?.savedPasswords { SavedPasswordsMenu.show(workspace, under: anchor) }
+        }
+        hint(passwords, "Saved Passwords\nType a saved password, such as a sudo password, into the terminal.")
         let export = glyph("ht-share-symbolic", "Export Session", id: "exportSession") { $0.exportSession() }
         hint(export, "Export Session (Ctrl+Shift+S)\nSave everything in this terminal, scrollback included, to a text file.")
         screenshot = glyph("ht-camera-symbolic", "Take Screenshot", id: "takeScreenshot") { $0.takeScreenshot() }
@@ -64,7 +69,7 @@ final class SessionToolbar {
         hint(peers, "Tailcat Peers\nPair with machines that can't reach each other by IP, and connect through Tailcat.")
         search = glyph("ht-search-symbolic", "Search", id: "search") { $0.find() }
 
-        let left = box(.horizontal, spacing: 4, [menuButton, newTab, connect])
+        let left = box(.horizontal, spacing: 4, [menuButton, newTab, connect, passwords])
         adw_header_bar_pack_start(c(header), left)
         // One group, so Search sits the same 4 px from Tailcat Peers as the other buttons from each other.
         let right = box(.horizontal, spacing: 4, [export, screenshot, explorer, multiExec, peers, search])
@@ -84,6 +89,7 @@ final class SessionToolbar {
         gtk_widget_set_valign(subtitleLabel, GTK_ALIGN_BASELINE_FILL)
         adw_header_bar_set_title_widget(c(header), titleBox)
         weakSelf = self
+        savedPasswords = passwords
 
         // Double-click the title: default size and zoom. Right-click: make the current size the default. The title
         // claims the clicks, so they don't maximize the window the way the rest of the toolbar does.

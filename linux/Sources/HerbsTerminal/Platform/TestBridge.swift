@@ -91,6 +91,19 @@ enum TestBridge {
             // The file (or folder) the next file chooser answers with, without showing it.
             chosenFiles = (request["path"] as? String).map { [$0] } ?? (request["paths"] as? [String])
             return true
+        case "saved-passwords":
+            // The toolbar's Saved Passwords menu: what it offers, or (with "choose") run one of its entries.
+            let store = CredentialStore.shared ?? CredentialStore.unavailable()
+            if let choice = request["choose"] as? String {
+                SavedPasswordsMenu.run(choice, in: try workspace, anchor: nil)
+                return true
+            }
+            return SavedPasswordsMenu.entries(store).map { ["title": $0.title, "help": $0.help, "action": $0.action] }
+        case "passwords":
+            // The Manage Passwords window: an action (select, new, edit, delete) with an optional row number.
+            guard let window = ManagePasswordsWindow.current else { return ["open": false] }
+            if let action = request["action"] as? String { window.bridge(action, request["value"]) }
+            return window.bridgeState
         case "logins":
             // The Manage Logins window: an action (select, check, check-all, new, edit, delete, import, export) with
             // an optional row number or value, then what it shows.
@@ -267,6 +280,10 @@ enum TestBridge {
         // The toolbar's SSH button: connection details while connected, Connect via SSH otherwise.
         if name == "connect-button" { workspace.connectButton(); return "ran" }
         // Connect via SSH ▸ Manage Logins…
+        if name == "manage-passwords" {
+            ManagePasswordsWindow.show(CredentialStore.shared ?? CredentialStore.unavailable(), parent: workspace.window)
+            return "ran"
+        }
         if name == "manage-logins" {
             ManageLoginsWindow.show(CredentialStore.shared ?? CredentialStore.unavailable(), parent: workspace.window)
             return "ran"
