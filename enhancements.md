@@ -46,3 +46,8 @@ A box is ticked once the change has shipped. A request that covers several platf
 - [x] **Report the static-runtime linker bug upstream.** A minimal reproduction for swiftlang: with `--static-swift-stdlib` on Windows, the `__imp_` slots for `swift_readAtKeyPath` and `swift_modifyAt*KeyPath` point at the image base, so generic key-path access crashes. *Requested 2026-11-08 · Windows.* Reported 2026-11-08 as swiftlang/swift#94100 (related: swiftlang/swift#91442).
 
 - [x] **Keep each platform's files in its own folder.** The root holds only what applies to the whole project: docs, trackers, licences, `Package.swift` (SwiftPM needs it there), `shared/` (the SSH, SFTP, login-vault and shell-integration sources every version builds, copied in by the Linux and Windows builds instead of symbolic links), the shared feature tests in `parity/` and `scripts/version.sh`. The Mac app with its tests, assets, tailcat and scripts moves into `macos/`, and each platform's scripts into its own folder. Also line endings fixed by `.gitattributes`, a build check on every pull request (GitHub Actions on macOS, Linux and Windows), and the leftover Codex settings removed. *Requested 2026-11-09.* All platforms. Done in #62.
+
+- [ ] **All menus and submenus in the app's window, on macOS too.** Nothing in the macOS menu bar beyond the app menu macOS always shows, so on wide screens no command needs a trip to the top of the screen. Top priority: the next item in every `pending.md`. *Requested 2026-11-09.* All platforms.
+  - [ ] Mac
+  - [ ] Linux
+  - [ ] Windows

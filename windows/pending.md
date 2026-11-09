@@ -5,6 +5,10 @@ built. Each item names the `SPECIFICATION.md` section it follows and lands in it
 one before. An item is ticked when its PR is open, built and tested on Windows, with the PR number; the
 project's `enhancements.md` and `bugs.md` stay the record of requests and releases.
 
+## Next (top priority)
+
+- [ ] **Main Menu matches the Mac's in-window menus.** Once the Mac has moved every menu into its window, check that this version's in-window menu holds the same menus, submenus, order and shortcuts, and that no command is reachable only somewhere else. (§2, §14, enhancements.md) *Asked 2026-11-09.*
+
 ## To build
 
 - [x] **Feature tests on the packaged exe** (#34) (§12, enhancements.md). `parity/tests` on Windows can run
