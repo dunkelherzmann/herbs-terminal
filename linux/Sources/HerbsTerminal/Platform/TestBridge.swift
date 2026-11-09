@@ -76,6 +76,8 @@ enum TestBridge {
             // The newest Get Info window: edits, then Apply / Revert / Close, then what it shows.
             guard let info = FileInfoWindow.newest else { return ["open": false] }
             info.bridge(request)
+            // Closing destroys the window's widgets at once: read nothing from them after that.
+            if request["action"] as? String == "close" { return ["open": false] }
             return info.bridgeState
         case "editor":
             guard let editor = try workspace.selected.editor else { throw Failure(description: "no editor") }
