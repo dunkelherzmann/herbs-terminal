@@ -20,7 +20,7 @@ let package = Package(
             path: ".",
             exclude: ["linux", "windows", "parity", "scripts", "dist", "macos/Assets", "macos/Vendor", "macos/dev",
                       "macos/parity", "macos/Tests", "macos/pending.md", "README.md", "SPECIFICATION.md", "LICENSE",
-                      "NOTICES", "VERSION", "bugs.md", "enhancements.md"],
+                      "NOTICES", "VERSION", "bugs.md", "enhancements.md", "Package.resolved"],
             sources: ["macos/Sources/HerbsTerminal", "shared"]
         ),
         .testTarget(name: "HerbsTerminalTests", dependencies: ["HerbsTerminal"], path: "macos/Tests/HerbsTerminalTests")
