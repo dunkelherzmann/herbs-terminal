@@ -78,7 +78,7 @@ command -v agent-desktop >/dev/null || npm install -g agent-desktop
 agent-desktop --version || true
 
 step "5. SSH with the Mac ($mac)"
-mkdir -p -m 700 ~/.ssh
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
 [[ -f ~/.ssh/id_ed25519 ]] || ssh-keygen -t ed25519 -N "" -C "$USER@$(hostname -s)" -f ~/.ssh/id_ed25519
 if ! ssh -o BatchMode=yes -o ConnectTimeout=8 "$mac" true 2>/dev/null; then
     echo "Installing this machine's key on the Mac: enter the Mac's password once."
