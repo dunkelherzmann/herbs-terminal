@@ -91,6 +91,38 @@ enum TestBridge {
             // The file (or folder) the next file chooser answers with, without showing it.
             chosenFiles = (request["path"] as? String).map { [$0] } ?? (request["paths"] as? [String])
             return true
+        case "tailcat-state":
+            // The Tailcat Peers window's peers, their routes, and this computer's share.
+            let store = TailcatPeerStore.shared, share = TailcatShare.shared
+            func text(_ route: TailcatRoute?) -> String { route?.text ?? "" }
+            return ["peers": store.peers.map { ["name": $0.name, "username": $0.username, "persistent": $0.persistent,
+                                               "route": text(store.routes[$0.id])] as [String: Any] },
+                    "sharing": share.isSharing, "shareAddress": share.address ?? NSNull(), "error": share.error ?? store.error ?? NSNull(),
+                    "locked": CredentialStore.shared?.isLocked ?? false]
+        case "tailcat-share":
+            Task { await TailcatShare.shared.start(persistent: request["persistent"] as? Bool ?? false) }
+            return true
+        case "tailcat-stop":
+            TailcatShare.shared.stop()
+            return true
+        case "tailcat-add":
+            // Add Peer with the form filled in.
+            do {
+                try TailcatPeerStore.shared.add(name: request["name"] as? String ?? "", username: request["username"] as? String ?? "",
+                                                address: request["address"] as? String ?? "", persistent: request["persistent"] as? Bool ?? false)
+                return true
+            } catch { return false }
+        case "tailcat-ping", "tailcat-connect", "tailcat-remove":
+            let store = TailcatPeerStore.shared
+            guard let peer = store.peers.first(where: { $0.name == request["name"] as? String }) else { throw Failure(description: "no such peer") }
+            switch request["op"] as? String {
+            case "tailcat-ping": Task { await store.ping(peer) }
+            case "tailcat-connect":
+                let workspace = try workspace, endpoint = try store.endpoint(for: peer)
+                workspace.connect(endpoint, password: nil)
+            default: try store.remove(peer)
+            }
+            return true
         case "hosts-state":
             guard let window = MultiHostWindow.newest else { throw Failure(description: "the Run Command on Hosts window isn't open") }
             return window.bridgeState

@@ -67,6 +67,11 @@ run_windows() {
     sed -i '' $'1s/^\xEF\xBB\xBF//' parity/results/windows.log; grep -avE '^(WORKS|UNVERIFIED|N/A) ' parity/results/windows.log
 }
 
+# Tailcat tests C3 and C4 connect through shares on the Linux machine, started for this run only.
+if [[ -n "${PARITY_LINUX_HOST:-}" ]] && { [[ -z "$only" ]] || [[ ",$only," == *",C3,"* || ",$only," == *",C4,"* ]]; }; then
+    parity/tests/tailcat-host.sh start && trap 'parity/tests/tailcat-host.sh stop' EXIT
+fi
+
 # The three machines work at the same time; each prints only what didn't work.
 for platform in "${platforms[@]}"; do
     ( echo "== $platform"; "run_$platform" ) > "parity/results/$platform.out" 2>&1 &
