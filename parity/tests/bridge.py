@@ -160,6 +160,8 @@ class MacApp(App):
                 return
             subprocess.run(["osascript", "-e", f'tell application id "{self.bundle_id}" to quit'], capture_output=True)
             time.sleep(0.5)
+        # A test copy that still won't quit (an alert holding it, a hang) must not stay on screen.
+        subprocess.run(["pkill", "-9", "-f", "parity/Herb"], capture_output=True)
 
     def stop(self):
         try:
