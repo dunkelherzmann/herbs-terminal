@@ -603,6 +603,9 @@ final class Workspace: WindowObject {
             if let hwnd { DestroyWindow(hwnd) }
             return
         }
+        // The only terminal tab left becomes Terminal 1 again (a renamed tab keeps its name).
+        let terminals = tabs.compactMap { $0 as? TerminalPane }
+        if terminals.count == 1 { terminals[0].number = 1 }
         // The tab that was active stays active; closing the active tab moves to its neighbour.
         select(active > index ? active - 1 : min(active, tabs.count - 1))
         layout()

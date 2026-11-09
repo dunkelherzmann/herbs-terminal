@@ -72,7 +72,7 @@ It covers the everyday features of the stock macOS Terminal and Ptyxis. It adds:
 ### Tabs
 
 - Each tab has its own shell, scrollback, explorer location and connection. Switching tabs keeps every session running.
-- **Names:** tabs are numbered "Terminal 1", "Terminal 2" and so on. A new tab takes the lowest free number. Rename a tab by double-clicking it, from its right-click menu, or with Shell ▸ Rename Tab (⇧⌘I).
+- **Names:** tabs are numbered "Terminal 1", "Terminal 2" and so on. A new tab takes the lowest free number, and once you've closed tabs until a single terminal tab is left, it becomes "Terminal 1" again (a tab you renamed keeps its name). Rename a tab by double-clicking it, from its right-click menu, or with Shell ▸ Rename Tab (⇧⌘I).
 - **Order:** drag tabs to reorder them, or use Move Tab Left and Move Tab Right.
 - **Switching:** ⌘1–⌘8 pick a tab by position, and ⌘9 picks the last tab. ⇧⌘[ and ⇧⌘] go to the previous and next tab. Keyboard focus moves to the selected tab.
 - **Closing:**

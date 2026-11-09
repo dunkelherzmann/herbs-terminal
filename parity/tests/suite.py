@@ -438,6 +438,17 @@ def _(c):
     c.command("new-tab")
     c.until(lambda s: "Terminal 2" in [t["name"] for t in c.tabs(s)], "expected the new tab to be Terminal 2")
 
+@test("T2", "The only terminal tab left becomes Terminal 1")
+def _(c):
+    c.command("new-tab"); c.command("new-tab")
+    c.until(lambda s: [t["name"] for t in c.tabs(s)] == ["Terminal 1", "Terminal 2", "Terminal 3"], "expected three tabs")
+    c.command("tab-1"); c.command("close-tab", settle=1.2)
+    c.until(lambda s: [t["name"] for t in c.tabs(s)] == ["Terminal 2", "Terminal 3"], "expected Terminal 2 and 3 after closing 1")
+    c.command("tab-1"); c.command("close-tab", settle=1.2)
+    c.until(lambda s: [t["name"] for t in c.tabs(s)] == ["Terminal 1"], "expected the last tab to become Terminal 1")
+    c.command("new-tab")
+    c.until(lambda s: [t["name"] for t in c.tabs(s)] == ["Terminal 1", "Terminal 2"], "expected the next tab to be Terminal 2")
+
 @test("T3", "Rename Tab")
 def _(c):
     c.command("rename-tab", settle=1.2)
