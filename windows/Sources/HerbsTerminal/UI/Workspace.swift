@@ -946,7 +946,8 @@ final class Workspace: WindowObject {
         case .maximize: if let hwnd { ShowWindow(hwnd, IsZoomed(hwnd) ? SW_RESTORE : SW_MAXIMIZE) }
         case .showExplorer: if activePane?.showingExplorer == false { toggleExplorer() }
         case .findInTerminal:
-            if activePane?.showingExplorer == false { pane?.showFind() }
+            // In the explorer, Find filters the folder by name (the toolbar's Search does the same).
+            if activePane?.showingExplorer == true { activePane?.explorer?.showFilter() } else { pane?.showFind() }
         }
     }
 

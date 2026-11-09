@@ -986,6 +986,10 @@ def explorer_at_home(c, files=True):
 def items(c, s=None):
     return c.tab(s).get("explorer", {}).get("items", [])
 
+def names(c, s=None):
+    """The list's names without the folder mark some bridges add."""
+    return [i.rstrip("/\\") for i in items(c, s)]
+
 def safe(c):
     """Never change files outside the scene's folder."""
     path = c.tab().get("explorer", {}).get("path", "")
@@ -1193,15 +1197,32 @@ def _(c):
     c.until(lambda s: any(i.rstrip("/\\") == "made-by-test" for i in items(c, s)), "expected the new folder")
     c.bridge.call("explorer-select", names=["made-by-test"])
     c.command("explorer.rename", settle=1.2)
-    s = c.until(lambda s: s.get("dialogs"), "expected the Rename dialog")
-    c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() != "cancel"), ["renamed-by-test"])
+    # A Rename dialog (Mac, Linux), or the name edited in place in the list (Windows, as in File Explorer).
+    s = c.until(lambda s: s.get("dialogs") or c.tab(s).get("explorer", {}).get("renaming"), "expected Rename to ask for the new name")
+    if s.get("dialogs"):
+        c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() != "cancel"), ["renamed-by-test"])
+    else:
+        c.bridge.call("explorer-rename", name="renamed-by-test")
     c.until(lambda s: any(i.rstrip("/\\") == "renamed-by-test" for i in items(c, s)), "expected the folder renamed")
 
 @test("E14", "Find files")
 def _(c):
-    explorer_at_home(c, files=False)
+    explorer_at_home(c)
+    c.until(lambda s: "note.txt" in items(c, s) and "sub" in names(c, s), "expected note.txt and sub in the list")
     c.probe("explorer.find")
-    c.unverified("the command is there; the filter field isn't driven by the bridge yet")
+    try:
+        c.bridge.call("explorer-filter", text="NOTE")
+    except Exception as error:
+        if "unknown op" in str(error):
+            c.unverified("the command is there; this platform's bridge doesn't type into the Find field yet")
+        raise
+    # Case is ignored, and only names containing the text stay.
+    s = c.until(lambda s: "note.txt" in items(c, s) and "sub" not in names(c, s), "expected Find to keep note.txt and hide sub")
+    c.expect(all("note" in i.lower() for i in items(c, s)), f"expected only names with 'note', saw {items(c, s)}")
+    c.expect(c.tab(s)["explorer"].get("finding") is not False, "expected the Find field to be open")
+    # Changing folder closes Find and shows everything again.
+    c.bridge.call("explorer-go", path=c.app.home)
+    c.until(lambda s: "sub" in names(c, s) and not c.tab(s)["explorer"].get("filter"), "expected going to a folder to close Find")
 
 @test("E15", "Open in Text Editor, Open with Default App, Show in the file manager")
 def _(c):
