@@ -56,11 +56,18 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 21:15)
+## Feature test results (2026-11-09 23:28)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Not checked automatically (40)
+### Broken (2)
+
+A test ran and the feature didn't do what the Mac version does.
+
+- [ ] **C3** Connect: shell and explorer through Tailcat, address never in arguments or history. (§8): Connect through Tailcat: the shell, and the address nowhere on screen: expected a login through Tailcat; the terminal shows: ['herbs-test@tailcat-testhost: Permission denied (publickey).                                …
+- [ ] **C4** Clear message when nothing answers SSH on the peer. (§8): A peer reached through Tailcat where nothing answers SSH says so clearly: expected the terminal to say the peer was reached but nothing answered SSH (saw: 1 window(s), tabs ['Terminal 1'], 1 pane(s), title…
+
+### Not checked automatically (38)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -94,8 +101,6 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **L3** Change the Administrator Password re-encrypts everything; removing it asks. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L4** Plain text needs an explicit choice and a second confirmation. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L7** Opening asks for the Administrator Password; Skip shows plain-text logins with an unlock bar. (§6): needs the logins locked at start, which takes a second launch of the same test copy
-- [ ] **C3** Connect: shell and explorer through Tailcat, address never in arguments or history. (§8): needs the test host shared over tailcat (~/.config/herbs-terminal/test-tailcat holds its address)
-- [ ] **C4** Clear message when nothing answers SSH on the peer. (§8): needs a peer whose SSH service is off
 - [ ] **C7** Unlock… / Lock… button with the vault states. (§8): the Tailcat window isn't driven by the bridge yet
 - [ ] **Y3** Password fields have visible labels. (§9): covered by the accessibility tree; not automated here
 - [ ] **Y4** Resizing follows Reduce Motion; visual bell limited to twice a second. (§9): window resizing isn't animated on Windows; the slower fade with animations off is visual

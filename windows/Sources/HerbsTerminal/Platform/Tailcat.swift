@@ -421,7 +421,7 @@ enum TailcatProxy {
                 guard send(SOCKET(raw), Array(buffer[0..<Int(read)])) else { break }
             }
             shutdown(SOCKET(raw), Int32(SD_SEND))
-            done.signal()
+            // Not a signal for `done`: ssh's banner, sent at once, could end the wait before the peer's silence was seen.
         }
         Thread.detachNewThread {
             var buffer = [UInt8](repeating: 0, count: 65536)

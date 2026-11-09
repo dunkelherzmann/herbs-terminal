@@ -434,17 +434,21 @@ enum TailcatProxy {
     /// Copies ssh's standard input to the peer and the peer's replies to standard output until either side closes.
     /// False when the peer hung up without sending a byte: nothing answered on its end.
     static func relay(_ fd: Int32, input: Int32 = STDIN_FILENO, output: Int32 = STDOUT_FILENO) -> Bool {
+        // A write to a peer that has hung up must fail, not end this process (it did, and ssh then printed only
+        // "Connection closed by UNKNOWN port 65535").
+        signal(SIGPIPE, SIG_IGN)
         let done = DispatchSemaphore(value: 0)
         let silent = SilentPeer()
         Thread.detachNewThread {
             _ = pump(from: input, to: fd)
             shutdown(fd, SHUT_WR)
-            done.signal()
         }
         Thread.detachNewThread {
             if pump(from: fd, to: output) == 0 { silent.mark() }
             done.signal()
         }
+        // The session ends when the peer's side does. Waiting for whichever copy ended first let ssh's own banner,
+        // sent at once, end the wait before the peer's silence was seen.
         done.wait()
         return !silent.isMarked
     }
