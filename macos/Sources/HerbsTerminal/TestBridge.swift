@@ -75,6 +75,27 @@ enum TestBridge {
             guard let explorer = try workspace.selected.state.explorerBridge else { return "unsupported" }
             explorer.select(request["names"] as? [String] ?? [])
             return explorer.selected()
+        case "saved-passwords":
+            // The toolbar's Saved Passwords menu: what it offers, or (with "choose") run one of its entries.
+            let store = CredentialStore.shared ?? CredentialStore.unavailable()
+            if let choice = request["choose"] as? String {
+                let workspace = try workspace
+                DispatchQueue.main.async { SavedPasswordsMenu.run(choice, in: workspace) }
+                return true
+            }
+            return SavedPasswordsMenu.entries(store).map { ["title": $0.title, "help": $0.help, "action": $0.action] }
+        case "passwords":
+            // The Manage Passwords window: an action (select, new, edit, delete) with an optional row number.
+            guard let window = ManagePasswordsBridge.window else { return ["open": false] }
+            if let action = request["action"] as? String {
+                let value = request["value"]
+                DispatchQueue.main.async { window.run(action, value) }
+            }
+            return window.state().merging(["open": true]) { a, _ in a }
+        case "password-form":
+            guard let form = ManagePasswordsBridge.form else { return ["open": false] }
+            form.run(request["action"] as? String ?? "", request)
+            return form.state().merging(["open": true]) { a, _ in a }
         case "logins":
             // The Manage Logins window: an action (select, check, check-all, new, edit, delete, import, export) with
             // an optional row number or value, then what it shows. Actions that ask run after the answer.
@@ -250,6 +271,8 @@ enum TestBridge {
             "secure-keyboard-entry": { SecureInput.shared.enabled.toggle() },
             // Connect via SSH ▸ Manage Logins…
             "manage-logins": { ManageLoginsWindow.show(CredentialStore.shared ?? CredentialStore.unavailable()) },
+            // Saved Passwords ▸ Manage Passwords…
+            "manage-passwords": { ManagePasswordsWindow.show(CredentialStore.shared ?? CredentialStore.unavailable()) },
         ]
         if terminal {
             actions["clear-to-start"] = { shell.view.clearToStart() }

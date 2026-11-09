@@ -33,6 +33,19 @@ enum LoginProtection: String {
     case adminPassword = "password"
 }
 
+/// A password kept to be typed into a terminal (Saved Passwords), such as a sudo password. Names ignore case.
+struct SavedPassword: Identifiable, Equatable, Sendable {
+    var name: String
+    var password: String
+    var description: String = ""
+    var id: String { name.lowercased() }
+
+    func validate() throws {
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw StoreError("Enter a name.") }
+        guard !password.isEmpty else { throw StoreError("Enter the password.") }
+    }
+}
+
 @MainActor
 final class CredentialStore: ObservableObject {
     static let opened = Result { try CredentialStore() }
@@ -60,6 +73,10 @@ final class CredentialStore: ObservableObject {
     @Published private(set) var plainTextIDs: Set<SSHLogin.ID> = []
     /// Rows from earlier builds, encrypted with a key this app no longer holds; they can only be discarded.
     @Published private(set) var legacyCount = 0
+    /// Saved Passwords this session can read, by name; their own vault under the same protection.
+    @Published private(set) var passwords: [SavedPassword] = []
+    @Published private(set) var lockedPasswordCount = 0
+    @Published private(set) var plainTextPasswordIDs: Set<SavedPassword.ID> = []
 
     var isLocked: Bool { protection == .adminPassword && vault == nil }
 
@@ -112,6 +129,14 @@ final class CredentialStore: ObservableObject {
             PRIMARY KEY (host, port, username)
         );
         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value BLOB NOT NULL);
+        CREATE TABLE IF NOT EXISTS passwords (
+            name TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,
+            description TEXT NOT NULL DEFAULT '',
+            ciphertext BLOB NOT NULL,
+            nonce BLOB NOT NULL,
+            tag BLOB NOT NULL,
+            scheme TEXT NOT NULL
+        );
         """)
         // Rows written before the app had its own vault used a key it no longer holds.
         if !columnExists("scheme") {
@@ -154,10 +179,11 @@ final class CredentialStore: ObservableObject {
         let key = try Self.deriveKey(password: new, salt: salt, iterations: iterations)
         let newVault = CryptoVault(keyProvider: StaticKeyProvider(key: key))
         let check = try Self.combined(newVault.encrypt(Self.checkPhrase))
-        let readable = logins
+        let readable = logins, readablePasswords = passwords
         try execute(sql: "BEGIN IMMEDIATE TRANSACTION;")
         do {
             for login in readable { try write(login, scheme: "admin", vault: newVault) }
+            for saved in readablePasswords { try write(saved, scheme: "admin", vault: newVault) }
             try setMeta("salt", salt)
             try setMeta("iterations", Data(String(iterations).utf8))
             try setMeta("check", check)
@@ -177,10 +203,11 @@ final class CredentialStore: ObservableObject {
     func removeAdminPassword(current: String) throws {
         guard protection == .adminPassword else { return }
         try unlock(current)
-        let readable = logins
+        let readable = logins, readablePasswords = passwords
         try execute(sql: "BEGIN IMMEDIATE TRANSACTION;")
         do {
             for login in readable { try write(login, scheme: "plain", vault: nil) }
+            for saved in readablePasswords { try write(saved, scheme: "plain", vault: nil) }
             try setMeta("protection", Data(LoginProtection.plainText.rawValue.utf8))
             try execute(sql: "DELETE FROM meta WHERE key IN ('salt', 'iterations', 'check');")
             try execute(sql: "COMMIT;")
@@ -307,6 +334,116 @@ final class CredentialStore: ObservableObject {
         plainTextIDs = plain
         lockedCount = locked
         legacyCount = legacy
+        try reloadPasswords()
+    }
+
+    // MARK: Saved Passwords
+
+    private func reloadPasswords() throws {
+        guard let db else { throw StoreError("Database is not open.") }
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT name, description, ciphertext, nonce, tag, scheme FROM passwords ORDER BY name COLLATE NOCASE;",
+                                 -1, &stmt, nil) == SQLITE_OK else {
+            throw StoreError("Failed to prepare query: \(String(cString: sqlite3_errmsg(db)))")
+        }
+        defer { sqlite3_finalize(stmt) }
+        func blob(_ column: Int32) -> Data {
+            let length = sqlite3_column_bytes(stmt, column)
+            return sqlite3_column_blob(stmt, column).map { Data(bytes: $0, count: Int(length)) } ?? Data()
+        }
+        var readable: [SavedPassword] = [], locked = 0, plain: Set<SavedPassword.ID> = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let name = String(cString: sqlite3_column_text(stmt, 0)), description = String(cString: sqlite3_column_text(stmt, 1))
+            let payload = EncryptedPayload(ciphertext: blob(2), nonce: blob(3), tag: blob(4))
+            switch String(cString: sqlite3_column_text(stmt, 5)) {
+            case "plain":
+                let saved = SavedPassword(name: name, password: String(decoding: payload.ciphertext, as: UTF8.self), description: description)
+                readable.append(saved)
+                plain.insert(saved.id)
+            default:
+                if let vault, let password = try? vault.decrypt(payload) {
+                    readable.append(SavedPassword(name: name, password: password, description: description))
+                } else {
+                    locked += 1
+                }
+            }
+        }
+        passwords = readable
+        plainTextPasswordIDs = plain
+        lockedPasswordCount = locked
+    }
+
+    private func write(_ saved: SavedPassword, scheme: String, vault: CryptoVault?) throws {
+        guard let db else { throw StoreError("Database is not open.") }
+        let payload: EncryptedPayload
+        if scheme == "admin" {
+            guard let vault else { throw StoreError("Unlock saved passwords with the Administrator Password first.") }
+            payload = try vault.encrypt(saved.password)
+        } else {
+            payload = EncryptedPayload(ciphertext: Data(saved.password.utf8), nonce: Data(), tag: Data())
+        }
+        // The name ignores case; the newest spelling replaces any other.
+        let sql = """
+        INSERT INTO passwords (name, description, ciphertext, nonce, tag, scheme) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(name) DO UPDATE SET name = excluded.name, description = excluded.description,
+            ciphertext = excluded.ciphertext, nonce = excluded.nonce, tag = excluded.tag, scheme = excluded.scheme;
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw StoreError("Failed to prepare save: \(String(cString: sqlite3_errmsg(db)))")
+        }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, saved.name, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 2, saved.description, -1, SQLITE_TRANSIENT)
+        for (index, data) in [payload.ciphertext, payload.nonce, payload.tag].enumerated() {
+            _ = data.withUnsafeBytes { sqlite3_bind_blob(stmt, Int32(3 + index), $0.baseAddress ?? UnsafeRawPointer(bitPattern: 1), Int32(data.count), SQLITE_TRANSIENT) }
+        }
+        sqlite3_bind_text(stmt, 6, scheme, -1, SQLITE_TRANSIENT)
+        guard sqlite3_step(stmt) == SQLITE_DONE else {
+            throw StoreError("Failed to save the password: \(String(cString: sqlite3_errmsg(db)))")
+        }
+    }
+
+    /// Saves a password; `replacing` is the name it had before an edit (a renamed entry replaces the old one).
+    func savePassword(_ saved: SavedPassword, replacing original: SavedPassword.ID? = nil) throws {
+        var saved = saved
+        saved.name = saved.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        try saved.validate()
+        guard protection != .unset else {
+            throw StoreError("Choose how to protect saved passwords first: create an Administrator Password or allow plain text.")
+        }
+        guard !isLocked else { throw StoreError("Unlock saved passwords with the Administrator Password first.") }
+        if saved.id != original, passwords.contains(where: { $0.id == saved.id }) {
+            throw StoreError("A saved password is already called “\(saved.name)”.")
+        }
+        try execute(sql: "BEGIN IMMEDIATE TRANSACTION;")
+        do {
+            if let original, original != saved.id { try deletePasswordRow(original) }
+            try write(saved, scheme: writeScheme, vault: vault)
+            try execute(sql: "COMMIT;")
+        } catch {
+            try? execute(sql: "ROLLBACK;")
+            throw error
+        }
+        try reload()
+    }
+
+    func deletePassword(id: SavedPassword.ID) throws {
+        try deletePasswordRow(id)
+        try reload()
+    }
+
+    private func deletePasswordRow(_ id: SavedPassword.ID) throws {
+        guard let db else { throw StoreError("Database is not open.") }
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "DELETE FROM passwords WHERE name = ? COLLATE NOCASE;", -1, &stmt, nil) == SQLITE_OK else {
+            throw StoreError("Failed to prepare delete: \(String(cString: sqlite3_errmsg(db)))")
+        }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+        guard sqlite3_step(stmt) == SQLITE_DONE else {
+            throw StoreError("Failed to delete the password: \(String(cString: sqlite3_errmsg(db)))")
+        }
     }
 
     private func write(_ login: SSHLogin, scheme: String, vault: CryptoVault?) throws {

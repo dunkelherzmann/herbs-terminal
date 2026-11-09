@@ -829,6 +829,7 @@ private struct ActiveWorkspace: View {
                            newTab: { workspace.add() },
                            connect: workspace.connectButton,
                            connectedTo: { if case .connected(let e) = state.connection { e.label } else { nil } }(),
+                           savedPasswords: { SavedPasswordsMenu.show(for: workspace) },
                            restoreSize: workspace.restoreDefaultSize,
                            saveSizeAsDefault: workspace.makeCurrentSizeDefault,
                            multiHost: { workspace.multiExec.toggle() },
