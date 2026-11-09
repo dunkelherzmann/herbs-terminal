@@ -11,7 +11,7 @@ What the Linux version still needs before it can ship with as few bugs as possib
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Not checked automatically (79)
+### Not checked automatically (80)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -20,6 +20,7 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **W11** Search button: searches files in the explorer, the scrollback otherwise. (§2): the command runs; whether the search field opens isn't reported by this platform's bridge yet
 - [ ] **W13** Main Menu: Find in Terminal…. (§2): the command runs; whether the search field opens isn't reported by this platform's bridge yet
 - [ ] **W17** Hover hints on every control after about half a second, also in the background; screen readers get… (§2): covered by parity/check.sh (hover texts through the accessibility tree)
+- [ ] **W19** Every menu in the window: on the Mac the system menu bar holds only the app menu, the Main Menu… (§2): no test yet
 - [ ] **P5** Focused pane outlined; Zoom, Clear, Reset and Find act on it. (§2): visual: shown in the window's picture, not reported by the bridge
 - [ ] **P6** The tab's SSH connection and explorer belong to its first pane; the next pane takes over when it… (§2): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **B1** Right-click menu: Copy, Paste, Paste Escaped Text, Select All, Find. (§2): Copy, Paste, Paste Escaped Text and Select All work; Find… runs, but this platform's bridge doesn't report the find bar yet
