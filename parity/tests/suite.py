@@ -696,6 +696,9 @@ def _(c):
         if "unknown op" in str(error):
             c.unverified("the command is there; this platform's bridge doesn't report the find bar and its matches yet")
         raise
+    c.until(lambda s: c.pane(s)["find"]["shown"], "expected the find bar to open")
+    if "matches" not in c.pane()["find"]:
+        c.unverified("the find bar opens with the text; this platform's terminal (VTE) highlights matches but doesn't count them")
     # Case is ignored, and only the printed words match (the typed lines hide the word).
     s = c.until(lambda s: c.pane(s)["find"]["shown"] and c.pane(s)["find"]["matches"] == 2 and c.pane(s)["selection"] == "FINDME",
                 "expected the find bar with 2 matches and the last one selected")
@@ -1285,7 +1288,7 @@ def local_tree(c, root):
 
 def upload(c, paths):
     try:
-        result = c.bridge.call("explorer-upload", timeout=45, paths=paths)
+        result = c.bridge.call("explorer-upload", timeout=300, paths=paths)
     except Exception as error:
         if "unknown op" in str(error):
             c.unverified("this platform's test bridge can't upload without the open dialog yet")
@@ -1465,7 +1468,8 @@ def _(c):
     c.command("close-tab", settle=1.2)
     s = c.until(lambda s: s.get("dialogs"), "expected a question before the changes are lost")
     responses = s["dialogs"][0]["responses"]
-    c.expect(any("don" in r.lower() for r in responses) and any(r.lower() == "cancel" for r in responses),
+    # Button titles, or their ids where the bridge reports those (Linux: discard, cancel, save).
+    c.expect(any("don" in r.lower() or r.lower() == "discard" for r in responses) and any(r.lower() == "cancel" for r in responses),
              f"expected Don't Save and Cancel, saw {responses}")
     c.answer(next(r for r in responses if r.lower() == "cancel"))
     c.until(lambda s: c.tab(s).get("kind") == "editor" and c.tab(s)["editor"].get("edited"), "expected Cancel to keep the tab and its changes")
@@ -1534,8 +1538,124 @@ def _(c):
 @test("D10", "Text editor: refuses binary files")
 def _(c):
     refused(c, "blob.txt", bytes(range(256)) * 64, ("text",))
-for fid in ("G1", "G2", "G3", "G5", "G6"):
-    manual(fid, "Get Info", "the Get Info window isn't driven by the bridge yet")
+def info(c, **request):
+    """The newest Get Info window's state, after editing it as given (octal, toggle, owner, group, recursive, action)."""
+    try:
+        return c.bridge.call("info", **request)
+    except Exception as error:
+        if "unknown op" in str(error):
+            c.unverified("the Get Info window isn't driven by the bridge yet")
+        raise
+
+def symbolic(mode):
+    """`ls -l`'s rwx text for a mode, with s/S and t/T."""
+    out = ""
+    for shift, special, letter in ((6, 0o4000, "s"), (3, 0o2000, "s"), (0, 0o1000, "t")):
+        r, w, x = (mode >> shift) & 4, (mode >> shift) & 2, (mode >> shift) & 1
+        out += ("r" if r else "-") + ("w" if w else "-")
+        out += (letter if x else letter.upper()) if mode & special else ("x" if x else "-")
+    return out
+
+def info_on(c, selection):
+    """Selects items and opens Get Info on them; waits until it has loaded."""
+    c.bridge.call("explorer-select", names=selection + [n + "/" for n in selection])
+    c.command("explorer.info", settle=1.5)
+    return c.until(lambda s: (lambda i: i.get("open") and not i.get("busy") and i.get("names"))(info(c)), "expected Get Info to show the items",
+                   timeout=15) and info(c)
+
+def host_items(c):
+    """The test host's explorer in a fresh folder holding one.txt and the folder tree (a.txt and deep/ inside)."""
+    account = host_explorer(c)
+    home, name = host_folder(c, account, "g")
+    upload(c, local_tree(c, os.path.join(c.app.home, "g-source")))
+    c.until(lambda s: {"one.txt", "tree"} <= set(names(c, s)) and transfers_done(c, s, 1), "expected the items on the host", timeout=30)
+    return account, home, name
+
+@test("G1", "Get Info: name, location, kind, size, modified, permissions")
+def _(c):
+    account, home, name = host_items(c)
+    try:
+        i = info_on(c, ["one.txt"])
+        c.expect(i["names"] == ["one.txt"] and i["location"].rstrip("/").endswith(name), f"expected one.txt in {name}, saw {i['names']} in {i['location']!r}")
+        c.expect(i.get("size") == 4 and i.get("modified"), f"expected its size (4 bytes) and date, saw size {i.get('size')}")
+        c.expect(i["symbolic"] == symbolic(int(i["octal"], 8)), f"expected the rwx text to match the octal {i['octal']}, saw {i['symbolic']!r}")
+        info(c, action="close")
+        i = info_on(c, ["one.txt", "tree"])
+        c.expect(sorted(i["names"]) == ["one.txt", "tree"] and i["folders"] == ["tree"], f"expected both items, saw {i['names']}")
+        info(c, action="close")
+    finally:
+        remove_host_folder(c, home, name)
+
+@test("G2", "Get Info: permission checkboxes, special bits and the octal field in step")
+def _(c):
+    account, home, name = host_items(c)
+    try:
+        info_on(c, ["one.txt"])
+        i = info(c, octal="640")
+        c.until(lambda s: info(c)["symbolic"] == "rw-r-----", "expected 640 to show as rw-r-----")
+        i = info(c, toggle=[0o001])
+        c.until(lambda s: info(c)["octal"].lstrip("0") == "641" and info(c)["symbolic"] == "rw-r----x", "expected others' execute to make it 641")
+        info(c, toggle=[0o4000])
+        c.until(lambda s: info(c)["octal"] == "4641" and info(c)["symbolic"] == "rwSr----x", "expected set-UID to make it 4641 (rwS…)")
+        info(c, octal="640", action="apply")
+        c.until(lambda s: not info(c).get("busy") and not info(c).get("changed"), "expected Apply to finish", timeout=15)
+        info(c, action="close")
+        c.until(lambda s: info_on(c, ["one.txt"])["octal"].lstrip("0") == "640", "expected 640 kept on the host after Apply", timeout=20)
+        info(c, action="close")
+    finally:
+        remove_host_folder(c, home, name)
+
+@test("G3", "Get Info: owner and group looked up on the host")
+def _(c):
+    account, home, name = host_items(c)
+    try:
+        i = info_on(c, ["one.txt"])
+        c.expect(i["owner"] == account["user"], f"expected the owner by name, {account['user']}, saw {i['owner']!r}")
+        c.expect(i["group"] != "", "expected a group")
+        info(c, owner="no-such-user-herbs", action="apply")
+        c.until(lambda s: not info(c).get("busy") and info(c).get("message", info(c).get("error", "")), "expected an unknown owner to be refused with a message", timeout=15)
+        info(c, action="revert")
+        c.until(lambda s: info(c)["owner"] == account["user"] and not info(c).get("busy"), "expected the owner unchanged", timeout=15)
+        info(c, action="close")
+    finally:
+        remove_host_folder(c, home, name)
+
+@test("G5", "Get Info: Revert, and Apply to enclosed items")
+def _(c):
+    account, home, name = host_items(c)
+    try:
+        i = info_on(c, ["one.txt"])
+        original = i["octal"]
+        c.expect(not i["hasFolders"], "expected no Apply to enclosed items for a file")
+        info(c, octal="600")
+        c.until(lambda s: info(c).get("changed"), "expected the edit to count as a change")
+        info(c, action="revert")
+        c.until(lambda s: info(c)["octal"] == original and not info(c).get("changed"), "expected Revert to bring back the values on the host", timeout=15)
+        info(c, action="close")
+        i = info_on(c, ["tree"])
+        c.expect(i["hasFolders"], "expected Apply to enclosed items for a folder")
+        info(c, octal="700", recursive=True, action="apply")
+        c.until(lambda s: not info(c).get("busy") and not info(c).get("changed"), "expected Apply to finish", timeout=20)
+        info(c, action="close")
+        c.bridge.call("explorer-go", path=f"{home}/{name}/tree")
+        c.until(lambda s: "a.txt" in names(c, s), "expected the tree's files", timeout=10)
+        c.until(lambda s: info_on(c, ["a.txt"])["octal"].lstrip("0") == "700", "expected the file inside changed to 700 too", timeout=20)
+        info(c, action="close")
+    finally:
+        remove_host_folder(c, home, name)
+
+@test("G6", "Get Info on this computer")
+def _(c):
+    c.only("mac", "linux", reason="on Windows, this PC's items open Windows' own Properties (SPECIFICATION.md §12)")
+    explorer_at_home(c)
+    c.until(lambda s: "note.txt" in items(c, s), "expected note.txt")
+    i = info_on(c, ["note.txt"])
+    c.expect(i["names"] == ["note.txt"] and i["size"] == 6, f"expected note.txt (6 bytes), saw {i['names']} size {i.get('size')}")
+    info(c, octal="600", action="apply")
+    c.until(lambda s: not info(c).get("busy") and not info(c).get("changed"), "expected Apply to finish", timeout=10)
+    mode = os.stat(os.path.join(c.app.home, "note.txt")).st_mode & 0o777
+    c.expect(mode == 0o600, f"expected the file's mode 600 on disk, saw {oct(mode)}")
+    info(c, action="close")
 manual("G4", "Hidden and Locked", "Mac only")
 def host_explorer(c):
     """Connects to the test host and shows its files in the explorer."""

@@ -478,6 +478,14 @@ final class TerminalPane {
         vte_terminal_search_set_wrap_around(c(terminal), 1)
     }
 
+    /// Feature tests: the find bar as it shows. VTE highlights matches but doesn't count them.
+    var bridgeFind: [String: Any] { ["shown": gtk_widget_get_visible(findBar) != 0, "text": gtkText(findEntry)] }
+    func bridgeFind(_ text: String) {
+        showFind()
+        setText(findEntry, text)
+        search()
+    }
+
     private func hideFind() {
         setVisible(findBar, false)
         vte_terminal_search_set_regex(c(terminal), nil, 0)

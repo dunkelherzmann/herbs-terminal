@@ -56,16 +56,17 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 15:02)
+## Feature test results (2026-11-09 15:11)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Broken (2)
+### Broken (3)
 
 A test ran and the feature didn't do what the Mac version does.
 
-- [ ] **X2** Progress strip with Cancel and Retry; Clear Finished. (§5): Progress strip lists each transfer and its outcome: no answer to explorer-upload in 10 s (did the app quit?)
-- [ ] **X7** Name clashes get new names; links to folders inside trees are skipped. (§5): Name clashes get new names, never overwrites: no answer to explorer-upload in 10 s (did the app quit?)
+- [ ] **X1** Upload and download single files and folder trees. (§5): Upload and download single files and folder trees: no answer to explorer-upload in 300 s (did the app quit?)
+- [ ] **X2** Progress strip with Cancel and Retry; Clear Finished. (§5): Progress strip lists each transfer and its outcome: no answer to explorer-upload in 45 s (did the app quit?)
+- [ ] **X7** Name clashes get new names; links to folders inside trees are skipped. (§5): Name clashes get new names, never overwrites: no answer to explorer-upload in 45 s (did the app quit?)
 
 ### Not checked automatically (63)
 

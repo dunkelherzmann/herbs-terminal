@@ -27,9 +27,15 @@ final class FileInfoWindow {
     private let spinner: Widget
     private let executeHeading: Widget
 
+    /// The newest window still open, for the feature tests' bridge.
+    private(set) static weak var newest: FileInfoWindow?
+    private var closed = false
+
     static func show(_ source: FileInfoSource, parent: Widget?) {
         let info = FileInfoWindow(source: source, parent: parent)
         info.window.owner = info
+        newest = info
+        info.window.onClose = { [weak info] in info?.closed = true }
         info.window.present()
         Task { await info.load() }
     }
@@ -223,5 +229,31 @@ final class FileInfoWindow {
     private func showMessage(_ text: String, error: Bool) {
         setLabel(message, text)
         if error { gtk_widget_add_css_class(message, "error-text") } else { gtk_widget_remove_css_class(message, "error-text") }
+    }
+
+    /// Feature tests: what the window shows.
+    var bridgeState: [String: Any] {
+        ["open": !closed, "title": "\(source.title) Info", "names": items.map(\.name), "folders": items.filter(\.isFolder).map(\.name),
+         "location": items.first?.location ?? "", "size": items.first?.size.map { Int($0) } as Any, "modified": items.first?.modified != nil,
+         "octal": text(of: octal), "symbolic": String(cString: gtk_label_get_text(c(symbolic))), "owner": text(of: owner), "group": text(of: group),
+         "recursive": isActive(recursive), "hasFolders": hasFolders, "macFlags": false, "busy": busy,
+         "message": String(cString: gtk_label_get_text(c(message))), "changed": !change.isEmpty]
+    }
+
+    /// Feature tests: edits the fields as a person would, then Apply, Revert, Close or neither.
+    func bridge(_ request: [String: Any]) {
+        if let value = request["octal"] as? String { setText(octal, value) }
+        for bit in request["toggle"] as? [Int] ?? [] {
+            if let toggle = bits[UInt32(bit)] { setActive(toggle, !isActive(toggle)) }
+        }
+        if let value = request["owner"] as? String { setText(owner, value) }
+        if let value = request["group"] as? String { setText(group, value) }
+        if let value = request["recursive"] as? Bool { setActive(recursive, value) }
+        switch request["action"] as? String {
+        case "apply": Task { await applyChanges() }
+        case "revert": Task { await load() }
+        case "close": closed = true; window.close()
+        default: break
+        }
     }
 }

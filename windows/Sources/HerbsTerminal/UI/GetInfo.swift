@@ -366,6 +366,39 @@ final class GetInfoWindow: WindowObject {
 
     var window: HWND? { hwnd }
 
+    /// Feature tests: what the window shows.
+    var bridgeState: [String: Any] {
+        ["open": !done, "title": (names.count == 1 ? names[0] : "\(names.count) items") + " Info", "names": items.map(\.name),
+         "folders": items.filter(\.isFolder).map(\.name), "location": items.first?.location ?? "",
+         "size": items.first?.size.map { Int($0) } as Any, "modified": items.first?.modified != nil,
+         "octal": text(octalField), "symbolic": text(symbolic), "owner": text(ownerField), "group": text(groupField),
+         "recursive": isChecked(recursiveBox), "hasFolders": hasFolders, "macFlags": false, "busy": busy,
+         "message": text(message), "changed": !change.isEmpty]
+    }
+
+    /// Feature tests: edits the fields as a person would (each change goes through the control's own message),
+    /// then Apply, Revert, Close or neither.
+    func bridge(_ request: [String: Any]) {
+        if let value = request["octal"] as? String { setText(octalField, value) }
+        for bit in request["toggle"] as? [Int] ?? [] {
+            guard let index = Self.bitOrder.firstIndex(of: UInt32(bit)), let box = bitBoxes[UInt32(bit)] ?? nil else { continue }
+            SendMessageW(box, UINT(BM_SETCHECK), WPARAM(isChecked(box) ? BST_UNCHECKED : BST_CHECKED), 0)
+            SendMessageW(hwnd, UINT(WM_COMMAND), WPARAM(ID.firstBit + Int32(index)), LPARAM(Int(bitPattern: UnsafeRawPointer(box))))
+        }
+        if let value = request["owner"] as? String { setText(ownerField, value) }
+        if let value = request["group"] as? String { setText(groupField, value) }
+        if let value = request["recursive"] as? Bool {
+            SendMessageW(recursiveBox, UINT(BM_SETCHECK), WPARAM(value ? BST_CHECKED : BST_UNCHECKED), 0)
+            refreshButtons()
+        }
+        switch request["action"] as? String {
+        case "apply": apply()
+        case "revert": show("", error: false); load()
+        case "close": done = true
+        default: break
+        }
+    }
+
     // MARK: Messages
 
     func handle(_ hwnd: HWND, _ message: UINT, _ wParam: WPARAM, _ lParam: LPARAM) -> LRESULT? {

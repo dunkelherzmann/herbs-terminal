@@ -62,10 +62,19 @@ enum TestBridge {
         case "explorer-go":
             guard let explorer = try workspace.selected.explorer else { throw Failure(description: "no explorer") }
             return explorer.bridgeGo(request["path"] as? String ?? "")
+        case "info":
+            // The newest Get Info window: edits, then Apply / Revert / Close, then what it shows.
+            guard let info = FileInfoWindow.newest, info.bridgeState["open"] as? Bool == true else { return ["open": false] }
+            info.bridge(request)
+            return info.bridgeState
         case "editor":
             guard let editor = try workspace.selected.editor else { throw Failure(description: "no editor") }
             editor.bridge(request["action"] as? String ?? "", text: request["text"] as? String ?? "")
             return editor.bridgeState
+        case "find":
+            // Types into the focused terminal's find bar, opening it first.
+            try workspace.selected.focused.bridgeFind(request["text"] as? String ?? "")
+            return true
         case "explorer-filter":
             guard let explorer = try workspace.selected.explorer else { throw Failure(description: "no explorer") }
             return explorer.bridgeFilter(request["text"] as? String ?? "")
@@ -268,7 +277,7 @@ enum TestBridge {
                             "panes": tab.panes.map { pane -> [String: Any] in
                                 ["number": (panes.firstIndex { $0 === pane } ?? -1) + 1, "focused": pane === tab.focused,
                                  "columns": pane.columns, "rows": pane.rows, "title": pane.title, "subtitle": pane.subtitle,
-                                 "exited": pane.exited, "text": pane.screenText, "fontSize": pane.settings.effectiveSize,
+                                 "exited": pane.exited, "text": pane.screenText, "fontSize": pane.settings.effectiveSize, "find": pane.bridgeFind,
                                  "profile": TerminalProfile.shared.name(of: pane.profileID), "badge": pane.bridgeBadge ?? NSNull()]
                             },
                         ]

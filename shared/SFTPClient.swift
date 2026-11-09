@@ -122,9 +122,19 @@ extension SFTPClient: RemoteFileService, @unchecked Sendable {}
 /// One synchronous SFTP v3 channel per background operation. The failing proxy
 /// prevents OpenSSH from making a new connection if its master has disappeared.
 final class SFTPClient {
+    #if os(Windows)
+    // Started so it inherits only its pipes (IsolatedProcess): Foundation's Process lets the child keep any file the
+    // app had open at that moment, locked until the channel closes.
+    private var child: IsolatedProcess!
+    private var writer: FileHandle { child.input }
+    private var reader: FileHandle { child.output }
+    #else
     private let process = Process()
     private let input = Pipe()
     private let output = Pipe()
+    private var writer: FileHandle { input.fileHandleForWriting }
+    private var reader: FileHandle { output.fileHandleForReading }
+    #endif
     private var sequence: UInt32 = 0
     private(set) var extensions = Set<String>()
 
@@ -134,14 +144,18 @@ final class SFTPClient {
 
     /// `preamble` is written before the SFTP handshake, e.g. the password line `sudo -S` reads.
     init(executable: String, arguments: [String], preamble: Data? = nil) throws {
+        #if os(Windows)
+        child = try IsolatedProcess(executable: executable, arguments: arguments)
+        #else
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         process.standardInput = input
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
         try process.run()
+        #endif
         do {
-            if let preamble { try input.fileHandleForWriting.write(contentsOf: preamble) }
+            if let preamble { try writer.write(contentsOf: preamble) }
             var initPacket = Packet()
             initPacket.number(UInt8(1)); initPacket.number(UInt32(3))
             try send(initPacket)
@@ -159,8 +173,14 @@ final class SFTPClient {
     }
     deinit { stop() }
     private func stop() {
+        #if os(Windows)
+        guard let child else { return }
+        try? child.input.close()
+        if child.isRunning { child.terminate() }
+        #else
         try? input.fileHandleForWriting.close()
         if process.isRunning { process.terminate() }
+        #endif
     }
     /// How long a reply may take before the server counts as gone. A link that hangs without dropping
     /// would otherwise stall the explorer, and a transfer, for good.
@@ -168,7 +188,7 @@ final class SFTPClient {
 
     private func exact(_ n: Int) throws -> Data {
         var data = Data()
-        let fd = output.fileHandleForReading.fileDescriptor
+        let fd = reader.fileDescriptor
         var buffer = [UInt8](repeating: 0, count: min(max(n, 1), 65536))
         while data.count < n {
             var ready = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
@@ -195,7 +215,7 @@ final class SFTPClient {
     private func send(_ p: Packet) throws {
         var frame = Packet()
         frame.blob(p.data)
-        try input.fileHandleForWriting.write(contentsOf: frame.data)
+        try writer.write(contentsOf: frame.data)
     }
     private func request(_ type: UInt8, _ expected: UInt8, _ fill: (inout Packet) -> Void) throws -> Packet {
         sequence &+= 1

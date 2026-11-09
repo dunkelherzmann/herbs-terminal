@@ -71,6 +71,15 @@ enum TestBridge {
             guard let explorer = try workspace.selected.state.explorerBridge else { return "unsupported" }
             explorer.select(request["names"] as? [String] ?? [])
             return explorer.selected()
+        case "info":
+            // The newest Get Info window: edits, then Apply / Revert / Close, then what it shows.
+            guard let open = FileInfoWindow.models.last else { return ["open": false] }
+            let action = request["action"] as? String
+            if action == "close" { open.window.close(); return ["open": false] }
+            if action != nil || request.count > 1 {
+                Task { await open.model.bridge(request) }
+            }
+            return open.model.bridgeState.merging(["open": true, "title": open.window.title]) { a, _ in a }
         case "editor":
             guard let editor = try workspace.selected.editor else { throw Failure(description: "no editor") }
             editor.bridge(request["action"] as? String ?? "", text: request["text"] as? String ?? "")

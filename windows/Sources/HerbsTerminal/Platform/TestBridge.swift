@@ -46,7 +46,15 @@ enum TestBridge {
         busy = false
         if let out = try? JSONSerialization.data(withJSONObject: response, options: [.sortedKeys]) {
             let temporary = folder + "/response.tmp", final = folder + "/response.json"
-            _ = FileManager.default.createFile(atPath: temporary, contents: out)
+            // Written with a handle no child process can inherit (Foundation's would be, by any process started
+            // meanwhile, and the answer would stay locked in the temporary file).
+            let file = withWide(temporary) {
+                CreateFileW($0, DWORD(GENERIC_WRITE), 0, nil, DWORD(CREATE_ALWAYS), DWORD(FILE_ATTRIBUTE_NORMAL), nil)
+            }
+            guard let file, file != INVALID_HANDLE_VALUE else { return }
+            var written: DWORD = 0
+            out.withUnsafeBytes { _ = WriteFile(file, $0.baseAddress, DWORD($0.count), &written, nil) }
+            CloseHandle(file)
             // The runner reads response.json every 50 ms, and Windows refuses to replace a file someone has open:
             // try again for up to two seconds, or the answer is lost and the runner thinks the app quit.
             for _ in 0..<100 {
@@ -86,6 +94,11 @@ enum TestBridge {
             guard let explorer = try workspace.activePane?.explorer else { throw Failure(description: "no explorer") }
             _ = explorer.perform(named: "filter=" + (request["text"] as? String ?? ""))
             return explorer.bridgeState["items"] ?? []
+        case "info":
+            // The Get Info window on top: edits, then Apply / Revert / Close, then what it shows.
+            guard let info = GetInfoWindow.current else { return ["open": false] }
+            info.bridge(request)
+            return info.bridgeState
         case "editor":
             guard let editor = try workspace.activeEditor else { throw Failure(description: "no editor") }
             editor.bridge(request["action"] as? String ?? "", text: request["text"] as? String ?? "")
