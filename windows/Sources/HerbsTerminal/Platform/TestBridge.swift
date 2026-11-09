@@ -75,7 +75,7 @@ enum TestBridge {
         case "type":
             let workspace = try workspace
             let text = (request["text"] as? String ?? "")
-            if let editor = workspace.activeEditor { editor.type(text) } else { workspace.activePane?.send(text) }
+            if let editor = workspace.activeEditor { editor.type(text) } else { workspace.focusedPane?.send(text) }
             return true
         case "explorer-go":
             guard let explorer = try workspace.activePane?.explorer else { throw Failure(description: "no explorer") }
@@ -104,7 +104,7 @@ enum TestBridge {
         case "context-menu", "context-choose": return "missing"
         case "drop":
             // The same WM_DROPFILES message a drop from File Explorer sends the focused terminal.
-            guard let pane = try workspace.activePane?.hwnd else { throw Failure(description: "no terminal") }
+            guard let pane = try workspace.focusedPane?.hwnd else { throw Failure(description: "no terminal") }
             TestScript.drop(request["paths"] as? [String] ?? [], on: pane)
             return true
         case "clipboard": return TestClipboard.contents
@@ -135,8 +135,7 @@ enum TestBridge {
         "fullscreen": .fullScreen, "settings": .settings, "about": .about, "restore-size": .restoreDefaultSize,
         "default-size": .makeSizeDefault, "close-tab": .closeTab, "take-screenshot": .takeScreenshot,
     ]
-    private static let greyedOut: Set<MenuCommand> = [.findInTerminal, .splitVertical, .splitHorizontal, .closePane, .nextPane,
-                                                      .previousPane, .multiExec, .runOnHosts]
+    private static let greyedOut: Set<MenuCommand> = [.findInTerminal, .multiExec, .runOnHosts]
     private static let explorerCommands: [String: String] = [
         "cut": "cut", "copy": "copy", "paste": "paste", "delete": "delete", "new-folder": "newFolder", "new-file": "newFile",
         "select-all": "selectAll", "open": "open", "edit": "edit", "info": "info", "reveal": "reveal", "open-default": "openWith",
@@ -167,7 +166,7 @@ enum TestBridge {
         case "new-tab-profile", "use-profile": return "disabled"
         case "copy", "paste", "select-all":
             if run {
-                if name == "paste" { workspace.activePane?.paste() } else if name == "copy" { workspace.activePane?.copySelection() }
+                if name == "paste" { workspace.focusedPane?.paste() } else if name == "copy" { workspace.focusedPane?.copySelection() }
             }
             return name == "select-all" ? "missing" : (run ? "ran" : "enabled")
         default: break
@@ -257,12 +256,16 @@ enum TestBridge {
                 let tabs = workspace.allTabs.enumerated().map { index, tab -> [String: Any] in
                     var entry: [String: Any] = ["name": tab.tabName, "selected": index == workspace.activeIndex]
                     if let pane = tab as? TerminalPane {
-                        number += 1
                         entry["kind"] = "terminal"
                         entry["layout"] = pane.showingExplorer ? "explorer" : "terminal"
-                        entry["panes"] = [["number": number, "focused": true, "columns": pane.terminal.cols, "rows": pane.terminal.rows,
-                                           "title": pane.title, "subtitle": pane.subtitle, "exited": !pane.isRunning, "text": pane.exportText(),
-                                           "fontSize": settings.effectiveSize] as [String: Any]]
+                        // Every pane of the tab, numbered across the window as on the Mac and Linux.
+                        let focused = pane.group?.focused ?? pane
+                        entry["panes"] = (pane.group?.panes ?? [pane]).map { shell -> [String: Any] in
+                            number += 1
+                            return ["number": number, "focused": shell === focused, "columns": shell.terminal.cols, "rows": shell.terminal.rows,
+                                    "title": shell.title, "subtitle": shell.subtitle, "exited": !shell.isRunning, "text": shell.exportText(),
+                                    "fontSize": settings.effectiveSize]
+                        }
                         // A tab's connection, as the Mac and Linux report it.
                         if let remote = pane.remote {
                             entry["connection"] = pane.isConnected ? ["state": "connected", "account": remote.label]
@@ -279,7 +282,7 @@ enum TestBridge {
                     }
                     return entry
                 }
-                let active = workspace.activePane
+                let active = workspace.focusedPane
                 return ["title": active?.title ?? "", "subtitle": active?.subtitle ?? "", "multiExec": false, "excluded": [Int](), "tabs": tabs]
             },
             "dialogs": openDialogs().map { ["heading": $0.heading, "responses": $0.buttons, "fields": $0.fields] as [String: Any] },

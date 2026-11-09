@@ -78,6 +78,14 @@ final class TerminalPane: WindowObject, TerminalDelegate {
     /// This tab's file explorer, made the first time it's shown, and whether it's showing instead of the terminal.
     var explorer: ExplorerPane?
     var showingExplorer = false
+    /// Split panes: set on a tab's first pane once it has been split (see `PaneGroup`).
+    var group: PaneGroup?
+    /// Tells the workspace this pane took the keyboard focus (for split panes).
+    var onFocus: ((TerminalPane) -> Void)?
+    /// The focused pane of a split tab is outlined in the accent color, as on the Mac and Linux.
+    var outlined = false {
+        didSet { if outlined != oldValue { invalidate() } }
+    }
 
     /// The command line this tab's process was started with, which decides how dropped paths are quoted.
     private(set) var commandLine = ""
@@ -328,6 +336,7 @@ final class TerminalPane: WindowObject, TerminalDelegate {
             return 0
         case WM_SETFOCUS:
             focused = true
+            onFocus?(self)
             CreateCaret(hwnd, nil, 1, fonts.cellHeight) // Lets screen readers and IMEs find the cursor.
             restartBlink()
             return 0
@@ -727,6 +736,14 @@ final class TerminalPane: WindowObject, TerminalDelegate {
             if screenRow == cursorRow && cursorVisible { drawCursor(dc, line: line, column: cursor.x, x: inset.left + Int32(cursor.x) * cw, y: y) }
         }
         if focused { SetCaretPos(inset.left + Int32(cursor.x) * cw, inset.top + Int32(cursorRow) * ch) }
+        if outlined {
+            let line = max(1, scaled(1.5, dpi: GetDpiForWindow(hwnd)))
+            let accent = systemAccentColor
+            fill(dc, RECT(left: 0, top: 0, right: width, bottom: line), accent)
+            fill(dc, RECT(left: 0, top: height - line, right: width, bottom: height), accent)
+            fill(dc, RECT(left: 0, top: 0, right: line, bottom: height), accent)
+            fill(dc, RECT(left: width - line, top: 0, right: width, bottom: height), accent)
+        }
         BitBlt(screen, 0, 0, width, height, dc, 0, 0, DWORD(SRCCOPY))
     }
 

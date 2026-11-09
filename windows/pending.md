@@ -29,7 +29,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] **5. Get Info on hosts** (#21) (§5): permissions, owner and group, Apply to enclosed items.
 - [x] **6. Administrator mode on hosts** (#22) (§5): SFTP under `sudo` over the tab's connection, the red bar.
 - [x] **7. Undo and Redo** in the explorer (§5), and bookmarks per host (#54).
-- [ ] **8. Split panes** (§2): Split Vertically / Horizontally, Close Pane, Next / Previous Pane, the focused
+- [x] **8. Split panes** (§2) (#55): Split Vertically / Horizontally, Close Pane, Next / Previous Pane, the focused
       pane outline.
 - [ ] **9. MultiExec** (§7): every terminal in a grid, typing into all of them, include / leave out.
 - [ ] **10. Run Command on Hosts** (§7).
@@ -52,7 +52,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 04:37)
+## Feature test results (2026-11-09 04:46)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
@@ -62,7 +62,7 @@ A test ran and the feature didn't do what the Mac version does.
 
 - [ ] **S4** Exit or Disconnect returns the tab, title and explorer to this computer. (§4): Disconnect returns the tab and title to this computer: expected the tab back on this computer (saw: 1 window(s), tabs ['Terminal 1', 'Terminal 2'], 1 pane(s), title 'herbs-test@192.168.1.241' '', dialogs [], last lines…
 
-### Missing (29)
+### Missing (23)
 
 The command isn't there, or it's greyed out.
 
@@ -70,11 +70,6 @@ The command isn't there, or it's greyed out.
 - [ ] **W10** Tailcat Peers button. (§2): Tailcat Peers: no `tailcat` command
 - [ ] **W11** Search button: searches files in the explorer, the scrollback otherwise. (§2): Search: `find` is not there
 - [ ] **W13** Main Menu: Find in Terminal…. (§2): Find in Terminal: `find-in-terminal` is greyed out
-- [ ] **T8** Typing `exit` closes pane, then tab, then window; in the last window it quits; in SSH it returns… (§2): exit closes the pane, then the tab: `split-vertical` is greyed out
-- [ ] **P1** Split Vertically (side by side) and Split Horizontally (stacked); panes split again and share… (§2): Split Vertically and Horizontally: `split-vertical` is greyed out
-- [ ] **P2** A new pane uses the current pane's profile and folder. (§2): A new pane starts in the current pane's folder: `split-vertical` is greyed out
-- [ ] **P3** Close Pane shortcut; `exit` closes a pane. (§2): Close Pane: `split-vertical` is greyed out
-- [ ] **P4** Select Next / Previous Pane. (§2): Select Next / Previous Pane: `split-vertical` is greyed out
 - [ ] **B1** Right-click menu: Copy, Paste, Paste Escaped Text, Select All, Find. (§2): Right-click menu: Copy, Paste, Paste Escaped Text, Select All, Find: the terminal has no right-click menu
 - [ ] **B2** Right-click menu: Clear to Start, Clear Scrollback, Reset. (§2): Right-click menu: Clear to Start, Clear Scrollback, Reset: the terminal has no right-click menu
 - [ ] **B3** Right-click menu: Split Vertically, Split Horizontally, Close Pane, New Tab, Show File Explorer. (§2): Right-click menu: Split Vertically, Split Horizontally, Close Pane, New Tab, Show File Explorer: the terminal has no right-click menu
@@ -82,7 +77,6 @@ The command isn't there, or it's greyed out.
 - [ ] **B8** Find in Terminal (scrollback search). (§2): Find in Terminal: `find-in-terminal` is greyed out
 - [ ] **B9** Copy and paste; Paste Escaped Text. (§2): Copy, Paste and Paste Escaped Text: `paste-escaped` is not there
 - [ ] **M1** Shell menu: New Tab, Export Session, Take Screenshot, New Tab with Profile, Use Profile. (§2): Menu commands: new-tab, export-session, take-screenshot, new-tab-profile, use-profile: `new-tab-profile` is greyed out
-- [ ] **M2** Shell menu: Split Vertically / Horizontally, Close Pane, Next / Previous Pane. (§2): Menu commands: split-vertical, split-horizontal, close-pane, next-pane, previous-pane: `split-vertical` is greyed out
 - [ ] **M3** Shell menu: MultiExec, Run Command on Hosts…. (§2): Menu commands: multiexec, run-on-hosts: `multiexec` is greyed out
 - [ ] **R1** Named profiles; each tab uses one; new tabs keep the current tab's profile. (§3): Named profiles: `new-tab-profile` is greyed out
 - [ ] **E6** File Actions menu: Upload, Download, Undo, Redo, Cut, Copy, Paste, Delete, Select All, Find. (§5): File Actions commands: `explorer.find` is not there
