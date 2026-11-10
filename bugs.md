@@ -92,3 +92,4 @@ Items marked *found in testing* were found while testing other work, not reporte
   - [x] Windows: not affected; R7 passes.
 - [x] **Feature tests: a run whose first test is checked by hand crashed** (`run.py`, UnboundLocalError on `seen`), so `--only B14` ran nothing. *Found in testing 2026-11-10 · all platforms (tests).* Fixed in #89.
 - [ ] **Windows: Shift+drag sometimes doesn't select while a full-screen program tracks the mouse** (feature test B14). It failed once in the full run of 2026-11-10 and passed alone three times since. *Found in testing 2026-11-10 · Windows.*
+- [ ] **Windows: Y1 sometimes finds only the toolbar in the UI Automation tree** (no terminal, no explorer buttons). It failed once in the full run of 2026-11-10 (PR #90) and passed alone three times since, also right after R8. *Found in testing 2026-11-10 · Windows.*

@@ -479,7 +479,10 @@ enum TestBridge {
                                     "profile": TerminalProfile.shared.name(of: shell.profileID), "selection": shell.bridgeSelection,
                                     "badge": shell.showingBadge ? shell.badgeText : NSNull(),
                                     "find": ["shown": shell.isFinding, "text": shell.findText, "matches": shell.findMatchCount],
-                                    "bellFlashes": shell.bellFlashes, "announcement": shell.lastAnnouncement ?? NSNull()]
+                                    "bellFlashes": shell.bellFlashes, "announcement": shell.lastAnnouncement ?? NSNull(),
+                                    // The alpha the pane last drew its background with (255 solid), and whether its
+                                    // window lets the desktop through.
+                                    "backgroundAlpha": shell.lastBackgroundAlpha, "seeThrough": Translucency.isOn(for: shell.hwnd)]
                         }
                         // A tab's connection, as the Mac and Linux report it.
                         if let remote = pane.remote {

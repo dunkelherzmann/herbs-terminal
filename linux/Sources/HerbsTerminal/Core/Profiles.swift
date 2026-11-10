@@ -91,6 +91,8 @@ struct ProfileSettings: Codable, Equatable {
     /// A ThemeLibrary preset name; empty means Basic.
     var theme = ""
     var backgroundOpacity = 1.0
+    /// Blur what's behind a see-through terminal (the Mac and Windows 11; GTK has no blur behind windows).
+    var blurBackground = false
     var scrollbackLines = 10_000
     var bell: TerminalBell = .audible
     /// Typed into the shell when a tab with this profile starts; empty for none.
@@ -126,6 +128,29 @@ struct ProfileSettings: Codable, Equatable {
         cursorBlinks = stock.cursorBlinks
         theme = stock.theme
         backgroundOpacity = stock.backgroundOpacity
+        blurBackground = stock.blurBackground
+    }
+}
+
+extension ProfileSettings {
+    /// Reads saved settings field by field: one written before a field existed, or with a value this version can't
+    /// read, keeps the stock value for it instead of losing the whole profile.
+    init(from decoder: Decoder) throws {
+        self.init()
+        let saved = try decoder.container(keyedBy: CodingKeys.self)
+        func read<T: Decodable>(_ key: CodingKeys, _ field: inout T) { if let value = try? saved.decode(T.self, forKey: key) { field = value } }
+        read(.fontFamily, &fontFamily)
+        read(.fontSize, &fontSize)
+        read(.zoom, &zoom)
+        read(.cursor, &cursor)
+        read(.cursorBlinks, &cursorBlinks)
+        read(.theme, &theme)
+        read(.backgroundOpacity, &backgroundOpacity)
+        read(.blurBackground, &blurBackground)
+        read(.scrollbackLines, &scrollbackLines)
+        read(.bell, &bell)
+        read(.startupCommand, &startupCommand)
+        read(.startDirectory, &startDirectory)
     }
 }
 

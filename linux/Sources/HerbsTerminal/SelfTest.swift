@@ -232,6 +232,22 @@ func fail(_ message: String, file: String = #fileID, line: Int = #line) { selfTe
 
 /// `herbs-terminal --self-test` in a debug build: runs the checks and exits with the number of failures.
 @MainActor
+enum SavedProfiles {
+    /// A profile saved before a field existed, or with a value this version can't read, keeps everything else.
+    static func olderProfilesKeepTheirSettings() throws {
+        let saved = #"{"fontFamily":"Fira Code","fontSize":17,"zoom":0,"cursor":"bar","cursorBlinks":false,"theme":"Nord","#
+            + #""backgroundOpacity":0.6,"scrollbackLines":5000,"bell":"ringing","startupCommand":"cd ~","startDirectory":"~/src"}"#
+        let settings = try JSONDecoder().decode(ProfileSettings.self, from: Data(saved.utf8))
+        expect(settings.fontFamily == "Fira Code" && settings.fontSize == 17 && settings.cursor == .bar && !settings.cursorBlinks)
+        expect(settings.theme == "Nord" && settings.backgroundOpacity == 0.6 && settings.scrollbackLines == 5000)
+        expect(settings.startupCommand == "cd ~" && settings.startDirectory == "~/src")
+        // No blur in the saved profile, and a bell value from elsewhere: both keep the stock value.
+        expect(!settings.blurBackground && settings.bell == .audible)
+        let again = try JSONDecoder().decode(ProfileSettings.self, from: JSONEncoder().encode(settings))
+        expect(again == settings)
+    }
+}
+
 enum SelfTest {
     static func run() -> Int32 {
         let checks: [(String, () throws -> Void)] = [
@@ -246,6 +262,7 @@ enum SelfTest {
             ("trash and undo", LocalFilesOnLinux.trashAndUndoPutsTheFileBack),
             ("copy names", LocalFilesOnLinux.copiesGetFreeNames),
             ("local permissions", LocalFilesOnLinux.permissionsChangeLocally),
+            ("older saved profiles", SavedProfiles.olderProfilesKeepTheirSettings),
             ("iTerm2 presets", ThemesAndText.readsAnITermPresetAndRejectsDamage),
             ("text detection", ThemesAndText.textDetection),
             ("session names and redaction", ThemesAndText.sessionNamesAndRedaction),

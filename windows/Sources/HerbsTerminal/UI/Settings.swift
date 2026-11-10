@@ -36,7 +36,7 @@ final class SettingsWindow: WindowObject {
 
     private enum Control: Int32 {
         case profileList = 100, newProfile, duplicateProfile, deleteProfile, name, startupCommand, startDirectory, defaultProfile,
-             font, size, sizeSpin, zoom, zoomReset, cursorBlock, cursorUnderline, cursorBar, blink, preview, restoreText,
+             font, size, sizeSpin, zoom, zoomReset, cursorBlock, cursorUnderline, cursorBar, opacity, opacityValue, blur, blink, preview, restoreText,
              scrollback, scrollbackSpin, bell, newTabs, shell, restoreSession, askBeforeClosing,
              sizeBadge, columns, columnsSpin, rows, rowsSpin, apply, useFront, resetSize,
              appearanceSystem, appearanceLight, appearanceDark, themeList, importTheme, removeTheme
@@ -229,10 +229,22 @@ final class SettingsWindow: WindowObject {
         label("Cursor:", y: 172)
         segments([.cursorBlock, .cursorUnderline, .cursorBar], CursorShape.allCases.map(\.title), x: fieldX, y: 172,
                  hint: "Cursor shape\nHow the text cursor is drawn in the terminal.")
-        check(.blink, "Blinking cursor", x: fieldX, y: 208, hint: "Blinking cursor\nBlink the cursor while the terminal has focus.")
-        let preview = add("STATIC", "Preview", style: DWORD(SS_OWNERDRAW) | DWORD(SS_NOTIFY), x: s(20), y: s(240), width: s(520), height: s(70), id: .preview)
+        label("Background opacity:", y: 208)
+        let opacity = add("msctls_trackbar32", "", style: DWORD(TBS_HORZ) | DWORD(TBS_NOTICKS) | DWORD(WS_TABSTOP),
+                          x: s(fieldX), y: s(206), width: s(260), height: s(28), id: .opacity)
+        SendMessageW(opacity, UINT(TBM_SETRANGEMIN), 0, 20)
+        SendMessageW(opacity, UINT(TBM_SETRANGEMAX), 1, 100)
+        SendMessageW(opacity, UINT(TBM_SETPAGESIZE), 0, 10)
+        hints.set(opacity, "Background opacity\nMake the terminal background see-through.", owner: hwnd!)
+        add("STATIC", "", style: DWORD(SS_LEFT), x: s(fieldX + 266), y: s(212), width: s(50), height: s(20), id: .opacityValue)
+        check(.blur, "Blur behind the terminal", x: fieldX, y: 240,
+              hint: Translucency.canBlur ? "Blur\nBlur what's behind a see-through terminal so text stays readable."
+                  : "Blur\nBlur what's behind a see-through terminal so text stays readable. Needs Windows 11 (22H2 or later).")
+        EnableWindow(controls[.blur], Translucency.canBlur)
+        check(.blink, "Blinking cursor", x: fieldX, y: 268, hint: "Blinking cursor\nBlink the cursor while the terminal has focus.")
+        let preview = add("STATIC", "Preview", style: DWORD(SS_OWNERDRAW) | DWORD(SS_NOTIFY), x: s(20), y: s(300), width: s(520), height: s(64), id: .preview)
         hints.set(preview, "Preview\nHow terminal text looks with this font and color theme.", owner: hwnd!)
-        push(.restoreText, "Restore Defaults", x: 20, y: 322, width: 140, hint: "Restore Defaults\nGo back to the stock Basic font, size and cursor.")
+        push(.restoreText, "Restore Defaults", x: 20, y: 376, width: 140, hint: "Restore Defaults\nGo back to the stock Basic font, size and cursor.")
     }
 
     private func buildTerminal() {
@@ -344,6 +356,9 @@ final class SettingsWindow: WindowObject {
         if page == .text { ShowWindow(controls[.zoomReset], settings.zoom != 0 ? SW_SHOW : SW_HIDE) }
         let cursors: [Control] = [.cursorBlock, .cursorUnderline, .cursorBar]
         for (index, shape) in CursorShape.allCases.enumerated() { setCheck(cursors[index], shape == settings.cursor) }
+        SendMessageW(controls[.opacity], UINT(TBM_SETPOS), 1, LPARAM(Int((settings.backgroundOpacity * 100).rounded())))
+        setText(controls[.opacityValue], "\(Int((settings.backgroundOpacity * 100).rounded()))%")
+        setCheck(.blur, settings.blurBackground)
         setCheck(.blink, settings.cursorBlinks)
         setText(controls[.preview], "Preview: \(settings.fontFamily.isEmpty ? FontSet.stockFamily : settings.fontFamily) \(settings.fontSize.formatted()) pt")
         if let preview = controls[.preview] { InvalidateRect(preview, nil, true) }
@@ -459,6 +474,13 @@ final class SettingsWindow: WindowObject {
         case .cursorBlock, .cursorUnderline, .cursorBar:
             let shape = CursorShape.allCases[Int(id.rawValue - Control.cursorBlock.rawValue)]
             profile.update(editing) { $0.cursor = shape }
+        case .opacity:
+            let percent = Int(SendMessageW(controls[.opacity], UINT(TBM_GETPOS), 0, 0))
+            setText(controls[.opacityValue], "\(percent)%")
+            profile.update(editing) { $0.backgroundOpacity = Double(percent) / 100 }
+        case .blur:
+            let on = isChecked(.blur)
+            profile.update(editing) { $0.blurBackground = on }
         case .blink:
             let on = isChecked(.blink)
             profile.update(editing) { $0.cursorBlinks = on }
@@ -516,7 +538,7 @@ final class SettingsWindow: WindowObject {
             guard ThemeLibrary.shared.isImported(name) else { return }
             ThemeLibrary.shared.removeImported(name)
             profile.update(editing) { $0.theme = "" }
-        case .sizeSpin, .zoom, .preview, .scrollbackSpin, .columnsSpin, .rowsSpin:
+        case .sizeSpin, .zoom, .opacityValue, .preview, .scrollbackSpin, .columnsSpin, .rowsSpin:
             break
         }
     }
@@ -682,6 +704,9 @@ final class SettingsWindow: WindowObject {
             guard let pointer = UnsafePointer<DRAWITEMSTRUCT>(bitPattern: Int(lParam)) else { return 0 }
             draw(pointer.pointee)
             return 1
+        case WM_HSCROLL where HWND(bitPattern: Int(lParam)) == controls[.opacity]:
+            commit(.opacity)
+            return 0
         case WM_CONTEXTMENU:
             if HWND(bitPattern: UInt(wParam)) == controls[.themeList] {
                 themeMenu(at: POINT(x: Int32(Int16(truncatingIfNeeded: lParam & 0xFFFF)), y: Int32(hiWord(lParam))))

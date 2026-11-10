@@ -8,7 +8,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 ## Next (top priority)
 
 - [x] **Settings with the Mac's five pages** (#89) (Profiles, Text, Terminal, Window, Colors), their controls, labels and hover texts, the profile and color theme lists drawn as on the Mac, Bell, the Window page's buttons and preset removal. Option as Meta isn't a setting: Alt always acts as Meta (spec §12). R7, R9, R10 and R11 work. (§3, feature tests) *Found 2026-11-10.*
-- [ ] **Background opacity and blur** (Settings ▸ Text, §3): the terminal draws with GDI, which can't make only the background see-through; needs drawing the background with alpha (DirectComposition or a layered window with per-pixel alpha) and Windows 11's acrylic backdrop for blur. R8 checks it. *Found 2026-11-10.*
+- [x] **Background opacity and blur** (#90) (Settings ▸ Text, §3): the terminal's background drawn with alpha into 32-bit bitmaps, the window's alpha honored by DWM, and Windows 11's acrylic backdrop for blur; solid while the explorer, an editor, MultiExec or the find bar is shown. R8 checks it. *Found 2026-11-10.*
 - [x] **Main Menu matches the Mac's in-window menus** (#70). It holds the same menus, submenus, order and shortcuts (Edit, Shell and Window included), and no command is reachable only somewhere else; W19 checks it. (§2, §14, enhancements.md) *Asked 2026-11-09.*
 
 ## To build
@@ -58,21 +58,16 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-10 14:28)
+## Feature test results (2026-11-10 15:45)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Broken (1)
+### Broken (2)
 
 A test ran and the feature didn't do what the Mac version does.
 
 - [ ] **B14** Full color, bold/italic/underline, wide characters, mouse reporting for full-screen programs. (§2): Mouse reporting: a full-screen program gets clicks, the wheel, and Shift+drag still selects: Shift+drag didn't select while the program tracks the mouse
-
-### Missing (1)
-
-The command isn't there, or it's greyed out.
-
-- [ ] **R8** Settings ▸ Text: any installed monospaced font, 6–72 pt, cursor shape and blink, opacity 20–100 %,… (§3): Settings ▸ Text: font, size 6–72, cursor, opacity 20–100 %, blur, blink, preview, Restore Defaults: Settings ▸ Text has no Background opacity, Blur behind the terminal (it has: Font, Size, Cursor, Blinking cursor,…
+- [ ] **Y1** Every control has a screen-reader name and hover hint (hint without repeating the name). (§9): Every drawn control has a name, and buttons a hover text: the explorer's explorer.back isn't named for screen readers (saw []); Screen readers read the terminal's text, and hear new output: the terminal isn't in the UI…
 
 ### Not checked automatically (34)
 
