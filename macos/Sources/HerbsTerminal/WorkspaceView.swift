@@ -122,6 +122,13 @@ final class Workspace: ObservableObject {
         return (1...).first { !used.contains($0) }!
     }
 
+    /// The default profile's start folder, where a new window's first tab starts; nil when it has none.
+    private static var defaultProfileFolder: String? {
+        let profile = TerminalProfile.shared
+        let folder = profile.settings(for: profile.defaultProfileID).startDirectory
+        return folder.isEmpty ? nil : (folder as NSString).expandingTildeInPath
+    }
+
     /// Reopened from the last session; such windows keep the size macOS restores.
     let isRestored: Bool
 
@@ -140,7 +147,7 @@ final class Workspace: ObservableObject {
             }
             return item
         }
-        let all = restored.isEmpty ? [TerminalTab(number: 1)] : restored
+        let all = restored.isEmpty ? [TerminalTab(number: 1, directory: Self.defaultProfileFolder)] : restored
         tabs = all
         selected = all[min(max(saved?.selected ?? 0, 0), all.count - 1)]
         all.forEach(configure)
@@ -314,7 +321,7 @@ final class Workspace: ObservableObject {
                 shell.close()
             }
         }
-        let fresh = TerminalTab(number: 1)
+        let fresh = TerminalTab(number: 1, directory: Self.defaultProfileFolder)
         tabs = tabs.filter { $0.editor != nil } + [fresh]
         excludedFromMultiExec = []
         selected = fresh

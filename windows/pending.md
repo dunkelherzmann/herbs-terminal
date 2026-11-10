@@ -7,6 +7,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 
 ## Next (top priority)
 
+- [ ] **Settings with the Mac's five pages** (Profiles, Text, Terminal, Window, Colors), its controls and labels. Missing now: the profile list with New Profile / Duplicate / Delete Profile and a Name field (instead of Edit profile, New, Rename… and Delete…), Background opacity, Blur, the preview, Option as Meta (or a line in the spec saying Alt always acts as Meta, as on Linux), Bell, Columns and Rows fields, Apply to Open Windows, Use Front Window's Size, Reset, the Color theme list, Import iTerm2 Preset… and Remove. The Windows-only Shell choice stays, on the Terminal page. R7–R11 check it. (§3, feature tests) *Found 2026-11-10.*
 - [x] **Main Menu matches the Mac's in-window menus** (#70). It holds the same menus, submenus, order and shortcuts (Edit, Shell and Window included), and no command is reachable only somewhere else; W19 checks it. (§2, §14, enhancements.md) *Asked 2026-11-09.*
 
 ## To build
@@ -56,11 +57,21 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-09 23:58)
+## Feature test results (2026-11-10 13:11)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Not checked automatically (38)
+### Missing (5)
+
+The command isn't there, or it's greyed out.
+
+- [ ] **R7** Settings ▸ Profiles: add, duplicate, rename, delete, choose the default; startup command and start… (§3): Settings ▸ Profiles: add, rename, duplicate, delete, the default, startup command and start folder: Settings ▸ Profiles has no Profiles, New Profile, Delete Profile, Name (it has: Edit profile, New, Duplicate, Rename…,…
+- [ ] **R8** Settings ▸ Text: any installed monospaced font, 6–72 pt, cursor shape and blink, opacity 20–100 %,… (§3): Settings ▸ Text: font, size 6–72, cursor, opacity 20–100 %, blur, blink, preview, Restore Defaults: Settings ▸ Text has no Background opacity, Blur behind the terminal, Preview (it has: Edit profile, New, Duplicate,…
+- [ ] **R9** Settings ▸ Terminal: Option as Meta, scrollback 100–1,000,000, bell, where new tabs open, restore… (§3): Settings ▸ Terminal: Option as Meta, scrollback 100–1,000,000, bell, new tabs, restore, ask before closing: Settings ▸ Terminal has no Use Option as Meta key, Scrollback, Bell (it has: Edit profile, New, Duplicate,…
+- [ ] **R10** Settings ▸ Window: columns × rows for new windows (default 100 × 30), size badge toggle, Apply to… (§3): Settings ▸ Window: columns × rows (100 × 30), size badge, Apply to Open Windows, Use Front Window's Size, Reset: Settings ▸ Window has no Columns, Rows, Apply to Open Windows, Use Front Window's Size, Reset (it has:…
+- [ ] **R11** Settings ▸ Colors: color scheme, presets, import and removal. (§3): Settings ▸ Colors: color scheme, presets, import and removal: Settings ▸ Colors has no Color theme, Import iTerm2 Preset…, Remove (it has: Edit profile, New, Duplicate, Rename…, Delete…, Use as Default, Run command,…
+
+### Not checked automatically (35)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -70,11 +81,6 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **P6** The tab's SSH connection and explorer belong to its first pane; the next pane takes over when it… (§2): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **B6** Bell: sound, flash, both or none; flash at most twice a second, gentle with Reduce Motion. (§2): sound and flash can't be observed by the bridge
 - [ ] **B14** Full color, bold/italic/underline, wide characters, mouse reporting for full-screen programs. (§2): visual: needs the window's picture compared with the Mac's
-- [ ] **R7** Settings ▸ Profiles: add, duplicate, rename, delete, choose the default; startup command and start… (§3): Settings opens; its Profiles page isn't read by the bridge yet
-- [ ] **R8** Settings ▸ Text: any installed monospaced font, 6–72 pt, cursor shape and blink, opacity 20–100 %,… (§3): Settings opens; its Text page isn't read by the bridge yet
-- [ ] **R9** Settings ▸ Terminal: Option as Meta, scrollback 100–1,000,000, bell, where new tabs open, restore… (§3): Settings opens; its Terminal page isn't read by the bridge yet
-- [ ] **R10** Settings ▸ Window: columns × rows for new windows (default 100 × 30), size badge toggle, Apply to… (§3): Settings opens; its Window page isn't read by the bridge yet
-- [ ] **R11** Settings ▸ Colors: color scheme, presets, import and removal. (§3): Settings opens; its Colors page isn't read by the bridge yet
 - [ ] **R12** Light and dark follow the system, for the whole app (dialogs and Settings included). (§3): visual: needs pictures in light and dark mode
 - [ ] **S6** Shared connection (ControlMaster) so the explorer and transfers reuse the shell's login; keepalive… (§4): needs the user's own ssh setup or a dropped link; not automated yet
 - [ ] **S8** Host-key questions, one-time codes and retries asked in the terminal. (§4): needs the user's own ssh setup or a dropped link; not automated yet
@@ -94,6 +100,8 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **L3** Change the Administrator Password re-encrypts everything; removing it asks. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L4** Plain text needs an explicit choice and a second confirmation. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L7** Opening asks for the Administrator Password; Skip shows plain-text logins with an unlock bar. (§6): needs the logins locked at start, which takes a second launch of the same test copy
+- [ ] **C3** Connect: shell and explorer through Tailcat, address never in arguments or history. (§8): needs the test host shared over tailcat (~/.config/herbs-terminal/test-tailcat holds its address)
+- [ ] **C4** Clear message when nothing answers SSH on the peer. (§8): needs a peer whose SSH service is off (parity/tests/tailcat-host.sh shares one for a run)
 - [ ] **C7** Unlock… / Lock… button with the vault states. (§8): the Tailcat window isn't driven by the bridge yet
 - [ ] **Y3** Password fields have visible labels. (§9): covered by the accessibility tree; not automated here
 - [ ] **Y4** Resizing follows Reduce Motion; visual bell limited to twice a second. (§9): window resizing isn't animated on Windows; the slower fade with animations off is visual

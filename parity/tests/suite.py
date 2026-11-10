@@ -926,13 +926,259 @@ def _(c):
     s = c.until(lambda s: s.get("dialogs"), "expected Restore Defaults to ask first")
     c.answer(next(r for r in s["dialogs"][0]["responses"] if r.lower() == "cancel"))
 
-for fid, what in (("R7", "Profiles"), ("R8", "Text"), ("R9", "Terminal"), ("R10", "Window"), ("R11", "Colors")):
-    def settings_test(c, what=what):
-        before = len(c.state()["toplevels"])
-        c.command("settings", settle=1.5)
-        c.until(lambda s: len(s["toplevels"]) > before, "expected the Settings window to open")
-        c.unverified(f"Settings opens; its {what} page isn't read by the bridge yet")
-    test(fid, f"Settings ▸ {what}")(settings_test)
+# Settings pages (R7–R11): the bridge reads a page's controls as the window shows them (kind, label, value, choices,
+# range, enabled) and changes one the way a person would; each test then checks the change took effect.
+# Labels are the Mac's. What a version leaves out by design (SPECIFICATION.md §11, §12) isn't asked of it.
+NOT_IN_SETTINGS = {"linux": {"Blur behind the terminal", "Use Option as Meta key"}}
+
+
+class SettingsPage:
+    def __init__(self, c, name):
+        self.c, self.name = c, name
+        self.read()
+
+    def read(self):
+        try:
+            result = self.c.bridge.call("settings-page", page=self.name)
+        except bridge_module.BridgeError as error:
+            if "unknown op" in str(error):
+                self.c.unverified("this platform's test bridge can't read the Settings pages yet")
+            raise Outcome("broken", f"Settings ▸ {self.name}: {error}")
+        self.shown, self.controls = result.get("page"), result.get("controls", [])
+        return self
+
+    def labels(self):
+        return [x["label"] for x in self.controls]
+
+    def find(self, label):
+        return next((x for x in self.controls if x["label"] == label), None)
+
+    def require(self, *wanted):
+        """Every control the spec names for this page is there, with the right kind: ("Size", "number") or a label."""
+        skip = NOT_IN_SETTINGS.get(self.c.platform, set())
+        absent, wrong = [], []
+        for entry in wanted:
+            label, kinds = (entry, None) if isinstance(entry, str) else (entry[0], entry[1:])
+            if label in skip:
+                continue
+            control = self.find(label)
+            if control is None:
+                absent.append(label)
+            elif kinds and control["kind"] not in kinds:
+                wrong.append(f"{label} is a {control['kind']}, not a {'/'.join(kinds)}")
+        if absent:
+            raise Outcome("missing", f"Settings ▸ {self.name} has no {', '.join(absent)} (it has: {', '.join(self.labels())})")
+        if wrong:
+            raise Outcome("broken", "; ".join(wrong))
+
+    def need(self, label):
+        control = self.find(label)
+        if control is None:
+            raise Outcome("missing", f"Settings ▸ {self.name} has no {label} (it has: {', '.join(self.labels())})")
+        return control
+
+    def value(self, label):
+        return self.read().need(label).get("value")
+
+    def enabled(self, label):
+        return self.read().need(label).get("enabled", True)
+
+    def set(self, label, value=None, settle=0.8):
+        """Presses a button, sets a toggle, types into a field, picks a choice or moves a slider."""
+        control = self.read().need(label)
+        if not control.get("enabled", True):
+            raise Outcome("broken", f"{label} is greyed out")
+        try:
+            self.c.bridge.call("settings-set", page=self.name, label=label, value=value)
+        except bridge_module.BridgeError as error:
+            raise Outcome("broken", f"changing {label}: {error}")
+        time.sleep(settle)
+        return self.read()
+
+    def expect_value(self, label, wanted, what=None):
+        seen = None
+        for _ in range(12):
+            seen = self.value(label)
+            if seen == wanted or (isinstance(wanted, float) and isinstance(seen, (int, float)) and abs(seen - wanted) < 0.02):
+                return
+            time.sleep(0.25)
+        raise Outcome("broken", what or f"{label} shows {seen!r}, expected {wanted!r}")
+
+
+def open_settings(c, page):
+    before = len(c.state()["toplevels"])
+    c.command("settings", settle=1.5)
+    c.until(lambda s: len(s["toplevels"]) > before, "expected the Settings window to open")
+    return SettingsPage(c, page)
+
+
+def answer_if_asked(c, *words):
+    """Answers a confirmation (Windows asks before deleting a profile) with the button naming the action."""
+    s = c.state()
+    if s.get("dialogs"):
+        responses = s["dialogs"][0]["responses"]
+        c.answer(next((r for r in responses if any(w in r.lower() for w in words)), responses[0]))
+
+
+@test("R7", "Settings ▸ Profiles: add, rename, duplicate, delete, the default, startup command and start folder")
+def _(c):
+    p = open_settings(c, "Profiles")
+    p.require(("Profiles", "choice"), ("New Profile", "button"), ("Duplicate", "button"), ("Delete Profile", "button"),
+              ("Name", "text"), ("Run command", "text"), ("Start in", "text"), ("Use as Default", "button"))
+    p.set("New Profile")
+    c.until(lambda s: "New Profile" in s["profiles"], "expected New Profile among the profiles")
+    p.expect_value("Name", "New Profile", "the new profile isn't the one being edited")
+    p.set("Name", "Test Renamed")
+    c.until(lambda s: "Test Renamed" in s["profiles"] and "New Profile" not in s["profiles"], "expected renaming to show Test Renamed")
+    p.set("Duplicate")
+    c.until(lambda s: "Test Renamed copy" in s["profiles"], "expected Duplicate to add Test Renamed copy")
+    p.expect_value("Name", "Test Renamed copy", "the copy isn't the one being edited")
+    p.set("Delete Profile", settle=1.2)
+    answer_if_asked(c, "delete", "remove")
+    c.until(lambda s: "Test Renamed copy" not in s["profiles"] and "Test Renamed" in s["profiles"], "expected Delete Profile to remove the copy")
+    p.set("Profiles", "Test Renamed")
+    p.expect_value("Name", "Test Renamed", "choosing Test Renamed in the list didn't select it for editing")
+    word = "PROFILE" + "RAN"
+    p.set("Run command", f'echo {word[:3]}""{word[3:]}' if c.app.shell == "posix" else f"echo {word[:3]}^{word[3:]}")
+    folder = os.path.join(c.app.home, "profile-start")
+    os.makedirs(folder, exist_ok=True)
+    p.set("Start in", folder)
+    p.set("Use as Default")
+    c.expect(not p.enabled("Use as Default"), "Use as Default stays available after making Test Renamed the default")
+    p.set("Profiles", "Basic")
+    c.expect(p.enabled("Use as Default"), "Use as Default is greyed out for Basic, which is no longer the default")
+    windows = len(c.state()["windows"])
+    c.command("new-window", settle=3)
+    c.until(lambda s: len(s["windows"]) > windows and c.pane(s).get("profile") == "Test Renamed",
+            "expected a new window to start with Test Renamed, the new default profile", timeout=8)
+    c.until(lambda s: word in c.text(s), "expected the profile's run command to run in the new window", timeout=8)
+    c.command("new-tab", settle=2)
+    c.until(lambda s: c.pane(s).get("profile") == "Test Renamed", "expected the new tab to keep Test Renamed")
+    c.pwd()
+    c.until(lambda s: "profile-start" in c.text(s), "expected a new tab with the profile to start in its start folder")
+
+
+@test("R7", "A new window starts in the default profile's start folder")
+def _(c):
+    p = open_settings(c, "Profiles")
+    folder = os.path.join(c.app.home, "window-start")
+    os.makedirs(folder, exist_ok=True)
+    p.set("Start in", folder)
+    windows = len(c.state()["windows"])
+    c.command("new-window", settle=3)
+    c.until(lambda s: len(s["windows"]) > windows, "expected a new window")
+    c.pwd()
+    c.until(lambda s: "window-start" in c.text(s), "expected the new window's first tab to start in the profile's start folder")
+
+
+@test("R8", "Settings ▸ Text: font, size 6–72, cursor, opacity 20–100 %, blur, blink, preview, Restore Defaults")
+def _(c):
+    p = open_settings(c, "Text")
+    p.require(("Font", "choice"), ("Size", "number"), ("Cursor", "choice"), ("Background opacity", "slider"),
+              ("Blur behind the terminal", "toggle"), ("Blinking cursor", "toggle"), "Preview", ("Restore Defaults", "button"))
+    font, size, cursor, opacity = p.need("Font"), p.need("Size"), p.need("Cursor"), p.need("Background opacity")
+    c.expect(len(font.get("options", [])) >= 2, f"Font lists {font.get('options')}: expected the installed monospaced fonts")
+    c.expect((size.get("min"), size.get("max")) == (6, 72), f"Size goes from {size.get('min')} to {size.get('max')}, not 6–72")
+    c.expect({"Block", "Underline", "Bar"} <= set(cursor.get("options", [])), f"Cursor offers {cursor.get('options')}")
+    c.expect((opacity.get("min"), opacity.get("max")) == (0.2, 1), f"Background opacity goes from {opacity.get('min')} to {opacity.get('max')}, not 20–100 %")
+    start_size, start_cursor = c.pane()["fontSize"], cursor.get("value")
+    p.set("Size", 18)
+    c.until(lambda s: c.pane(s)["fontSize"] == 18, "expected the open terminal to switch to 18 pt at once")
+    preview = p.need("Preview").get("value", "")
+    c.expect("18" in str(preview), f"the preview didn't follow the new size (it shows {preview!r})")
+    other = next(f for f in font["options"] if f != font.get("value"))
+    p.set("Font", other)
+    p.expect_value("Font", other)
+    p.set("Cursor", "Bar")
+    p.expect_value("Cursor", "Bar")
+    p.set("Background opacity", 0.5)
+    p.expect_value("Background opacity", 0.5)
+    for toggle in ("Blur behind the terminal", "Blinking cursor"):
+        if p.find(toggle):
+            was = p.value(toggle)
+            p.set(toggle, not was)
+            p.expect_value(toggle, not was)
+    p.set("Restore Defaults", settle=1.2)
+    c.until(lambda s: c.pane(s)["fontSize"] == start_size, f"expected Restore Defaults to return to {start_size} pt")
+    p.expect_value("Cursor", start_cursor, "Restore Defaults left the cursor shape changed")
+
+
+@test("R9", "Settings ▸ Terminal: Option as Meta, scrollback 100–1,000,000, bell, new tabs, restore, ask before closing")
+def _(c):
+    p = open_settings(c, "Terminal")
+    p.require(("Use Option as Meta key", "toggle"), ("Scrollback", "number"), ("Bell", "choice"), ("New tabs open in", "choice"),
+              ("Restore windows and tabs when Herb's Terminal opens", "toggle"), ("Ask before closing a tab with running processes", "toggle"))
+    scrollback, bell, new_tabs = p.need("Scrollback"), p.need("Bell"), p.need("New tabs open in")
+    c.expect((scrollback.get("min"), scrollback.get("max")) == (100, 1_000_000),
+             f"Scrollback goes from {scrollback.get('min')} to {scrollback.get('max')}, not 100–1,000,000")
+    c.expect(len(bell.get("options", [])) == 4, f"Bell offers {bell.get('options')}: expected sound, flash, both and none")
+    c.expect(new_tabs.get("options") == ["Same folder as the current tab", "Home folder"], f"New tabs open in offers {new_tabs.get('options')}")
+    p.set("Scrollback", 500)
+    p.expect_value("Scrollback", 500)
+    other = next(b for b in bell["options"] if b != bell.get("value"))
+    p.set("Bell", other)
+    p.expect_value("Bell", other)
+    p.set("New tabs open in", "Home folder")
+    p.expect_value("New tabs open in", "Home folder")
+    asked = c.state()["settings"].get("askBeforeClosing")
+    p.set("Ask before closing a tab with running processes", not asked)
+    c.until(lambda s: s["settings"].get("askBeforeClosing") == (not asked), "expected Ask before closing to change the app's setting")
+    for toggle in ("Use Option as Meta key", "Restore windows and tabs when Herb's Terminal opens"):
+        if p.find(toggle):
+            was = p.value(toggle)
+            p.set(toggle, not was)
+            p.expect_value(toggle, not was)
+
+
+@test("R10", "Settings ▸ Window: columns × rows (100 × 30), size badge, Apply to Open Windows, Use Front Window's Size, Reset")
+def _(c):
+    p = open_settings(c, "Window")
+    p.require(("Show columns × rows while resizing", "toggle"), ("Columns", "number"), ("Rows", "number"),
+              ("Apply to Open Windows", "button"), ("Use Front Window's Size", "button"), ("Reset", "button"))
+    c.expect((p.value("Columns"), p.value("Rows")) == (100, 30), f"new windows are {p.value('Columns')} × {p.value('Rows')}, not 100 × 30")
+    p.set("Columns", 90)
+    p.set("Rows", 25)
+    c.until(lambda s: (s["settings"]["windowColumns"], s["settings"]["windowRows"]) == (90, 25), "expected 90 × 25 for new windows")
+    p.set("Apply to Open Windows", settle=1.5)
+    c.until(lambda s: (c.pane(s)["columns"], c.pane(s)["rows"]) == (90, 25), "expected Apply to Open Windows to make the window 90 × 25", timeout=8)
+    p.set("Reset")
+    p.expect_value("Columns", 100)
+    p.expect_value("Rows", 30)
+    p.set("Use Front Window's Size")
+    p.expect_value("Columns", 90, "Use Front Window's Size didn't copy the window's 90 columns")
+    p.expect_value("Rows", 25, "Use Front Window's Size didn't copy the window's 25 rows")
+    was = p.value("Show columns × rows while resizing")
+    p.set("Show columns × rows while resizing", not was)
+    p.expect_value("Show columns × rows while resizing", not was)
+
+
+@test("R11", "Settings ▸ Colors: color scheme, presets, import and removal")
+def _(c):
+    p = open_settings(c, "Colors")
+    p.require(("Appearance", "choice"), ("Color theme", "choice"), ("Import iTerm2 Preset…", "button"), ("Remove", "button"))
+    scheme, themes = p.need("Appearance"), p.need("Color theme")
+    c.expect(scheme.get("options") == ["System", "Light", "Dark"], f"Appearance offers {scheme.get('options')}")
+    want = ["Solarized Dark", "Solarized Light", "Tango Dark", "Tango Light", "Gruvbox Dark", "Nord"]
+    c.expect(all(n in themes.get("options", []) for n in want), f"Color theme offers {themes.get('options')}")
+    p.set("Appearance", "Dark")
+    p.expect_value("Appearance", "Dark")
+    p.set("Appearance", "System")
+    p.set("Color theme", "Nord")
+    p.expect_value("Color theme", "Nord")
+    c.expect(not p.enabled("Remove"), "Remove is available for Nord, a built-in preset")
+    path = os.path.join(c.app.home, "Test Sunset.itermcolors")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(ITERM_PRESET)
+    c.bridge.call("choose-file", path=path)
+    p.set("Import iTerm2 Preset…", settle=1.5)
+    answer_if_asked(c, "ok")
+    c.until(lambda s: "Test Sunset" in s.get("presets", []), "expected Test Sunset among the presets", timeout=8)
+    p.expect_value("Color theme", "Test Sunset", "the imported preset isn't the one in use")
+    p.set("Remove", settle=1.2)
+    answer_if_asked(c, "remove", "delete")
+    c.until(lambda s: "Test Sunset" not in s.get("presets", []), "expected Remove to delete the imported preset")
+    c.expect("Test Sunset" not in (p.need("Color theme").get("options") or []), "Test Sunset is still listed after Remove")
+
 manual("R12", "Light and dark for the whole app", "visual: needs pictures in light and dark mode")
 
 # ---------------------------------------------------------------- S: SSH

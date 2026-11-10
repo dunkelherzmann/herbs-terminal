@@ -35,16 +35,20 @@ private struct ProfilesSettings: View {
                 }
                 .frame(width: 170, height: 230)
                 .hint("Profiles\nSelect a profile to edit it here and on the Text, Terminal and Colors tabs.")
+                .bridged("Profiles", "Profiles", .choice($profile.editingID) { profile.profiles.map { ($0.name, $0.id) } })
                 HStack(spacing: 4) {
-                    Button { profile.editingID = profile.addProfile(named: "New Profile") } label: { Image(systemName: "plus") }
+                    Button { newProfile() } label: { Image(systemName: "plus") }
                         .hint("New Profile\nAdd a profile with the stock Terminal Basic settings.")
-                    Button { profile.editingID = profile.addProfile(named: profile.name(of: profile.editingID) + " copy", copying: profile.editingID) } label: {
+                        .bridged("Profiles", "New Profile", .button { newProfile() })
+                    Button { duplicate() } label: {
                         Image(systemName: "plus.square.on.square")
                     }
                     .hint("Duplicate\nCopy the selected profile.")
-                    Button { profile.removeProfile(profile.editingID) } label: { Image(systemName: "minus") }
+                    .bridged("Profiles", "Duplicate", .button { duplicate() })
+                    Button { deleteProfile() } label: { Image(systemName: "minus") }
                         .disabled(profile.profiles.count < 2)
                         .hint("Delete Profile\nRemove the selected profile; tabs using it switch to the default.")
+                        .bridged("Profiles", "Delete Profile", .button(enabled: { profile.profiles.count > 1 }) { deleteProfile() })
                 }
                 .buttonStyle(.borderless)
             }
@@ -52,16 +56,31 @@ private struct ProfilesSettings: View {
                 TextField("Name:", text: Binding(get: { profile.name(of: profile.editingID) },
                                                  set: { profile.rename(profile.editingID, to: $0) }))
                     .hint("Name\nHow this profile appears in Shell ▸ New Tab with Profile.")
+                    .bridged("Profiles", "Name", .text(Binding(get: { profile.name(of: profile.editingID) },
+                                                              set: { profile.rename(profile.editingID, to: $0) })))
                 TextField("Run command:", text: $profile.startupCommand, prompt: Text("none"))
                     .hint("Startup command\nTyped into the shell when a tab with this profile opens, e.g. `ssh build-box` or `cd ~/src`.")
+                    .bridged("Profiles", "Run command", .text($profile.startupCommand))
                 TextField("Start in:", text: $profile.startDirectory, prompt: Text("Settings ▸ Terminal ▸ New tabs open in"))
                     .hint("Start folder\nWhere new tabs with this profile start, e.g. ~/Projects. Empty uses the New tabs setting.")
-                Button("Use as Default") { profile.defaultProfileID = profile.editingID }
+                    .bridged("Profiles", "Start in", .text($profile.startDirectory))
+                Button("Use as Default") { useAsDefault() }
                     .disabled(profile.defaultProfileID == profile.editingID)
                     .hint("Use as Default\nNew windows, and new tabs from the New Tab button, start with this profile.")
+                    .bridged("Profiles", "Use as Default", .button(enabled: { profile.defaultProfileID != profile.editingID }) { useAsDefault() })
             }
         }
     }
+
+    private func newProfile() { profile.editingID = profile.addProfile(named: "New Profile") }
+
+    private func duplicate() {
+        profile.editingID = profile.addProfile(named: profile.name(of: profile.editingID) + " copy", copying: profile.editingID)
+    }
+
+    private func deleteProfile() { profile.removeProfile(profile.editingID) }
+
+    private func useAsDefault() { profile.defaultProfileID = profile.editingID }
 }
 
 /// Which profile the Text, Terminal and Colors tabs are editing.
@@ -88,10 +107,12 @@ private struct TextSettings: View {
                 ForEach(TerminalProfile.monospacedFamilies, id: \.self) { Text($0).tag($0) }
             }
             .hint("Font\nThe monospaced typeface used by every terminal tab.")
+            .bridged("Text", "Font", .choice($profile.fontFamily) { [("SF Mono Terminal (Basic)", "")] + TerminalProfile.monospacedFamilies.map { ($0, $0) } })
             HStack {
                 TextField("Size:", value: $profile.fontSize, format: .number.precision(.fractionLength(0...1)))
                     .frame(width: 140)
                 Stepper("", value: $profile.fontSize, in: TerminalProfile.sizeRange, step: 1).labelsHidden()
+                    .bridged("Text", "Size", .number($profile.fontSize, TerminalProfile.sizeRange))
                 Text("pt").foregroundStyle(.secondary)
                 if profile.zoom != 0 {
                     Text("zoomed \(profile.zoom > 0 ? "+" : "")\(Int(profile.zoom)) pt").foregroundStyle(.secondary)
@@ -105,18 +126,23 @@ private struct TextSettings: View {
             }
             .pickerStyle(.segmented)
             .hint("Cursor shape\nHow the text cursor is drawn in the terminal.")
+            .bridged("Text", "Cursor", .choice($profile.cursor) { CursorShape.allCases.map { ($0.title, $0) } })
             HStack {
                 Slider(value: $profile.backgroundOpacity, in: 0.2...1) { Text("Background opacity:") }
                 Text("\(Int(profile.backgroundOpacity * 100))%").monospacedDigit().frame(width: 40, alignment: .trailing)
             }
             .hint("Background opacity\nMake the terminal background see-through.")
+            .bridged("Text", "Background opacity", .slider($profile.backgroundOpacity, 0.2...1))
             Toggle("Blur behind the terminal", isOn: $profile.blurBackground)
                 .hint("Blur\nBlur what's behind a see-through terminal so text stays readable.")
+                .bridged("Text", "Blur behind the terminal", .toggle($profile.blurBackground))
             Toggle("Blinking cursor", isOn: $profile.cursorBlinks)
                 .hint("Blinking cursor\nBlink the cursor while the terminal has focus.")
+                .bridged("Text", "Blinking cursor", .toggle($profile.cursorBlinks))
             preview
             Button("Restore Defaults") { profile.resetText() }
                 .hint("Restore Defaults\nGo back to the stock Terminal Basic font, size and cursor.")
+                .bridged("Text", "Restore Defaults", .button { profile.resetText() })
         }
     }
 
@@ -131,6 +157,7 @@ private struct TextSettings: View {
             .padding(10)
             .background(Color(nsColor: background), in: RoundedRectangle(cornerRadius: 6))
             .hint("Preview\nHow terminal text looks with this font and color theme.")
+            .bridged("Text", "Preview", .display { "\(profile.font.fontName) \(Int(profile.font.pointSize)) pt" })
     }
 }
 
@@ -142,25 +169,31 @@ private struct ShellSettings: View {
             EditingProfileHeader()
             Toggle("Use Option as Meta key", isOn: $profile.optionAsMeta)
                 .hint("Option as Meta\nOption+key sends Esc+key (for Emacs and shell word movement) instead of typing special characters.")
+                .bridged("Terminal", "Use Option as Meta key", .toggle($profile.optionAsMeta))
             HStack {
                 TextField("Scrollback:", value: $profile.scrollbackLines, format: .number)
                     .frame(width: 180)
                 Text("lines").foregroundStyle(.secondary)
             }
             .hint("Scrollback\nHow many lines each tab keeps above the screen (100–1,000,000).")
+            .bridged("Terminal", "Scrollback", .number($profile.scrollbackLines, 100...1_000_000))
             Picker("Bell:", selection: $profile.bell) {
                 ForEach(TerminalBell.allCases) { Text($0.title).tag($0) }
             }
             .hint("Bell\nWhat happens when a program rings the terminal bell.")
+            .bridged("Terminal", "Bell", .choice($profile.bell) { TerminalBell.allCases.map { ($0.title, $0) } })
             Picker("New tabs open in:", selection: $profile.newTabsInSameFolder) {
                 Text("Same folder as the current tab").tag(true)
                 Text("Home folder").tag(false)
             }
             .hint("New tabs\nWhere a new local tab's shell starts.")
+            .bridged("Terminal", "New tabs open in", .choice($profile.newTabsInSameFolder) { [("Same folder as the current tab", true), ("Home folder", false)] })
             Toggle("Restore windows and tabs when Herb's Terminal opens", isOn: $profile.restoreSession)
                 .hint("Restore session\nReopen your windows and tabs, with their folders, layouts and names, at launch.")
+                .bridged("Terminal", "Restore windows and tabs when Herb's Terminal opens", .toggle($profile.restoreSession))
             Toggle("Ask before closing a tab with running processes", isOn: $profile.askBeforeClosing)
                 .hint("Ask before closing\nConfirm before ending a program or SSH session by closing its tab.")
+                .bridged("Terminal", "Ask before closing a tab with running processes", .toggle($profile.askBeforeClosing))
         }
     }
 }
@@ -172,30 +205,42 @@ private struct WindowSettings: View {
         Form {
             Toggle("Show columns × rows while resizing", isOn: $profile.showSizeWhileResizing)
                 .hint("Size while resizing\nShow the terminal's size, like 100 × 30, while you resize the window.")
+                .bridged("Window", "Show columns × rows while resizing", .toggle($profile.showSizeWhileResizing))
             HStack {
                 TextField("Columns:", value: clamped($profile.windowColumns, TerminalProfile.gridRange.columns), format: .number)
                     .frame(width: 160)
                 Stepper("", value: $profile.windowColumns, in: TerminalProfile.gridRange.columns).labelsHidden()
+                    .bridged("Window", "Columns", .number(clamped($profile.windowColumns, TerminalProfile.gridRange.columns), TerminalProfile.gridRange.columns))
             }
             .hint("Columns\nCharacters per line in new windows: the first number the resize badge shows.")
             HStack {
                 TextField("Rows:", value: clamped($profile.windowRows, TerminalProfile.gridRange.rows), format: .number)
                     .frame(width: 160)
                 Stepper("", value: $profile.windowRows, in: TerminalProfile.gridRange.rows).labelsHidden()
+                    .bridged("Window", "Rows", .number(clamped($profile.windowRows, TerminalProfile.gridRange.rows), TerminalProfile.gridRange.rows))
             }
             .hint("Rows\nLines of text in new windows: the second number the resize badge shows.")
             HStack {
-                Button("Apply to Open Windows") { Workspace.all.forEach { $0.resize(columns: profile.windowColumns, rows: profile.windowRows) } }
+                Button("Apply to Open Windows") { applyToOpenWindows() }
                     .hint("Apply to Open Windows\nResize every open terminal window to this many columns and rows now.")
+                    .bridged("Window", "Apply to Open Windows", .button { applyToOpenWindows() })
                 Button("Use Front Window's Size") { useFrontWindow() }
                     .hint("Use Front Window's Size\nCopy the columns and rows of the most recently used terminal window.")
-                Button("Reset") {
-                    profile.windowColumns = TerminalProfile.defaultGrid.columns
-                    profile.windowRows = TerminalProfile.defaultGrid.rows
-                }
+                    .bridged("Window", "Use Front Window's Size", .button { useFrontWindow() })
+                Button("Reset") { resetSize() }
                 .hint("Reset\nGo back to \(TerminalProfile.defaultGrid.columns) × \(TerminalProfile.defaultGrid.rows).")
+                .bridged("Window", "Reset", .button { resetSize() })
             }
         }
+    }
+
+    private func applyToOpenWindows() {
+        Workspace.all.forEach { $0.resize(columns: profile.windowColumns, rows: profile.windowRows) }
+    }
+
+    private func resetSize() {
+        profile.windowColumns = TerminalProfile.defaultGrid.columns
+        profile.windowRows = TerminalProfile.defaultGrid.rows
     }
 
     private func clamped(_ value: Binding<Int>, _ range: ClosedRange<Int>) -> Binding<Int> {
@@ -225,6 +270,7 @@ private struct ColorSettings: View {
             }
             .pickerStyle(.segmented)
             .hint("Appearance\nLight or dark window chrome; System follows macOS.")
+            .bridged("Colors", "Appearance", .choice($appearance) { ["System", "Light", "Dark"].map { ($0, $0) } })
             List(selection: Binding(get: { profile.theme }, set: { profile.theme = $0 ?? "" })) {
                 row("macOS Terminal Basic", theme: nil).tag("")
                 ForEach(library.allNames, id: \.self) { name in
@@ -238,15 +284,22 @@ private struct ColorSettings: View {
             }
             .frame(height: 260)
             .hint("Color theme\nClick a theme to use it in this profile; every tab with the profile follows.")
+            .bridged("Colors", "Color theme", .choice($profile.theme) { [("macOS Terminal Basic", "")] + library.allNames.map { ($0, $0) } })
             HStack {
-                Button("Import iTerm2 Preset…") { if let name = ThemeMenu.importPreset() { profile.theme = name } }
+                Button("Import iTerm2 Preset…") { importPreset() }
                     .hint("Import iTerm2 Preset\nAdd colors from an .itermcolors file.")
-                Button("Remove") { library.removeImported(profile.theme); profile.theme = "" }
+                    .bridged("Colors", "Import iTerm2 Preset…", .button { importPreset() })
+                Button("Remove") { removePreset() }
                     .disabled(!library.isImported(profile.theme))
                     .hint("Remove\nDelete the selected imported preset. Built-in themes cannot be removed.")
+                    .bridged("Colors", "Remove", .button(enabled: { library.isImported(profile.theme) }) { removePreset() })
             }
         }
     }
+
+    private func importPreset() { if let name = ThemeMenu.importPreset() { profile.theme = name } }
+
+    private func removePreset() { library.removeImported(profile.theme); profile.theme = "" }
 
     private func row(_ name: String, theme: TerminalTheme?) -> some View {
         let colors = theme?.colors ?? [:]
