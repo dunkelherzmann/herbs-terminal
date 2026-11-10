@@ -27,6 +27,8 @@ try {
     $runArgs = @((Join-Path $repo 'parity\tests\run.py'), '--platform', 'windows', '--exe', $Exe)
     if ($Only) { $runArgs += @('--only', $Only) }
     $env:PYTHONIOENCODING = 'utf-8'
+    # Python's error output (a traceback, the observer's verdict) goes into the log; with 'Stop' the first line would end the run.
+    $ErrorActionPreference = 'Continue'
     & $python @runArgs 2>&1 | Out-File -Encoding utf8 $log
 } catch { "tests: $($_.Exception.Message)" | Out-File -Append $log }
 finally { Set-Content -Path $done -Value (Get-Date -Format o) }
