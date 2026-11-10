@@ -5,7 +5,7 @@
 
 Run it on the machine that runs the app, inside its desktop session: on the Mac as is; on Linux inside a
 headless KWin (linux/parity/tests.sh does that); on Windows from the logged-in desktop (windows/parity/tests.ps1).
-Each test starts a fresh private copy of the app and stops it afterwards. On Linux and Windows the app-observer skill
+Each test starts a fresh private copy of the app and stops it afterwards. On Linux and Windows the master-control skill
 watches each copy in the background (--no-observe turns it off): a crash, a hang, a write outside the test folders
 or a change to the real app's settings marks the test broken; error lines in its log are printed as notes.
 """
@@ -59,9 +59,9 @@ def main():
     print("results:", out)
 
 def observer_for(platform, results):
-    """The background watch (app-observer skill) on Linux and Windows: crashes, hangs, writes outside the test
+    """The background watch (master-control skill) on Linux and Windows: crashes, hangs, writes outside the test
     folders, changes to the real app's settings, error lines in the app's log. None where it isn't available."""
-    scripts = os.path.expanduser("~/.agents/library/app-observer/scripts")
+    scripts = os.path.expanduser("~/.agents/library/master-control/scripts")
     if platform == "mac" or not os.path.exists(os.path.join(scripts, "observer.py")):
         return None
     sys.path.insert(0, scripts)
