@@ -161,6 +161,9 @@ enum TestBridge {
             try workspace.connectSSH(login)
             return true
         case "answer": return try answer(request)
+        case "settings-page": return try SettingsBridge.page(request["page"] as? String ?? "")
+        case "settings-set":
+            return try SettingsBridge.set(page: request["page"] as? String ?? "", label: request["label"] as? String ?? "", value: request["value"])
         case "profile-set":
             let value = request["value"] as? String ?? ""
             switch request["key"] as? String ?? "" {
