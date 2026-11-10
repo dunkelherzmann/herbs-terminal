@@ -66,11 +66,13 @@ def observer_for(platform, results):
         return None
     sys.path.insert(0, scripts)
     import observer
+    # Moving a test file to the Trash (E8) writes there by design; tailcat caches its public relay map per user.
     if platform == "linux":
-        settings = dict(allow=["/tmp/"], logs=["/tmp/herbs-tests-app.log"],
+        settings = dict(allow=["/tmp/", "~/.local/share/Trash/"], logs=["/tmp/herbs-tests-app.log"],
                         guard=["~/.var/app/org.herbsterminal.app", "~/.config/herbs-terminal"])
     else:
-        settings = dict(guard=[r"%LOCALAPPDATA%\HerbsTerminal\settings.json"])
+        settings = dict(allow=[r"C:\$Recycle.Bin", r"%LOCALAPPDATA%\tailcat"],
+                        guard=[r"%LOCALAPPDATA%\HerbsTerminal\settings.json"])
     watcher = observer.Observer(os.path.join(results, f"observer-{platform}"), **settings).start()
     print(f"OBSERVER   watching the test copy (timeline in {watcher.out})", flush=True)
     return watcher

@@ -63,6 +63,6 @@ A box is ticked once the change has shipped. A request that covers several platf
   - [x] Mac: in #78, tested (L12, L13); released in 1.0.235.
   - [x] Linux: in #78, tested (L12, L13); released in 1.0.235.
   - [x] Windows: in #78, tested (L12, L13, Y1); released in 1.0.235.
-- [ ] **Feature tests watch what the app does in the background** (asked 2026-11-10, Linux and Windows). Alongside the test bridge, an observer follows each test copy: the processes it starts and how they end, files it writes, connections, memory and handles, windows that stop responding, error lines in its log, and changes to the real app's settings. A crash, a hang, a write outside the test folders or a settings change marks the test broken. Tests may also use the whole signed-in session there (real mouse and keyboard, full-screen pictures), since Herbert works on the Mac.
-  - [x] Linux (master-control skill; kernel trace through bpftrace)
-  - [x] Windows (master-control skill; no file-write trace, settings guarded instead)
+- [x] **Feature tests watch what the app does in the background** (asked 2026-11-10, Linux and Windows). Alongside the test bridge, an observer follows each test copy: the processes it starts and how they end, files it writes, connections, memory and handles, windows that stop responding, error lines in its log, and changes to the real app's settings. A crash, a hang, a write outside the test folders or a settings change marks the test broken. Tests may also use the whole signed-in session there (real mouse and keyboard, full-screen pictures), since Herbert works on the Mac.
+  - [x] Linux (master-control skill; kernel trace through bpftrace); full run clean in #87
+  - [x] Windows (master-control skill; ETW kernel trace for processes, file writes and the registry); full run clean in #87
