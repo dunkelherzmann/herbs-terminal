@@ -58,18 +58,11 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-10 15:45)
+## Feature test results (2026-11-10 17:21)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Broken (2)
-
-A test ran and the feature didn't do what the Mac version does.
-
-- [ ] **B14** Full color, bold/italic/underline, wide characters, mouse reporting for full-screen programs. (§2): Mouse reporting: a full-screen program gets clicks, the wheel, and Shift+drag still selects: Shift+drag didn't select while the program tracks the mouse
-- [ ] **Y1** Every control has a screen-reader name and hover hint (hint without repeating the name). (§9): Every drawn control has a name, and buttons a hover text: the explorer's explorer.back isn't named for screen readers (saw []); Screen readers read the terminal's text, and hear new output: the terminal isn't in the UI…
-
-### Not checked automatically (34)
+### Not checked automatically (35)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -78,6 +71,7 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **P5** Focused pane outlined; Zoom, Clear, Reset and Find act on it. (§2): visual: shown in the window's picture, not reported by the bridge
 - [ ] **P6** The tab's SSH connection and explorer belong to its first pane; the next pane takes over when it… (§2): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **B6** Bell: sound, flash, both or none; flash at most twice a second, gentle with Reduce Motion. (§2): sound and flash can't be observed by the bridge
+- [ ] **B14** Full color, bold/italic/underline, wide characters, mouse reporting for full-screen programs. (§2): visual: needs the window's picture compared with the Mac's
 - [ ] **R12** Light and dark follow the system, for the whole app (dialogs and Settings included). (§3): visual: needs pictures in light and dark mode
 - [ ] **S6** Shared connection (ControlMaster) so the explorer and transfers reuse the shell's login; keepalive… (§4): needs the user's own ssh setup or a dropped link; not automated yet
 - [ ] **S8** Host-key questions, one-time codes and retries asked in the terminal. (§4): needs the user's own ssh setup or a dropped link; not automated yet
