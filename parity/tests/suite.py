@@ -792,12 +792,16 @@ def _(c):
         c.unverified("this platform's test bridge can't send mouse events yet")
     account, s = connect_test_host(c)
     expect_connected(c, account, s)
-    c.type(MOUSE_READER + "\r", settle=1.5)
+    # Known text on the screen's top row to drag across: what the login printed there varies (it can be blank).
+    c.type("clear; printf 'SELECT''ME-ROW\\n'; " + MOUSE_READER + "\r", settle=1.5)
+    c.until(lambda s: "SELECTME-ROW" in c.text(s), "the host didn't print the line to select")
     # Shift+drag selects instead of reporting, as on the Mac.
     mouse(c, "down", 2, 0, shift=True)
     mouse(c, "move", 9, 0, shift=True, held=True)
     result = mouse(c, "up", 9, 0, shift=True)
-    c.expect(result["selection"].strip(), "Shift+drag didn't select while the program tracks the mouse")
+    gets = "gets" if result["reports"] else "doesn't get"
+    c.expect("LECTME" in result["selection"],
+             f"Shift+drag didn't select while the program tracks the mouse (selected {result['selection']!r}; the program {gets} the mouse)")
     mouse(c, "down", 5, 2)
     mouse(c, "up", 5, 2)
     s = c.until(lambda s: "GOT" in c.text(s), "the program didn't get the click")
