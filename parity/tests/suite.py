@@ -1101,6 +1101,10 @@ def _(c):
     if opacity:
         p.set("Background opacity", 0.5)
         p.expect_value("Background opacity", 0.5)
+        if "seeThrough" in c.pane():
+            # Windows reports what it drew: the desktop shows through a half-transparent background.
+            c.until(lambda s: c.pane(s)["seeThrough"] and abs(c.pane(s)["backgroundAlpha"] - 128) <= 1,
+                    "expected the terminal's background to be drawn half transparent")
     for toggle in ("Blur behind the terminal", "Blinking cursor"):
         if p.find(toggle):
             was = p.value(toggle)

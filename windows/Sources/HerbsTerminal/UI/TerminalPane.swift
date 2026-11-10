@@ -1226,6 +1226,9 @@ final class TerminalPane: WindowObject, TerminalDelegate {
 
     // MARK: Painting
 
+    /// For the feature tests: the alpha of the background in the last paint (255 is solid).
+    private(set) var lastBackgroundAlpha = 255
+
     private func paint(_ hwnd: HWND) {
         var ps = PAINTSTRUCT()
         guard let screen = BeginPaint(hwnd, &ps) else { return }
@@ -1306,7 +1309,11 @@ final class TerminalPane: WindowObject, TerminalDelegate {
             fill(dc, RECT(left: width - line, top: 0, right: width, bottom: height), accent)
         }
         if Translucency.isOn(for: hwnd) {
-            surface.makeBackgroundTranslucent(colors.background, opacity: TerminalProfile.shared.settings(for: profileID).backgroundOpacity)
+            let opacity = TerminalProfile.shared.settings(for: profileID).backgroundOpacity
+            surface.makeBackgroundTranslucent(colors.background, opacity: opacity)
+            lastBackgroundAlpha = Int((max(0, min(1, opacity)) * 255).rounded())
+        } else {
+            lastBackgroundAlpha = 255
         }
         surface.copy(to: screen)
     }
