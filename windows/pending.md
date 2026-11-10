@@ -7,7 +7,8 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 
 ## Next (top priority)
 
-- [ ] **Settings with the Mac's five pages** (Profiles, Text, Terminal, Window, Colors), its controls and labels. Missing now: the profile list with New Profile / Duplicate / Delete Profile and a Name field (instead of Edit profile, New, Rename… and Delete…), Background opacity, Blur, the preview, Option as Meta (or a line in the spec saying Alt always acts as Meta, as on Linux), Bell, Columns and Rows fields, Apply to Open Windows, Use Front Window's Size, Reset, the Color theme list, Import iTerm2 Preset… and Remove. The Windows-only Shell choice stays, on the Terminal page. R7–R11 check it. (§3, feature tests) *Found 2026-11-10.*
+- [x] **Settings with the Mac's five pages** (#89) (Profiles, Text, Terminal, Window, Colors), their controls, labels and hover texts, the profile and color theme lists drawn as on the Mac, Bell, the Window page's buttons and preset removal. Option as Meta isn't a setting: Alt always acts as Meta (spec §12). R7, R9, R10 and R11 work. (§3, feature tests) *Found 2026-11-10.*
+- [ ] **Background opacity and blur** (Settings ▸ Text, §3): the terminal draws with GDI, which can't make only the background see-through; needs drawing the background with alpha (DirectComposition or a layered window with per-pixel alpha) and Windows 11's acrylic backdrop for blur. R8 checks it. *Found 2026-11-10.*
 - [x] **Main Menu matches the Mac's in-window menus** (#70). It holds the same menus, submenus, order and shortcuts (Edit, Shell and Window included), and no command is reachable only somewhere else; W19 checks it. (§2, §14, enhancements.md) *Asked 2026-11-09.*
 
 ## To build
@@ -57,21 +58,23 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-10 13:11)
+## Feature test results (2026-11-10 14:28)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Missing (5)
+### Broken (1)
+
+A test ran and the feature didn't do what the Mac version does.
+
+- [ ] **B14** Full color, bold/italic/underline, wide characters, mouse reporting for full-screen programs. (§2): Mouse reporting: a full-screen program gets clicks, the wheel, and Shift+drag still selects: Shift+drag didn't select while the program tracks the mouse
+
+### Missing (1)
 
 The command isn't there, or it's greyed out.
 
-- [ ] **R7** Settings ▸ Profiles: add, duplicate, rename, delete, choose the default; startup command and start… (§3): Settings ▸ Profiles: add, rename, duplicate, delete, the default, startup command and start folder: Settings ▸ Profiles has no Profiles, New Profile, Delete Profile, Name (it has: Edit profile, New, Duplicate, Rename…,…
-- [ ] **R8** Settings ▸ Text: any installed monospaced font, 6–72 pt, cursor shape and blink, opacity 20–100 %,… (§3): Settings ▸ Text: font, size 6–72, cursor, opacity 20–100 %, blur, blink, preview, Restore Defaults: Settings ▸ Text has no Background opacity, Blur behind the terminal, Preview (it has: Edit profile, New, Duplicate,…
-- [ ] **R9** Settings ▸ Terminal: Option as Meta, scrollback 100–1,000,000, bell, where new tabs open, restore… (§3): Settings ▸ Terminal: Option as Meta, scrollback 100–1,000,000, bell, new tabs, restore, ask before closing: Settings ▸ Terminal has no Use Option as Meta key, Scrollback, Bell (it has: Edit profile, New, Duplicate,…
-- [ ] **R10** Settings ▸ Window: columns × rows for new windows (default 100 × 30), size badge toggle, Apply to… (§3): Settings ▸ Window: columns × rows (100 × 30), size badge, Apply to Open Windows, Use Front Window's Size, Reset: Settings ▸ Window has no Columns, Rows, Apply to Open Windows, Use Front Window's Size, Reset (it has:…
-- [ ] **R11** Settings ▸ Colors: color scheme, presets, import and removal. (§3): Settings ▸ Colors: color scheme, presets, import and removal: Settings ▸ Colors has no Color theme, Import iTerm2 Preset…, Remove (it has: Edit profile, New, Duplicate, Rename…, Delete…, Use as Default, Run command,…
+- [ ] **R8** Settings ▸ Text: any installed monospaced font, 6–72 pt, cursor shape and blink, opacity 20–100 %,… (§3): Settings ▸ Text: font, size 6–72, cursor, opacity 20–100 %, blur, blink, preview, Restore Defaults: Settings ▸ Text has no Background opacity, Blur behind the terminal (it has: Font, Size, Cursor, Blinking cursor,…
 
-### Not checked automatically (35)
+### Not checked automatically (34)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -80,7 +83,6 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **P5** Focused pane outlined; Zoom, Clear, Reset and Find act on it. (§2): visual: shown in the window's picture, not reported by the bridge
 - [ ] **P6** The tab's SSH connection and explorer belong to its first pane; the next pane takes over when it… (§2): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **B6** Bell: sound, flash, both or none; flash at most twice a second, gentle with Reduce Motion. (§2): sound and flash can't be observed by the bridge
-- [ ] **B14** Full color, bold/italic/underline, wide characters, mouse reporting for full-screen programs. (§2): visual: needs the window's picture compared with the Mac's
 - [ ] **R12** Light and dark follow the system, for the whole app (dialogs and Settings included). (§3): visual: needs pictures in light and dark mode
 - [ ] **S6** Shared connection (ControlMaster) so the explorer and transfers reuse the shell's login; keepalive… (§4): needs the user's own ssh setup or a dropped link; not automated yet
 - [ ] **S8** Host-key questions, one-time codes and retries asked in the terminal. (§4): needs the user's own ssh setup or a dropped link; not automated yet

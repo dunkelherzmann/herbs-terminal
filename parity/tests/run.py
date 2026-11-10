@@ -43,7 +43,7 @@ def main():
         for title, body in tests:
             started = time.time()
             if isinstance(body, str):
-                status, detail = "unverified", body
+                status, detail, seen = "unverified", body, None
             else:
                 status, detail, seen = run_one(app, body, watcher, f"{fid} {title}")
             results.append({"id": fid, "test": title, "status": status, "detail": detail, "seconds": round(time.time() - started, 1)})
