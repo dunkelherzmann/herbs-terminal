@@ -154,9 +154,22 @@ class Context:
         if not condition:
             raise Outcome("broken", what)
 
-    def uia(self, press=None, find=None):
+    def uia(self, press=None, find=None, need=()):
         """Windows: the app's windows as UI Automation shows them to screen readers (uia.ps1), after pressing the
-        element with identifier `press` the way an assistive tool would."""
+        element with identifier `press` the way an assistive tool would. With `need`, the tree is read again (up to
+        three times, as a screen reader keeps reading it) while any of those identifiers is missing: in long runs
+        a read now and then comes back with the main window's own parts but none of its child windows."""
+        for attempt in range(3):
+            nodes = self._uia(press if attempt == 0 else None, find)
+            present = {n.get("identifier") for n in nodes if isinstance(n, dict)}
+            if all(identifier in present for identifier in need):
+                if attempt:
+                    self.notes.append(f"UI Automation showed {', '.join(need)} on read {attempt + 1}")
+                return nodes
+            time.sleep(1.5)
+        return nodes
+
+    def _uia(self, press=None, find=None):
         if self.platform != "windows":
             raise Outcome("unverified", "this platform's accessibility tree is checked by parity/check.sh, not the feature tests")
         import json, subprocess
@@ -2624,7 +2637,7 @@ def _(c):
     repeated = [n["identifier"] for n in drawn if n.get("help") and n.get("name") and n["help"].startswith(n["name"])]
     c.expect(not repeated, f"hover texts that repeat the control's name: {repeated}")
     c.command("toggle-explorer", settle=1.5)
-    nodes = c.uia()
+    nodes = c.uia(need=("explorer.back",))
     explorer = [n for n in nodes if n.get("identifier", "").startswith("explorer.")]
     for identifier in ("explorer.back", "explorer.up", "explorer.home", "explorer.bookmarkFolder", "explorer.actions", "explorer.place.1"):
         node = uia_node(explorer, identifier)
@@ -2634,7 +2647,7 @@ def _(c):
 @test("Y1", "Screen readers read the terminal's text, and hear new output")
 def _(c):
     word = c.say("READ" + "ME42")
-    nodes = c.uia(find="DME4")
+    nodes = c.uia(find="DME4", need=("terminal",))
     terminal = next((n for n in nodes if n.get("identifier") == "terminal"), None)
     c.expect(terminal, "the terminal isn't in the UI Automation tree: " + "; ".join(f"{n['depth']}:{n['role']}:{n.get('identifier', n.get('name', ''))}" for n in nodes))
     c.expect(terminal.get("name") == "Terminal 1", f"the terminal is named {terminal.get('name')!r}")
