@@ -28,7 +28,7 @@ enum SettingsBridge {
         }
         guard IsWindowEnabled(control.hwnd) else { throw Failure(description: "\(label) is greyed out") }
         let parent = GetParent(control.hwnd)
-        let id = WPARAM(UInt(bitPattern: GetDlgCtrlID(control.hwnd)) & 0xFFFF)
+        let id = WPARAM(UInt32(bitPattern: GetDlgCtrlID(control.hwnd)) & 0xFFFF)
         let handle = LPARAM(Int(bitPattern: UnsafeRawPointer(control.hwnd)))
         func notify(_ code: Int32) { SendMessageW(parent, UINT(WM_COMMAND), (WPARAM(UInt32(code)) << 16) | id, handle) }
         switch control.kind {
@@ -90,8 +90,8 @@ enum SettingsBridge {
         SendMessageW(tabs, UINT(TCM_SETCURSEL), WPARAM(index), 0)
         var header = NMHDR()
         header.hwndFrom = tabs
-        header.idFrom = UINT_PTR(UInt(bitPattern: GetDlgCtrlID(tabs)))
-        header.code = UINT(bitPattern: TCN_SELCHANGE)
+        header.idFrom = UINT_PTR(UInt32(bitPattern: GetDlgCtrlID(tabs)))
+        header.code = UINT(truncatingIfNeeded: TCN_SELCHANGE)
         _ = withUnsafeMutablePointer(to: &header) {
             SendMessageW(GetParent(tabs), UINT(WM_NOTIFY), header.idFrom, LPARAM(Int(bitPattern: UnsafeRawPointer($0))))
         }
