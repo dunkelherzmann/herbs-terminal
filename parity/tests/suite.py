@@ -154,9 +154,22 @@ class Context:
         if not condition:
             raise Outcome("broken", what)
 
-    def uia(self, press=None, find=None):
+    def uia(self, press=None, find=None, need=()):
         """Windows: the app's windows as UI Automation shows them to screen readers (uia.ps1), after pressing the
-        element with identifier `press` the way an assistive tool would."""
+        element with identifier `press` the way an assistive tool would. With `need`, the tree is read again (up to
+        three times, as a screen reader keeps reading it) while any of those identifiers is missing: in long runs
+        a read now and then comes back with the main window's own parts but none of its child windows."""
+        for attempt in range(3):
+            nodes = self._uia(press if attempt == 0 else None, find)
+            present = {n.get("identifier") for n in nodes if isinstance(n, dict)}
+            if all(identifier in present for identifier in need):
+                if attempt:
+                    self.notes.append(f"UI Automation showed {', '.join(need)} on read {attempt + 1}")
+                return nodes
+            time.sleep(1.5)
+        return nodes
+
+    def _uia(self, press=None, find=None):
         if self.platform != "windows":
             raise Outcome("unverified", "this platform's accessibility tree is checked by parity/check.sh, not the feature tests")
         import json, subprocess
@@ -792,12 +805,16 @@ def _(c):
         c.unverified("this platform's test bridge can't send mouse events yet")
     account, s = connect_test_host(c)
     expect_connected(c, account, s)
-    c.type(MOUSE_READER + "\r", settle=1.5)
+    # Known text on the screen's top row to drag across: what the login printed there varies (it can be blank).
+    c.type("clear; printf 'SELECT''ME-ROW\\n'; " + MOUSE_READER + "\r", settle=1.5)
+    c.until(lambda s: "SELECTME-ROW" in c.text(s), "the host didn't print the line to select")
     # Shift+drag selects instead of reporting, as on the Mac.
     mouse(c, "down", 2, 0, shift=True)
     mouse(c, "move", 9, 0, shift=True, held=True)
     result = mouse(c, "up", 9, 0, shift=True)
-    c.expect(result["selection"].strip(), "Shift+drag didn't select while the program tracks the mouse")
+    gets = "gets" if result["reports"] else "doesn't get"
+    c.expect("CTME-R" in result["selection"],
+             f"Shift+drag didn't select while the program tracks the mouse (selected {result['selection']!r}; the program {gets} the mouse)")
     mouse(c, "down", 5, 2)
     mouse(c, "up", 5, 2)
     s = c.until(lambda s: "GOT" in c.text(s), "the program didn't get the click")
@@ -2620,7 +2637,7 @@ def _(c):
     repeated = [n["identifier"] for n in drawn if n.get("help") and n.get("name") and n["help"].startswith(n["name"])]
     c.expect(not repeated, f"hover texts that repeat the control's name: {repeated}")
     c.command("toggle-explorer", settle=1.5)
-    nodes = c.uia()
+    nodes = c.uia(need=("explorer.back",))
     explorer = [n for n in nodes if n.get("identifier", "").startswith("explorer.")]
     for identifier in ("explorer.back", "explorer.up", "explorer.home", "explorer.bookmarkFolder", "explorer.actions", "explorer.place.1"):
         node = uia_node(explorer, identifier)
@@ -2630,7 +2647,7 @@ def _(c):
 @test("Y1", "Screen readers read the terminal's text, and hear new output")
 def _(c):
     word = c.say("READ" + "ME42")
-    nodes = c.uia(find="DME4")
+    nodes = c.uia(find="DME4", need=("terminal",))
     terminal = next((n for n in nodes if n.get("identifier") == "terminal"), None)
     c.expect(terminal, "the terminal isn't in the UI Automation tree: " + "; ".join(f"{n['depth']}:{n['role']}:{n.get('identifier', n.get('name', ''))}" for n in nodes))
     c.expect(terminal.get("name") == "Terminal 1", f"the terminal is named {terminal.get('name')!r}")

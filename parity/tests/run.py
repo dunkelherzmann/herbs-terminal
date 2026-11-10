@@ -47,6 +47,8 @@ def main():
             else:
                 status, detail, seen = run_one(app, body, watcher, f"{fid} {title}")
             results.append({"id": fid, "test": title, "status": status, "detail": detail, "seconds": round(time.time() - started, 1)})
+            if not isinstance(body, str) and getattr(run_one, "notes", None):
+                results[-1]["notes"] = run_one.notes
             if seen and (seen["problems"] or seen["notes"]):
                 results[-1]["observer"] = {"problems": seen["problems"], "notes": seen["notes"]}
             print(f"{status.upper():10} {fid:4} {title}" + (f"  — {detail}" if detail and status != "works" else ""), flush=True)
@@ -123,6 +125,9 @@ def run_one(app, body, watcher=None, name=""):
         app.stop()
     except Exception:
         pass
+    for note in context.notes:
+        print(f"  note     {note}", flush=True)
+    run_one.notes = list(context.notes)
     return status, detail, seen
 
 def watcher_lines(seen):
