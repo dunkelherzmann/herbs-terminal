@@ -1,143 +1,139 @@
 import Foundation
 import WinSDK
 
-/// The feature tests' view of Settings (R7–R11): reads the Settings window's controls as it shows them (a tab
-/// control's pages, if it has one, else the whole window) and changes one through the messages a person's input
-/// produces, so the window's own handlers run. A control's label is its own text (buttons, check boxes) or the label
-/// just before it.
+/// The feature tests' view of Settings (R7–R11): reads a page's controls as the window shows them and changes one
+/// through the messages a person's input produces, so the window's own handlers run. A control's label is its own
+/// text (buttons, check boxes, lists), or the label just before it; a row of linked option buttons is one choice.
 @MainActor
 enum SettingsBridge {
     struct Failure: Error, CustomStringConvertible { let description: String }
 
     private struct Control {
-        let hwnd: HWND, kind: String, label: String, className: String, style: UInt32
+        let kind: String, label: String, className: String
+        var hwnds: [HWND]
+        var hwnd: HWND { hwnds[0] }
     }
 
     static func page(_ name: String) throws -> [String: Any] {
         guard let window = SettingsWindow.openWindow else { throw Failure(description: "Settings isn't open") }
-        let shown = try show(name, in: window)
-        return ["page": shown, "pages": pageTitles(window), "controls": controls(in: window).map(report)]
+        guard SettingsWindow.showPage(name) else { throw Failure(description: "Settings has no \(name) page") }
+        return ["page": name, "pages": SettingsWindow.pageTitles, "controls": controls(in: window).map(report)]
     }
 
     static func set(page: String, label: String, value: Any?) throws -> Any {
         guard let window = SettingsWindow.openWindow else { throw Failure(description: "Settings isn't open") }
-        _ = try show(page, in: window)
+        guard SettingsWindow.showPage(page) else { throw Failure(description: "Settings has no \(page) page") }
         let all = controls(in: window)
         guard let control = all.first(where: { $0.label == label }) else {
-            throw Failure(description: "no \(label) in Settings (there are: \(all.map(\.label)))")
+            throw Failure(description: "no \(label) in Settings ▸ \(page) (there are: \(all.map(\.label)))")
         }
         guard IsWindowEnabled(control.hwnd) else { throw Failure(description: "\(label) is greyed out") }
         let parent = GetParent(control.hwnd)
-        let id = WPARAM(UInt32(bitPattern: GetDlgCtrlID(control.hwnd)) & 0xFFFF)
-        let handle = LPARAM(Int(bitPattern: UnsafeRawPointer(control.hwnd)))
-        func notify(_ code: Int32) { SendMessageW(parent, UINT(WM_COMMAND), (WPARAM(UInt32(code)) << 16) | id, handle) }
-        switch control.kind {
-        case "button":
+        func notify(_ code: Int32, _ hwnd: HWND) {
+            let id = WPARAM(UInt32(bitPattern: GetDlgCtrlID(hwnd)) & 0xFFFF)
+            SendMessageW(parent, UINT(WM_COMMAND), (WPARAM(UInt32(bitPattern: code)) << 16) | id, LPARAM(Int(bitPattern: UnsafeRawPointer(hwnd))))
+        }
+        let text = value.map { "\($0)" } ?? ""
+        switch (control.kind, control.className) {
+        case ("button", _):
             // Posted: a button may open a modal dialog, which the bridge answers on a later request.
             PostMessageW(control.hwnd, UINT(BM_CLICK), 0, 0)
-        case "toggle":
-            let on = SendMessageW(control.hwnd, UINT(BM_GETCHECK), 0, 0) == LRESULT(BST_CHECKED)
-            if (value as? Bool).map({ $0 != on }) ?? true { PostMessageW(control.hwnd, UINT(BM_CLICK), 0, 0) }
-        case "text", "number" where control.className == "EDIT":
-            setText(control.hwnd, value.map { "\($0)" } ?? "")
-            notify(EN_KILLFOCUS)
-        case "choice", "number":
-            let text = value.map { "\($0)" } ?? ""
-            let items = comboItems(control.hwnd)
-            if let index = items.firstIndex(of: text) ?? items.firstIndex(of: text.replacingOccurrences(of: ".0", with: "")) {
-                SendMessageW(control.hwnd, UINT(CB_SETCURSEL), WPARAM(index), 0)
-                notify(CBN_SELCHANGE)
-            } else if isEditableCombo(control) {
-                setText(control.hwnd, text)
-                notify(CBN_KILLFOCUS)
-            } else {
-                throw Failure(description: "\(label) has no item \(text) (there are: \(items))")
+        case ("toggle", _):
+            if (value as? Bool).map({ $0 != isChecked(control.hwnd) }) ?? true { PostMessageW(control.hwnd, UINT(BM_CLICK), 0, 0) }
+        case ("choice", "Button"):
+            guard let button = control.hwnds.first(where: { self.text(of: $0) == text }) else {
+                throw missing(label, text, control.hwnds.map { self.text(of: $0) })
             }
+            SendMessageW(button, UINT(BM_CLICK), 0, 0)
+        case ("choice", "ListBox"):
+            guard let index = listItems(control.hwnd).firstIndex(of: text) else { throw missing(label, text, listItems(control.hwnd)) }
+            SendMessageW(control.hwnd, UINT(LB_SETCURSEL), WPARAM(index), 0)
+            notify(LBN_SELCHANGE, control.hwnd)
+        case ("choice", _):
+            let items = comboItems(control.hwnd)
+            if let index = items.firstIndex(of: text) {
+                SendMessageW(control.hwnd, UINT(CB_SETCURSEL), WPARAM(index), 0)
+                notify(CBN_SELCHANGE, control.hwnd)
+            } else if UInt32(bitPattern: GetWindowLongW(control.hwnd, GWL_STYLE)) & 0x3 == UInt32(CBS_DROPDOWN) {
+                setText(control.hwnd, text)
+                notify(CBN_KILLFOCUS, control.hwnd)
+            } else {
+                throw missing(label, text, items)
+            }
+        case ("text", _), ("number", _):
+            // Typed (the field reports each change), then left, as when a person tabs away.
+            var typed = text
+            if let number = value as? NSNumber, number.doubleValue == number.doubleValue.rounded() { typed = String(Int(number.doubleValue)) }
+            setText(control.hwnd, typed)
+            notify(EN_KILLFOCUS, control.hwnd)
         default:
             throw Failure(description: "\(label) is a \(control.kind), which the bridge can't change")
         }
         return "ok"
     }
 
-    // MARK: Pages
-
-    private static func tabControl(_ window: HWND) -> HWND? {
-        children(of: window).first { className($0) == "SysTabControl32" }
+    private static func missing(_ label: String, _ item: String, _ items: [String]) -> Failure {
+        Failure(description: "\(label) has no item \(item) (there are: \(items))")
     }
 
-    private static func pageTitles(_ window: HWND) -> [String] {
-        guard let tabs = tabControl(window) else { return [] }
-        let count = Int(SendMessageW(tabs, UINT(TCM_GETITEMCOUNT), 0, 0))
-        return (0..<count).map { index in
-            var buffer = [WCHAR](repeating: 0, count: 128)
-            return buffer.withUnsafeMutableBufferPointer { pointer -> String in
-                var item = TCITEMW()
-                item.mask = UINT(TCIF_TEXT)
-                item.pszText = pointer.baseAddress
-                item.cchTextMax = Int32(pointer.count)
-                _ = withUnsafeMutablePointer(to: &item) {
-                    SendMessageW(tabs, UINT(TCM_GETITEMW), WPARAM(index), LPARAM(Int(bitPattern: UnsafeRawPointer($0))))
-                }
-                return String(decoding: pointer.prefix { $0 != 0 }, as: UTF16.self)
-            }
-        }
-    }
+    // MARK: Reading the window
 
-    /// Switches to the page `name` when the window has pages; returns what's shown.
-    private static func show(_ name: String, in window: HWND) throws -> String {
-        guard let tabs = tabControl(window) else { return "Settings" }
-        guard let index = pageTitles(window).firstIndex(of: name) else { throw Failure(description: "Settings has no \(name) page") }
-        SendMessageW(tabs, UINT(TCM_SETCURSEL), WPARAM(index), 0)
-        var header = NMHDR()
-        header.hwndFrom = tabs
-        header.idFrom = UINT_PTR(UInt32(bitPattern: GetDlgCtrlID(tabs)))
-        header.code = UINT(truncatingIfNeeded: TCN_SELCHANGE)
-        let from = header.idFrom
-        _ = withUnsafeMutablePointer(to: &header) {
-            SendMessageW(GetParent(tabs), UINT(WM_NOTIFY), WPARAM(from), LPARAM(Int(bitPattern: UnsafeRawPointer($0))))
-        }
-        return name
-    }
-
-    // MARK: Controls
-
-    private static func children(of window: HWND) -> [HWND] {
-        var result: [HWND] = []
-        var child = GetWindow(window, UINT(GW_CHILD))
-        while let current = child {
-            result.append(current)
-            // A page can be a child window holding its own controls.
-            if className(current) == "#32770" || className(current).hasPrefix("HerbsTerminal") { result += children(of: current) }
-            child = GetWindow(current, UINT(GW_HWNDNEXT))
-        }
-        return result
-    }
+    private static var rangeOf: [HWND: (Int, Int)] = [:]
 
     private static func controls(in window: HWND) -> [Control] {
+        var all: [HWND] = []
+        var child = GetWindow(window, UINT(GW_CHILD))
+        while let current = child {
+            all.append(current)
+            child = GetWindow(current, UINT(GW_HWNDNEXT))
+        }
+        // A number field's range is its arrows'.
+        rangeOf = [:]
+        for arrows in all where className(arrows) == "msctls_updown32" {
+            guard let field = buddy(of: arrows) else { continue }
+            var low: Int32 = 0, high: Int32 = 0
+            withUnsafeMutablePointer(to: &low) { lowPointer in
+                withUnsafeMutablePointer(to: &high) { highPointer in
+                    _ = SendMessageW(arrows, UINT(UDM_GETRANGE32), WPARAM(UInt(bitPattern: Int(bitPattern: lowPointer))),
+                                     LPARAM(Int(bitPattern: highPointer)))
+                }
+            }
+            rangeOf[field] = (Int(low), Int(high))
+        }
         var found: [Control] = []
         var lastLabel = ""
-        for hwnd in children(of: window) where IsWindowVisible(hwnd) {
-            let cls = className(hwnd), style = UInt32(bitPattern: GetWindowLongW(hwnd, GWL_STYLE)), title = text(hwnd)
+        for hwnd in all where IsWindowVisible(hwnd) && !SettingsWindow.isPageButton(hwnd) {
+            let cls = className(hwnd), style = UInt32(bitPattern: GetWindowLongW(hwnd, GWL_STYLE)), title = text(of: hwnd)
             switch cls {
             case "Static":
-                if !title.isEmpty { lastLabel = title.trimmingCharacters(in: CharacterSet(charactersIn: ": ")) }
-            case "Button":
-                let type = style & 0xF
-                let kind: String
-                switch Int32(type) {
-                case BS_CHECKBOX, BS_AUTOCHECKBOX, BS_3STATE, BS_AUTO3STATE: kind = "toggle"
-                case BS_GROUPBOX: lastLabel = title; continue
-                default: kind = "button"
+                if style & 0x1F == UInt32(SS_OWNERDRAW) {
+                    // A drawn part, such as the preview: its text names it and says what it shows.
+                    found.append(Control(kind: "display", label: title.components(separatedBy: ": ")[0], className: cls, hwnds: [hwnd]))
+                } else if !title.isEmpty {
+                    lastLabel = title.trimmingCharacters(in: CharacterSet(charactersIn: ": "))
                 }
-                found.append(Control(hwnd: hwnd, kind: kind, label: title.replacingOccurrences(of: "&", with: ""), className: cls, style: style))
+            case "Button":
+                switch Int32(style & 0xF) {
+                case BS_CHECKBOX, BS_AUTOCHECKBOX, BS_3STATE, BS_AUTO3STATE:
+                    found.append(Control(kind: "toggle", label: title, className: cls, hwnds: [hwnd]))
+                case BS_RADIOBUTTON, BS_AUTORADIOBUTTON:
+                    if style & UInt32(WS_GROUP) == 0, let last = found.indices.last, found[last].kind == "choice", found[last].className == "Button" {
+                        found[last].hwnds.append(hwnd)
+                    } else {
+                        found.append(Control(kind: "choice", label: lastLabel, className: cls, hwnds: [hwnd]))
+                    }
+                case BS_GROUPBOX:
+                    lastLabel = title
+                default:
+                    found.append(Control(kind: "button", label: title.replacingOccurrences(of: "&", with: ""), className: cls, hwnds: [hwnd]))
+                }
             case "Edit":
-                found.append(Control(hwnd: hwnd, kind: style & UInt32(ES_NUMBER) != 0 ? "number" : "text", label: lastLabel, className: "EDIT", style: style))
+                let numeric = style & UInt32(ES_NUMBER) != 0 || rangeOf[hwnd] != nil
+                found.append(Control(kind: numeric ? "number" : "text", label: lastLabel, className: cls, hwnds: [hwnd]))
             case "ComboBox":
-                let items = comboItems(hwnd)
-                let numeric = style & 0x3 == UInt32(CBS_DROPDOWN) && !items.isEmpty && items.allSatisfy { Double($0) != nil }
-                found.append(Control(hwnd: hwnd, kind: numeric ? "number" : "choice", label: lastLabel, className: cls, style: style))
-            case "msctls_trackbar32":
-                found.append(Control(hwnd: hwnd, kind: "slider", label: lastLabel, className: cls, style: style))
+                found.append(Control(kind: "choice", label: lastLabel, className: cls, hwnds: [hwnd]))
+            case "ListBox":
+                found.append(Control(kind: "choice", label: title.isEmpty ? lastLabel : title, className: cls, hwnds: [hwnd]))
             default:
                 break
             }
@@ -145,41 +141,59 @@ enum SettingsBridge {
         return found
     }
 
+    private static func buddy(of arrows: HWND) -> HWND? {
+        HWND(bitPattern: Int(SendMessageW(arrows, UINT(UDM_GETBUDDY), 0, 0)))
+    }
+
     private static func report(_ control: Control) -> [String: Any] {
         var result: [String: Any] = ["kind": control.kind, "label": control.label, "enabled": IsWindowEnabled(control.hwnd)]
-        switch control.className {
-        case "Button" where control.kind == "toggle":
-            result["value"] = SendMessageW(control.hwnd, UINT(BM_GETCHECK), 0, 0) == LRESULT(BST_CHECKED)
-        case "EDIT":
-            let value = text(control.hwnd)
-            result["value"] = control.kind == "number" ? (Double(value) as Any? ?? value) : value
-        case "ComboBox":
+        switch (control.kind, control.className) {
+        case ("toggle", _):
+            result["value"] = isChecked(control.hwnd)
+        case ("choice", "Button"):
+            result["options"] = control.hwnds.map { text(of: $0) }
+            result["value"] = control.hwnds.first(where: { isChecked($0) }).map { text(of: $0) } ?? ""
+        case ("choice", "ListBox"):
+            let items = listItems(control.hwnd)
+            let index = Int(SendMessageW(control.hwnd, UINT(LB_GETCURSEL), 0, 0))
+            result["options"] = items
+            result["value"] = items.indices.contains(index) ? items[index] : ""
+        case ("choice", _):
             let items = comboItems(control.hwnd)
             let index = Int(SendMessageW(control.hwnd, UINT(CB_GETCURSEL), 0, 0))
-            let value = items.indices.contains(index) ? items[index] : text(control.hwnd)
-            result["value"] = control.kind == "number" ? (Double(value) as Any? ?? value) : value
-            if control.kind == "choice" { result["options"] = items }
-        case "msctls_trackbar32":
-            result["value"] = Int(SendMessageW(control.hwnd, UINT(TBM_GETPOS), 0, 0))
-            result["min"] = Int(SendMessageW(control.hwnd, UINT(TBM_GETRANGEMIN), 0, 0))
-            result["max"] = Int(SendMessageW(control.hwnd, UINT(TBM_GETRANGEMAX), 0, 0))
+            result["options"] = items
+            result["value"] = items.indices.contains(index) ? items[index] : text(of: control.hwnd)
+        case ("number", _):
+            let value = text(of: control.hwnd)
+            result["value"] = Double(value.replacingOccurrences(of: ",", with: ".")) as Any? ?? value
+            if let range = rangeOf[control.hwnd] { result["min"] = range.0; result["max"] = range.1 }
+        case ("display", _):
+            result["value"] = text(of: control.hwnd).components(separatedBy: ": ").dropFirst().joined(separator: ": ")
+        case ("text", _):
+            result["value"] = text(of: control.hwnd)
         default:
             break
         }
         return result
     }
 
-    private static func isEditableCombo(_ control: Control) -> Bool { control.style & 0x3 == UInt32(CBS_DROPDOWN) }
+    private static func isChecked(_ hwnd: HWND) -> Bool { SendMessageW(hwnd, UINT(BM_GETCHECK), 0, 0) == LRESULT(BST_CHECKED) }
 
     private static func comboItems(_ combo: HWND) -> [String] {
-        let count = Int(SendMessageW(combo, UINT(CB_GETCOUNT), 0, 0))
-        return (0..<max(0, count)).map { index in
-            let length = Int(SendMessageW(combo, UINT(CB_GETLBTEXTLEN), WPARAM(index), 0))
-            var buffer = [WCHAR](repeating: 0, count: max(0, length) + 1)
-            buffer.withUnsafeMutableBufferPointer {
-                _ = SendMessageW(combo, UINT(CB_GETLBTEXT), WPARAM(index), LPARAM(Int(bitPattern: $0.baseAddress!)))
-            }
-            return String(decoding: buffer.prefix(max(0, length)), as: UTF16.self)
+        items(combo, count: UINT(CB_GETCOUNT), length: UINT(CB_GETLBTEXTLEN), text: UINT(CB_GETLBTEXT))
+    }
+
+    private static func listItems(_ list: HWND) -> [String] {
+        items(list, count: UINT(LB_GETCOUNT), length: UINT(LB_GETTEXTLEN), text: UINT(LB_GETTEXT))
+    }
+
+    private static func items(_ control: HWND, count: UINT, length: UINT, text: UINT) -> [String] {
+        let total = Int(SendMessageW(control, count, 0, 0))
+        return (0..<max(0, total)).map { index in
+            let size = max(0, Int(SendMessageW(control, length, WPARAM(index), 0)))
+            var buffer = [WCHAR](repeating: 0, count: size + 1)
+            buffer.withUnsafeMutableBufferPointer { _ = SendMessageW(control, text, WPARAM(index), LPARAM(Int(bitPattern: $0.baseAddress!))) }
+            return String(decoding: buffer.prefix(size), as: UTF16.self)
         }
     }
 
@@ -189,7 +203,7 @@ enum SettingsBridge {
         return String(decoding: buffer.prefix(Int(length)), as: UTF16.self)
     }
 
-    private static func text(_ hwnd: HWND) -> String {
+    private static func text(of hwnd: HWND) -> String {
         let length = GetWindowTextLengthW(hwnd)
         var buffer = [WCHAR](repeating: 0, count: Int(length) + 1)
         GetWindowTextW(hwnd, &buffer, length + 1)
