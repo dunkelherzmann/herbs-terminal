@@ -58,21 +58,16 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-10 14:28)
+## Feature test results (2026-11-10 15:45)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Broken (1)
+### Broken (2)
 
 A test ran and the feature didn't do what the Mac version does.
 
 - [ ] **B14** Full color, bold/italic/underline, wide characters, mouse reporting for full-screen programs. (§2): Mouse reporting: a full-screen program gets clicks, the wheel, and Shift+drag still selects: Shift+drag didn't select while the program tracks the mouse
-
-### Missing (1)
-
-The command isn't there, or it's greyed out.
-
-- [ ] **R8** Settings ▸ Text: any installed monospaced font, 6–72 pt, cursor shape and blink, opacity 20–100 %,… (§3): Settings ▸ Text: font, size 6–72, cursor, opacity 20–100 %, blur, blink, preview, Restore Defaults: Settings ▸ Text has no Background opacity, Blur behind the terminal (it has: Font, Size, Cursor, Blinking cursor,…
+- [ ] **Y1** Every control has a screen-reader name and hover hint (hint without repeating the name). (§9): Every drawn control has a name, and buttons a hover text: the explorer's explorer.back isn't named for screen readers (saw []); Screen readers read the terminal's text, and hear new output: the terminal isn't in the UI…
 
 ### Not checked automatically (34)
 
