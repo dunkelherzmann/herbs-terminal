@@ -385,7 +385,7 @@ final class SettingsWindow: WindowObject {
         SendMessageW(list, UINT(WM_SETREDRAW), 0, 0)
         SendMessageW(list, UINT(LB_RESETCONTENT), 0, 0)
         for item in items { withWide(item) { _ = SendMessageW(list, UINT(LB_ADDSTRING), 0, LPARAM(Int(bitPattern: $0))) } }
-        SendMessageW(list, UINT(LB_SETCURSEL), WPARAM(bitPattern: selected ?? -1), 0)
+        SendMessageW(list, UINT(LB_SETCURSEL), WPARAM(bitPattern: Int64(selected ?? -1)), 0)
         SendMessageW(list, UINT(LB_SETTOPINDEX), WPARAM(top), 0)
         SendMessageW(list, UINT(WM_SETREDRAW), 1, 0)
         InvalidateRect(list, nil, true)
