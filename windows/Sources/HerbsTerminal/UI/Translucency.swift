@@ -43,7 +43,7 @@ enum Translucency {
         // The whole window honors its alpha; everything but terminal backgrounds is drawn solid.
         var blurBehind = DWM_BLURBEHIND()
         blurBehind.dwFlags = DWORD(DWM_BB_ENABLE) | DWORD(DWM_BB_BLURREGION)
-        blurBehind.fEnable = on
+        blurBehind.fEnable = WindowsBool(on)
         let region = CreateRectRgn(0, 0, -1, -1)
         blurBehind.hRgnBlur = region
         DwmEnableBlurBehindWindow(hwnd, &blurBehind)
