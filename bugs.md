@@ -86,7 +86,7 @@ Items marked *found in testing* were found while testing other work, not reporte
 - [x] **Tailcat: a peer where nothing answers SSH showed only "Connection closed by UNKNOWN port 65535"** instead of the explanation (turn on SSH on that computer). Three causes: the relay stopped waiting as soon as ssh's own banner was sent, before the peer's silence was seen; a write to the closed peer ended the proxy with SIGPIPE; and with ControlPersist, ssh sends a ProxyCommand's error output nowhere, so the message now goes to the terminal itself as well. On Windows the helper is a GUI program with no error output, so it writes to the terminal's console. *Found by feature test C4, 2026-11-09 · all platforms.* Fixed in #82; released in 1.0.238.
 - [x] **Linux: every Tailcat connection left a `tailcat socks` process running.** ssh ends its ProxyCommand with SIGHUP, which ended the helper before it could stop its tailcat. The helper now stops tailcat when it is told to end. *Found during feature test C3, 2026-11-10 · Linux.* Fixed in #82; released in 1.0.238.
 - [x] **Feature tests: Linux test copies ran the installed app's helpers.** ssh's askpass and Tailcat proxy run `flatpak run org.herbsterminal.app`, which is the installed version, not the build under test, so those tests checked old helper code. Test copies now run their helpers from the build. *Found 2026-11-10 · Linux.* Fixed in #82.
-- [ ] **A new window's first tab ignored the default profile's start folder.** Only tabs opened later started there. *Found in testing (feature test R7), 2026-11-10 · Mac, Linux, Windows.*
-  - [ ] Mac: fixed in #88.
-  - [ ] Linux: fixed in #88.
+- [x] **A new window's first tab ignored the default profile's start folder.** Only tabs opened later started there. *Found in testing (feature test R7), 2026-11-10 · Mac, Linux, Windows.*
+  - [x] Mac: fixed in #88, tested (R7).
+  - [x] Linux: fixed in #88, tested (R7).
   - [x] Windows: not affected; R7 passes.
