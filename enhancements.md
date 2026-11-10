@@ -71,3 +71,4 @@ A box is ticked once the change has shipped. A request that covers several platf
   - [x] Linux: in #88; all work.
   - [x] Windows: in #88; they report Settings' missing pages and controls (windows/pending.md).
 - [x] **Windows Settings on the Mac's five pages** (Profiles, Text, Terminal, Window, Colors), with the Mac's controls, labels and hover texts. *Requested 2026-11-10 · Windows.* In #89; R7, R9, R10, R11 work, R8 waits for background opacity and blur (windows/pending.md).
+- [ ] **Windows: background opacity and blur** for the terminal, as on the Mac (Settings ▸ Text). *Requested 2026-11-10 · Windows.* In #90.

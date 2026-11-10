@@ -621,15 +621,13 @@ The Linux shortcuts of section 11 apply, with Take Screenshot on Ctrl+Alt+S. In 
 
 - The stock face is Cascadia Mono 11 pt (Consolas where it isn't installed); Settings lists the installed monospaced fonts.
 - The color scheme (System, Light, Dark) follows Windows' app mode, title bar included.
+- **Background opacity and blur** work as on the Mac: only the terminal's background lets the desktop through, and text, the toolbar and the tab strip stay solid. Each surface is drawn into a 32-bit bitmap whose alpha is set before it reaches the screen, and DWM honors the window's alpha. Blur is Windows 11's acrylic backdrop (22H2 or later; on earlier versions the Blur setting is greyed out). While a window shows the explorer, a text editor, the MultiExec grid or the find bar, whose Windows controls can't draw see-through, its background is solid.
 - Settings has the Mac's five pages, picked with the buttons along the top (each a glyph over its name). The profile and color theme lists draw as on the Mac (Default and Built-in captions, each theme's swatch and first eight colors; right-click an imported theme to remove it), the cursor shape and appearance are linked buttons, and number fields have up and down arrows. Terminal ▸ Shell, Windows only, chooses what new tabs run.
 
 ### Not on Windows
 
 - Option as Meta: Alt always acts as Meta, as in Windows terminals.
 
-### Not yet on Windows
-
-- Background opacity and blur (Settings ▸ Text): the terminal draws with GDI, which can't make only the background see-through.
 
 ## References
 

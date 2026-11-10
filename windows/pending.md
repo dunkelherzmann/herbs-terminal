@@ -8,7 +8,7 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 ## Next (top priority)
 
 - [x] **Settings with the Mac's five pages** (#89) (Profiles, Text, Terminal, Window, Colors), their controls, labels and hover texts, the profile and color theme lists drawn as on the Mac, Bell, the Window page's buttons and preset removal. Option as Meta isn't a setting: Alt always acts as Meta (spec §12). R7, R9, R10 and R11 work. (§3, feature tests) *Found 2026-11-10.*
-- [ ] **Background opacity and blur** (Settings ▸ Text, §3): the terminal draws with GDI, which can't make only the background see-through; needs drawing the background with alpha (DirectComposition or a layered window with per-pixel alpha) and Windows 11's acrylic backdrop for blur. R8 checks it. *Found 2026-11-10.*
+- [x] **Background opacity and blur** (#90) (Settings ▸ Text, §3): the terminal's background drawn with alpha into 32-bit bitmaps, the window's alpha honored by DWM, and Windows 11's acrylic backdrop for blur; solid while the explorer, an editor, MultiExec or the find bar is shown. R8 checks it. *Found 2026-11-10.*
 - [x] **Main Menu matches the Mac's in-window menus** (#70). It holds the same menus, submenus, order and shortcuts (Edit, Shell and Window included), and no command is reachable only somewhere else; W19 checks it. (§2, §14, enhancements.md) *Asked 2026-11-09.*
 
 ## To build
