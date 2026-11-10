@@ -7,7 +7,8 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 
 ## Next (top priority)
 
-- [ ] **Settings with the Mac's five pages** (Profiles, Text, Terminal, Window, Colors), its controls and labels. Missing now: the profile list with New Profile / Duplicate / Delete Profile and a Name field (instead of Edit profile, New, Rename… and Delete…), Background opacity, Blur, the preview, Option as Meta (or a line in the spec saying Alt always acts as Meta, as on Linux), Bell, Columns and Rows fields, Apply to Open Windows, Use Front Window's Size, Reset, the Color theme list, Import iTerm2 Preset… and Remove. The Windows-only Shell choice stays, on the Terminal page. R7–R11 check it. (§3, feature tests) *Found 2026-11-10.*
+- [x] **Settings with the Mac's five pages** (#89) (Profiles, Text, Terminal, Window, Colors), their controls, labels and hover texts, the profile and color theme lists drawn as on the Mac, Bell, the Window page's buttons and preset removal. Option as Meta isn't a setting: Alt always acts as Meta (spec §12). R7, R9, R10 and R11 work. (§3, feature tests) *Found 2026-11-10.*
+- [ ] **Background opacity and blur** (Settings ▸ Text, §3): the terminal draws with GDI, which can't make only the background see-through; needs drawing the background with alpha (DirectComposition or a layered window with per-pixel alpha) and Windows 11's acrylic backdrop for blur. R8 checks it. *Found 2026-11-10.*
 - [x] **Main Menu matches the Mac's in-window menus** (#70). It holds the same menus, submenus, order and shortcuts (Edit, Shell and Window included), and no command is reachable only somewhere else; W19 checks it. (§2, §14, enhancements.md) *Asked 2026-11-09.*
 
 ## To build
