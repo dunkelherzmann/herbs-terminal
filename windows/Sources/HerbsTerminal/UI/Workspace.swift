@@ -1039,7 +1039,20 @@ final class Workspace: WindowObject {
             pane.explorer?.applyTheme()
         }
         for editor in editors { editor.applyTheme() }
+        updateTranslucency()
         InvalidateRect(hwnd, nil, false)
+    }
+
+    /// See-through terminals: on while the window shows only terminals (no explorer, editor, MultiExec grid or find
+    /// bar, whose Windows controls can't draw see-through) and one of them has a profile with opacity below 100 % or
+    /// blur.
+    private func updateTranslucency() {
+        guard let hwnd else { return }
+        var shown: [TerminalPane] = []
+        if !multiExec, let head = activePane, !head.showingExplorer { shown = head.group?.panes ?? [head] }
+        let settings = shown.contains { $0.isFinding } ? [] : shown.map { TerminalProfile.shared.settings(for: $0.profileID) }
+        let blur = settings.contains { $0.blurBackground }
+        Translucency.apply(hwnd, on: blur || settings.contains { $0.backgroundOpacity < 1 }, blur: blur)
     }
 
     // MARK: Layout
@@ -1101,6 +1114,7 @@ final class Workspace: WindowObject {
             }
             (tab as? TerminalPane)?.explorer?.move(to: rect)
         }
+        updateTranslucency()
         InvalidateRect(hwnd, nil, false)
     }
 
@@ -1108,6 +1122,7 @@ final class Workspace: WindowObject {
         guard let hwnd else { return }
         let title = activeTab.map { "\($0.title) — Herb's Terminal" } ?? "Herb's Terminal"
         withWide(title) { _ = SetWindowTextW(hwnd, $0) } // Taskbar and Alt+Tab still show it.
+        updateTranslucency()
         var rect = RECT()
         GetClientRect(hwnd, &rect)
         let state = state
@@ -1271,24 +1286,31 @@ final class Workspace: WindowObject {
             var client = RECT()
             GetClientRect(hwnd, &client)
             let height = chrome.height(dpi)
-            let dc = CreateCompatibleDC(screen)
-            let bitmap = CreateCompatibleBitmap(screen, client.right, height)
-            let old = SelectObject(dc, bitmap)
-            chrome.paint(dc, width: client.right, dpi: dpi, state: state)
-            BitBlt(screen, 0, 0, client.right, height, dc, 0, 0, DWORD(SRCCOPY))
+            let see = Translucency.isOn(for: hwnd)
+            let bar = AlphaSurface(compatibleWith: screen, width: client.right, height: height)
+            chrome.paint(bar.dc, width: client.right, dpi: dpi, state: state)
+            if see { bar.makeOpaque() }
+            bar.copy(to: screen)
+            bar.release()
             // Under the panes: shows only as the hairlines between split panes.
-            fill(screen, RECT(left: 0, top: height, right: client.right, bottom: client.bottom),
-                 multiExec ? WindowChrome.Colors(dark: appIsDark).background : WindowChrome.Colors(dark: appIsDark).border)
+            if client.bottom > height {
+                let under = AlphaSurface(compatibleWith: screen, width: client.right, height: client.bottom - height)
+                fill(under.dc, RECT(left: 0, top: 0, right: client.right, bottom: client.bottom - height),
+                     multiExec ? WindowChrome.Colors(dark: appIsDark).background : WindowChrome.Colors(dark: appIsDark).border)
+                if see { under.makeOpaque() }
+                under.copy(to: screen, y: height)
+                under.release()
+            }
             if multiExec, let controls = multiControls {
                 controls.paint(screen, focusedIndex: panes.firstIndex { $0 === focusedPane })
             }
-            SelectObject(dc, old)
-            DeleteObject(bitmap)
-            DeleteDC(dc)
             EndPaint(hwnd, &ps)
             return 0
         case WM_ERASEBKGND:
             return 1
+        case Int32(Translucency.changedMessage):
+            updateTranslucency()
+            return 0
         case WM_SETFOCUS:
             if let editor = activeEditor { editor.focus() } else { activePane?.show(true) }
             return 0

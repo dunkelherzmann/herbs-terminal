@@ -60,6 +60,11 @@ enum SettingsBridge {
             } else {
                 throw missing(label, text, items)
             }
+        case ("slider", _):
+            // Settings' sliders are percentages; the bridge speaks in fractions, as the Mac's do.
+            guard let fraction = (value as? NSNumber)?.doubleValue else { throw Failure(description: "\(label) needs a number") }
+            SendMessageW(control.hwnd, UINT(TBM_SETPOS), 1, LPARAM(Int((fraction * 100).rounded())))
+            SendMessageW(parent, UINT(WM_HSCROLL), WPARAM(SB_THUMBPOSITION), LPARAM(Int(bitPattern: UnsafeRawPointer(control.hwnd))))
         case ("text", _), ("number", _):
             // Typed (the field reports each change), then left, as when a person tabs away.
             var typed = text
@@ -134,6 +139,8 @@ enum SettingsBridge {
                 found.append(Control(kind: "choice", label: lastLabel, className: cls, hwnds: [hwnd]))
             case "ListBox":
                 found.append(Control(kind: "choice", label: title.isEmpty ? lastLabel : title, className: cls, hwnds: [hwnd]))
+            case "msctls_trackbar32":
+                found.append(Control(kind: "slider", label: lastLabel, className: cls, hwnds: [hwnd]))
             default:
                 break
             }
@@ -167,6 +174,10 @@ enum SettingsBridge {
             let value = text(of: control.hwnd)
             result["value"] = Double(value.replacingOccurrences(of: ",", with: ".")) as Any? ?? value
             if let range = rangeOf[control.hwnd] { result["min"] = range.0; result["max"] = range.1 }
+        case ("slider", _):
+            result["value"] = Double(SendMessageW(control.hwnd, UINT(TBM_GETPOS), 0, 0)) / 100
+            result["min"] = Double(SendMessageW(control.hwnd, UINT(TBM_GETRANGEMIN), 0, 0)) / 100
+            result["max"] = Double(SendMessageW(control.hwnd, UINT(TBM_GETRANGEMAX), 0, 0)) / 100
         case ("display", _):
             result["value"] = text(of: control.hwnd).components(separatedBy: ": ").dropFirst().joined(separator: ": ")
         case ("text", _):

@@ -1128,11 +1128,13 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         SetFocus(controls.field)
         SendMessageW(controls.field, UINT(EM_SETSEL), 0, -1)
         search()
+        Translucency.changed(hwnd)
     }
 
     func hideFind() {
         guard let controls = findControls else { return }
         for control in [controls.field, controls.previous, controls.next, controls.done] { ShowWindow(control, SW_HIDE) }
+        Translucency.changed(hwnd)
         matches = []
         currentMatch = nil
         clearSelection()
@@ -1234,14 +1236,9 @@ final class TerminalPane: WindowObject, TerminalDelegate {
         guard width > 0, height > 0 else { return }
 
         // Double-buffered: draw into a bitmap, then copy it out in one go.
-        let dc = CreateCompatibleDC(screen)
-        let bitmap = CreateCompatibleBitmap(screen, width, height)
-        let oldBitmap = SelectObject(dc, bitmap)
-        defer {
-            SelectObject(dc, oldBitmap)
-            DeleteObject(bitmap)
-            DeleteDC(dc)
-        }
+        let surface = AlphaSurface(compatibleWith: screen, width: width, height: height)
+        let dc = surface.dc
+        defer { surface.release() }
         fill(dc, client, colors.background)
         SetBkMode(dc, TRANSPARENT)
         let oldFont = SelectObject(dc, fonts.normal)
@@ -1308,7 +1305,10 @@ final class TerminalPane: WindowObject, TerminalDelegate {
             fill(dc, RECT(left: 0, top: 0, right: line, bottom: height), accent)
             fill(dc, RECT(left: width - line, top: 0, right: width, bottom: height), accent)
         }
-        BitBlt(screen, 0, 0, width, height, dc, 0, 0, DWORD(SRCCOPY))
+        if Translucency.isOn(for: hwnd) {
+            surface.makeBackgroundTranslucent(colors.background, opacity: TerminalProfile.shared.settings(for: profileID).backgroundOpacity)
+        }
+        surface.copy(to: screen)
     }
 
     private func drawCursor(_ dc: HDC?, line: BufferLine, column: Int, x: Int32, y: Int32) {
