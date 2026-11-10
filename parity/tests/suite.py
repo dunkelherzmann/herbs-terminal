@@ -813,7 +813,7 @@ def _(c):
     mouse(c, "move", 9, 0, shift=True, held=True)
     result = mouse(c, "up", 9, 0, shift=True)
     gets = "gets" if result["reports"] else "doesn't get"
-    c.expect("LECTME" in result["selection"],
+    c.expect("CTME-R" in result["selection"],
              f"Shift+drag didn't select while the program tracks the mouse (selected {result['selection']!r}; the program {gets} the mouse)")
     mouse(c, "down", 5, 2)
     mouse(c, "up", 5, 2)
