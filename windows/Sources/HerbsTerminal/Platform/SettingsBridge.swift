@@ -92,8 +92,9 @@ enum SettingsBridge {
         header.hwndFrom = tabs
         header.idFrom = UINT_PTR(UInt32(bitPattern: GetDlgCtrlID(tabs)))
         header.code = UINT(truncatingIfNeeded: TCN_SELCHANGE)
+        let from = header.idFrom
         _ = withUnsafeMutablePointer(to: &header) {
-            SendMessageW(GetParent(tabs), UINT(WM_NOTIFY), header.idFrom, LPARAM(Int(bitPattern: UnsafeRawPointer($0))))
+            SendMessageW(GetParent(tabs), UINT(WM_NOTIFY), WPARAM(from), LPARAM(Int(bitPattern: UnsafeRawPointer($0))))
         }
         return name
     }
