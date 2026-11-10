@@ -237,6 +237,8 @@ enum TestBridge {
             try workspace.connectSSH(login)
             return true
         case "answer": return try answer(request)
+        case "settings-page": return try SettingsBridge.page(request["page"] as? String ?? "")
+        case "settings-set": return try SettingsBridge.set(label: request["label"] as? String ?? "", value: request["value"])
         case "profile-set":
             let value = request["value"] as? String ?? ""
             let id = try workspace.selected.focusedShell.profileID

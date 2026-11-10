@@ -233,6 +233,9 @@ enum TestBridge {
                                  username: request["user"] as? String ?? "", password: request["password"] as? String ?? "")
             try workspace.connectSSH(login)
             return true
+        case "settings-page": return try SettingsBridge.page(request["page"] as? String ?? "")
+        case "settings-set":
+            return try SettingsBridge.set(page: request["page"] as? String ?? "", label: request["label"] as? String ?? "", value: request["value"])
         case "answer":
             let heading = request["heading"] as? String
             guard let dialog = Dialogs.open.values.first(where: { heading == nil || $0.heading == heading }) else {

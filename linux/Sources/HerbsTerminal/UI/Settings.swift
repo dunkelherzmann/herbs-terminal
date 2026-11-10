@@ -36,9 +36,15 @@ final class SettingsWindow {
         adw_header_bar_set_title_widget(c(window.header), switcher)
         gtk_widget_set_vexpand(stack, 1)
         append(window.content, stack)
+        SettingsBridge.show = { title in
+            let names = ["Profiles": "profiles", "Text": "text", "Terminal": "terminal", "Window": "window", "Colors": "colors"]
+            guard let name = names[title] else { return nil }
+            adw_view_stack_set_visible_child_name(c(stack), name)
+            return title
+        }
         token = profile.objectWillChange.observe { [weak self] in self?.reload() }
         themeToken = ThemeLibrary.shared.objectWillChange.observe { [weak self] in self?.reload() }
-        window.onClose = { Self.open = nil }
+        window.onClose = { Self.open = nil; SettingsBridge.clear() }
         reload()
     }
 
@@ -127,6 +133,14 @@ final class SettingsWindow {
         gtk_widget_set_hexpand(form, 1)
         [name, command, start].forEach { gtk_widget_set_hexpand($0, 1) }
         append(page, box(.horizontal, spacing: 16, [left, form]))
+        SettingsBridge.register("Profiles", "Profiles", .list(list) { [weak self] in self?.profile.profiles.map(\.name) ?? [] })
+        SettingsBridge.register("Profiles", "New Profile", .button(addButton))
+        SettingsBridge.register("Profiles", "Duplicate", .button(duplicate))
+        SettingsBridge.register("Profiles", "Delete Profile", .button(remove))
+        SettingsBridge.register("Profiles", "Name", .entry(name))
+        SettingsBridge.register("Profiles", "Run command", .entry(command))
+        SettingsBridge.register("Profiles", "Start in", .entry(start))
+        SettingsBridge.register("Profiles", "Use as Default", .button(useDefault))
 
         var ids: [UUID] = []
         on(list, "row-selected") { [weak self] args in
@@ -219,6 +233,14 @@ final class SettingsWindow {
                row("Cursor:", cursorRow, hint: "Cursor shape\nHow the text cursor is drawn in the terminal."),
                row("Background opacity:", box(.horizontal, spacing: 8, [opacity, opacityLabel]), hint: "Background opacity\nMake the terminal background see-through."),
                blink, preview, restore)
+        var previewStyle = ""
+        SettingsBridge.register("Text", "Font", .dropDown(font, ["\(ProfileSettings.stockFamily) (Basic)"] + families))
+        SettingsBridge.register("Text", "Size", .spin(size))
+        SettingsBridge.register("Text", "Cursor", .toggles(cursorButtons, CursorShape.allCases.map(\.title)))
+        SettingsBridge.register("Text", "Background opacity", .scale(opacity, 0.2...1))
+        SettingsBridge.register("Text", "Blinking cursor", .check(blink))
+        SettingsBridge.register("Text", "Preview", .display { previewStyle })
+        SettingsBridge.register("Text", "Restore Defaults", .button(restore))
         reloaders.append { [weak self] in
             guard let self else { return }
             let settings = self.profile.editing
@@ -234,8 +256,10 @@ final class SettingsWindow {
             setActive(blink, settings.cursorBlinks)
             let theme = ThemeLibrary.shared.theme(named: settings.theme)
             let colors = theme?.colors ?? TerminalTheme.basic(dark: true)
-            Styles.setStyle(preview, "font-family: \"\(settings.family)\"; font-size: \(settings.fontSize)px; color: \((colors["Foreground Color"] ?? RGB(hex: 0xFFFFFF)).css); "
-                            + "background-color: \((colors["Background Color"] ?? RGB(hex: 0)).css); border-radius: 6px;")
+            let style = "font-family: \"\(settings.family)\"; font-size: \(settings.fontSize)px; color: \((colors["Foreground Color"] ?? RGB(hex: 0xFFFFFF)).css); "
+                + "background-color: \((colors["Background Color"] ?? RGB(hex: 0)).css); border-radius: 6px;"
+            Styles.setStyle(preview, style)
+            previewStyle = style
         }
         return page
     }
@@ -266,6 +290,11 @@ final class SettingsWindow {
                row("Bell:", bell, hint: "Bell\nWhat happens when a program rings the terminal bell."),
                row("New tabs open in:", newTabs, hint: "New tabs\nWhere a new local tab's shell starts."),
                restore, ask)
+        SettingsBridge.register("Terminal", "Scrollback", .spin(scrollback))
+        SettingsBridge.register("Terminal", "Bell", .dropDown(bell, TerminalBell.allCases.map(\.title)))
+        SettingsBridge.register("Terminal", "New tabs open in", .dropDown(newTabs, ["Same folder as the current tab", "Home folder"]))
+        SettingsBridge.register("Terminal", "Restore windows and tabs when Herb's Terminal opens", .check(restore))
+        SettingsBridge.register("Terminal", "Ask before closing a tab with running processes", .check(ask))
         reloaders.append { [weak self] in
             guard let self else { return }
             let settings = self.profile.editing
@@ -315,6 +344,12 @@ final class SettingsWindow {
                row("Columns:", columns, hint: "Columns\nCharacters per line in new windows: the first number the size badge shows."),
                row("Rows:", rows, hint: "Rows\nLines of text in new windows: the second number the size badge shows."),
                box(.horizontal, spacing: 8, [apply, front, reset]))
+        SettingsBridge.register("Window", "Show columns × rows while resizing", .check(badge))
+        SettingsBridge.register("Window", "Columns", .spin(columns))
+        SettingsBridge.register("Window", "Rows", .spin(rows))
+        SettingsBridge.register("Window", "Apply to Open Windows", .button(apply))
+        SettingsBridge.register("Window", "Use Front Window's Size", .button(front))
+        SettingsBridge.register("Window", "Reset", .button(reset))
         reloaders.append { [weak self] in
             guard let self else { return }
             setActive(badge, self.profile.showSizeWhileResizing)
@@ -359,6 +394,10 @@ final class SettingsWindow {
         append(page, editingHeader(), row("Appearance:", schemes, hint: "Appearance\nLight or dark window chrome; System follows the desktop."),
                listScroll, box(.horizontal, spacing: 8, [importButton, remove]))
         var names: [String] = []
+        SettingsBridge.register("Colors", "Appearance", .toggles(schemeButtons, ["System", "Light", "Dark"]))
+        SettingsBridge.register("Colors", "Color theme", .list(list) { names.map { $0.isEmpty ? "macOS Terminal Basic" : $0 } })
+        SettingsBridge.register("Colors", "Import iTerm2 Preset…", .button(importButton))
+        SettingsBridge.register("Colors", "Remove", .button(remove))
         on(list, "row-selected") { [weak self] args in
             guard let self, !self.updating, let row = args.pointer(1) else { return }
             let index = Int(gtk_list_box_row_get_index(c(row)))
