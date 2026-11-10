@@ -929,7 +929,7 @@ def _(c):
 # Settings pages (R7–R11): the bridge reads a page's controls as the window shows them (kind, label, value, choices,
 # range, enabled) and changes one the way a person would; each test then checks the change took effect.
 # Labels are the Mac's. What a version leaves out by design (SPECIFICATION.md §11, §12) isn't asked of it.
-NOT_IN_SETTINGS = {"linux": {"Blur behind the terminal", "Use Option as Meta key"}}
+NOT_IN_SETTINGS = {"linux": {"Blur behind the terminal", "Use Option as Meta key"}, "windows": {"Use Option as Meta key"}}
 
 
 class SettingsPage:
@@ -966,10 +966,14 @@ class SettingsPage:
                 absent.append(label)
             elif kinds and control["kind"] not in kinds:
                 wrong.append(f"{label} is a {control['kind']}, not a {'/'.join(kinds)}")
-        if absent:
-            raise Outcome("missing", f"Settings ▸ {self.name} has no {', '.join(absent)} (it has: {', '.join(self.labels())})")
         if wrong:
             raise Outcome("broken", "; ".join(wrong))
+        # The rest of the page is still checked; finish() reports what's missing.
+        self.absent = absent
+
+    def finish(self):
+        if getattr(self, "absent", None):
+            raise Outcome("missing", f"Settings ▸ {self.name} has no {', '.join(self.absent)} (it has: {', '.join(self.labels())})")
 
     def need(self, label):
         control = self.find(label)
@@ -1056,6 +1060,7 @@ def _(c):
     c.until(lambda s: c.pane(s).get("profile") == "Test Renamed", "expected the new tab to keep Test Renamed")
     c.pwd()
     c.until(lambda s: "profile-start" in c.text(s), "expected a new tab with the profile to start in its start folder")
+    p.finish()
 
 
 @test("R7", "A new window starts in the default profile's start folder")
@@ -1076,11 +1081,13 @@ def _(c):
     p = open_settings(c, "Text")
     p.require(("Font", "choice"), ("Size", "number"), ("Cursor", "choice"), ("Background opacity", "slider"),
               ("Blur behind the terminal", "toggle"), ("Blinking cursor", "toggle"), "Preview", ("Restore Defaults", "button"))
-    font, size, cursor, opacity = p.need("Font"), p.need("Size"), p.need("Cursor"), p.need("Background opacity")
+    font, size, cursor = p.need("Font"), p.need("Size"), p.need("Cursor")
     c.expect(len(font.get("options", [])) >= 2, f"Font lists {font.get('options')}: expected the installed monospaced fonts")
     c.expect((size.get("min"), size.get("max")) == (6, 72), f"Size goes from {size.get('min')} to {size.get('max')}, not 6–72")
     c.expect({"Block", "Underline", "Bar"} <= set(cursor.get("options", [])), f"Cursor offers {cursor.get('options')}")
-    c.expect((opacity.get("min"), opacity.get("max")) == (0.2, 1), f"Background opacity goes from {opacity.get('min')} to {opacity.get('max')}, not 20–100 %")
+    opacity = p.find("Background opacity")
+    if opacity:
+        c.expect((opacity.get("min"), opacity.get("max")) == (0.2, 1), f"Background opacity goes from {opacity.get('min')} to {opacity.get('max')}, not 20–100 %")
     start_size, start_cursor = c.pane()["fontSize"], cursor.get("value")
     p.set("Size", 18)
     c.until(lambda s: c.pane(s)["fontSize"] == 18, "expected the open terminal to switch to 18 pt at once")
@@ -1091,8 +1098,9 @@ def _(c):
     p.expect_value("Font", other)
     p.set("Cursor", "Bar")
     p.expect_value("Cursor", "Bar")
-    p.set("Background opacity", 0.5)
-    p.expect_value("Background opacity", 0.5)
+    if opacity:
+        p.set("Background opacity", 0.5)
+        p.expect_value("Background opacity", 0.5)
     for toggle in ("Blur behind the terminal", "Blinking cursor"):
         if p.find(toggle):
             was = p.value(toggle)
@@ -1101,6 +1109,7 @@ def _(c):
     p.set("Restore Defaults", settle=1.2)
     c.until(lambda s: c.pane(s)["fontSize"] == start_size, f"expected Restore Defaults to return to {start_size} pt")
     p.expect_value("Cursor", start_cursor, "Restore Defaults left the cursor shape changed")
+    p.finish()
 
 
 @test("R9", "Settings ▸ Terminal: Option as Meta, scrollback 100–1,000,000, bell, new tabs, restore, ask before closing")
@@ -1128,6 +1137,7 @@ def _(c):
             was = p.value(toggle)
             p.set(toggle, not was)
             p.expect_value(toggle, not was)
+    p.finish()
 
 
 @test("R10", "Settings ▸ Window: columns × rows (100 × 30), size badge, Apply to Open Windows, Use Front Window's Size, Reset")
@@ -1150,6 +1160,7 @@ def _(c):
     was = p.value("Show columns × rows while resizing")
     p.set("Show columns × rows while resizing", not was)
     p.expect_value("Show columns × rows while resizing", not was)
+    p.finish()
 
 
 @test("R11", "Settings ▸ Colors: color scheme, presets, import and removal")
@@ -1178,6 +1189,7 @@ def _(c):
     answer_if_asked(c, "remove", "delete")
     c.until(lambda s: "Test Sunset" not in s.get("presets", []), "expected Remove to delete the imported preset")
     c.expect("Test Sunset" not in (p.need("Color theme").get("options") or []), "Test Sunset is still listed after Remove")
+    p.finish()
 
 manual("R12", "Light and dark for the whole app", "visual: needs pictures in light and dark mode")
 
