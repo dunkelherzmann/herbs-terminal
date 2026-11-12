@@ -2,26 +2,26 @@
 
 **Herb's Terminal** is a terminal for administrators. It runs on and manages local files and remote Linux, macOS, and Windows machines over SSH.
 
-Each tab pairs a shell with an SSH-aware file explorer. When the shell connects to another machine, the explorer follows it to the same host and account — shell, files, transfers, text editing, and permissions all in one tab.
+Each tab pairs a shell with an SSH-aware file explorer. When the shell connects to another machine, the explorer follows it to the same host and account, so the shell, files, transfers, text editing and permissions are all in one tab.
 
 ## Features
 
-- **SSH-aware file explorer** — in the style of Thunar, with a built-in text editor; follows the shell when you SSH to another host
-- **MultiExec** — type into several terminals at once, like MobaXterm
-- **Encrypted login vault** — save SSH credentials with AES-256 encryption
-- **Administrator mode** — work on files as root over SFTP, with safe upload semantics
-- **Tailcat pairing** — reach machines that can't see each other by IP, via the bundled `tailcat` helper
-- **Split panes** — horizontal and vertical splits per tab
-- **Session restore** — reopen tabs where you left them after a restart
-- **iTerm2 color preset import** — `.itermcolors` themes drop straight in
-- **SFTP transfer queue** — upload and download with progress, retry and cancel
+- A file explorer in the style of Thunar, with a built-in text editor. It follows the shell when you SSH to another host.
+- MultiExec: type into several terminals at once, as in MobaXterm.
+- A login vault that keeps SSH credentials under AES-256 encryption.
+- Administrator mode: work on files as root over SFTP. Uploads never write through an existing file.
+- Tailcat pairing: reach machines that can't see each other by IP, through the bundled `tailcat` helper.
+- Split panes, horizontal and vertical, in every tab.
+- Session restore: after a restart, tabs reopen where you left them.
+- iTerm2 color presets: import any `.itermcolors` theme.
+- An SFTP transfer queue: uploads and downloads with progress, retry and cancel.
 
 ## Requirements
 
 - **macOS:** macOS 15 or later on Apple silicon (arm64).
 - **Linux:** any distribution with Flatpak, on x86_64 or aarch64. The GNOME 49 runtime comes from Flathub.
 
-Nothing else needs to be installed. The app bundles its own SSH helpers and `tailcat`. On a Mac it uses the system's `/usr/bin/ssh`, `/bin/sh`, `/usr/libexec/sftp-server`, and `sudo` — never Homebrew or PATH copies. On Linux, shells, `ssh` and `sudo` run on your computer (outside the Flatpak sandbox), so your login shell, `~/.ssh/config` and SSH agent work as usual.
+Nothing else needs to be installed. The app bundles its own SSH helpers and `tailcat`. On a Mac it uses the system's `/usr/bin/ssh`, `/bin/sh`, `/usr/libexec/sftp-server`, and `sudo`, never Homebrew or PATH copies. On Linux, shells, `ssh` and `sudo` run on your computer (outside the Flatpak sandbox), so your login shell, `~/.ssh/config` and SSH agent work as usual.
 
 ## Installing
 
@@ -152,7 +152,7 @@ Versions are `major.minor.patch`. [`VERSION`](VERSION) holds the major and minor
 
 ## Open source
 
-Herb's Terminal is free and open source under the [MIT License](LICENSE): use it, change it and share it, for personal or commercial work. Just keep the copyright and license notice with any copy. Third-party components keep their own licenses; see [NOTICES](NOTICES).
+Herb's Terminal is free and open source under the [MIT License](LICENSE): use it, change it and share it, for personal or commercial work. Keep the copyright and license notice with any copy. Third-party components keep their own licenses; see [NOTICES](NOTICES).
 
 ## Support
 

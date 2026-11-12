@@ -72,3 +72,4 @@ A box is ticked once the change has shipped. A request that covers several platf
   - [x] Windows: in #88; they report Settings' missing pages and controls (windows/pending.md).
 - [x] **Windows Settings on the Mac's five pages** (Profiles, Text, Terminal, Window, Colors), with the Mac's controls, labels and hover texts. *Requested 2026-11-10 · Windows.* In #89; R7, R9, R10, R11 work, R8 waits for background opacity and blur (windows/pending.md).
 - [x] **Windows: background opacity and blur** for the terminal, as on the Mac (Settings ▸ Text). *Requested 2026-11-10 · Windows.* In #90; R8 works.
+- [x] **Plain wording in the explanatory docs:** a pass with the humanizer skill over `README.md`, `SPECIFICATION.md` and `windows/README.md`. *Requested 2026-11-12 · Mac, Linux, Windows.* In #93: the README's feature list and two sentences lost their long dashes, and the spec's hover-hint lists use colons. The rest already read plainly.
