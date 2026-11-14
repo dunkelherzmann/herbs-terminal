@@ -7,11 +7,11 @@ What the Mac version still needs before it can ship with as few bugs as possible
 - [x] **Every menu in the window, none in the macOS menu bar.** (#67) All menus and submenus (Shell, Edit, View, Window, Help and the rest) move into the Main Menu in the window, as on Linux and Windows, so nothing needs a trip to the top of a wide screen. The macOS menu bar keeps only the app menu macOS always shows. Every shortcut keeps working, Undo, Cut, Copy, Paste and Select All in text fields included, and every item keeps its hover text and VoiceOver label. Describe the new menu in `SPECIFICATION.md` in the same PR. (§2, enhancements.md) *Asked 2026-11-09.*
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-10 13:50)
+## Feature test results (2026-11-14 06:15)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Not checked automatically (38)
+### Not checked automatically (55)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
@@ -43,15 +43,32 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **L3** Change the Administrator Password re-encrypts everything; removing it asks. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L4** Plain text needs an explicit choice and a second confirmation. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L7** Opening asks for the Administrator Password; Skip shows plain-text logins with an unlock bar. (§6): needs the logins locked at start, which takes a second launch of the same test copy
-- [ ] **C7** Unlock… / Lock… button with the vault states. (§8): the Tailcat window isn't driven by the bridge yet
-- [ ] **Y1** Every control has a screen-reader name and hover hint (hint without repeating the name). (§9): this platform's accessibility tree is checked by parity/check.sh, not the feature tests
-- [ ] **Y2** Selected tab announced (and bold); toggles announce on/off; MultiExec checkboxes named. (§9): this platform's accessibility tree is checked by parity/check.sh, not the feature tests
-- [ ] **Y3** Password fields have visible labels. (§9): covered by the accessibility tree; not automated here
-- [ ] **Y4** Resizing follows Reduce Motion; visual bell limited to twice a second. (§9): this platform's test bridge doesn't report the visual bell yet; window resizing isn't animated on Windows; the slower fade with animations off is visual
-- [ ] **Y5** Shared accessibility identifiers on the toolbar. (§9): covered by parity/check.sh
-- [ ] **Z1** Settings, profiles or peers that can't be read are set aside, not overwritten. (§10): needs damaged files or a dropped connection (fault injection, not automated yet)
-- [ ] **Z2** Login database that can't be opened: in-memory store, Manage Logins off. (§10): needs damaged files or a dropped connection (fault injection, not automated yet)
-- [ ] **Z3** Export files readable only by you. (§10): needs damaged files or a dropped connection (fault injection, not automated yet)
-- [ ] **Z5** Self-contained: nothing extra to install. (§10): checked by each platform's packaging script
+- [ ] **L10** Export ticked logins (checkbox column with select-all heading), file readable only by you,… (§6): no test yet
+- [ ] **L11** Double-click edits; Delete key or right-click removes after a confirmation defaulting to Cancel. (§6): no test yet
+- [ ] **L12** Snippets: a lock next to Connect via SSH lists snippets (commands, sudo passwords, any text) by… (§6): no test yet
+- [ ] **L13** Manage Snippets: Name, Snippets and Description; New, Edit and Delete; a vault of its own under… (§6): no test yet
+- [ ] **U1** MultiExec grid of every terminal in the window, each with number, title and include checkbox. (§7): no test yet
+- [ ] **U2** Typing or pasting into an included terminal goes to all included ones. (§7): no test yet
+- [ ] **U3** Pick terminal by number, close only the active one, Esc leaves. (§7): no test yet
+- [ ] **U4** Bar: count of receivers, New Tab, Connect via SSH, Include All, Close All (asks), Exit MultiExec. (§7): no test yet
+- [ ] **U5** Only your own input is broadcast. (§7): no test yet
+- [ ] **U6** Run Command on Hosts: targets are selected saved logins and the live connection, own ssh channel… (§7): no test yet
+- [ ] **U7** Results per host: outcome, exit code, duration, output (64 KB cap, marked truncated). (§7): no test yet
+- [ ] **C1** Add a peer: name, username, secret address, One-time or Persistent; addresses protected like logins. (§8): no test yet
+- [ ] **C2** Ping: Direct or Relayed with latency. (§8): no test yet
+- [ ] **C3** Connect: shell and explorer through Tailcat, address never in arguments or history. (§8): no test yet
+- [ ] **C4** Clear message when nothing answers SSH on the peer. (§8): no test yet
+- [ ] **C5** Remove a peer. (§8): no test yet
+- [ ] **C6** Share this computer: `tailcat serve`, one-time or persistent, address with Copy and Stop; checks… (§8): no test yet
+- [ ] **C7** Unlock… / Lock… button with the vault states. (§8): no test yet
+- [ ] **Y1** Every control has a screen-reader name and hover hint (hint without repeating the name). (§9): no test yet
+- [ ] **Y2** Selected tab announced (and bold); toggles announce on/off; MultiExec checkboxes named. (§9): no test yet
+- [ ] **Y3** Password fields have visible labels. (§9): no test yet
+- [ ] **Y4** Resizing follows Reduce Motion; visual bell limited to twice a second. (§9): no test yet
+- [ ] **Y5** Shared accessibility identifiers on the toolbar. (§9): no test yet
+- [ ] **Z1** Settings, profiles or peers that can't be read are set aside, not overwritten. (§10): no test yet
+- [ ] **Z2** Login database that can't be opened: in-memory store, Manage Logins off. (§10): no test yet
+- [ ] **Z3** Export files readable only by you. (§10): no test yet
+- [ ] **Z5** Self-contained: nothing extra to install. (§10): no test yet
 
 <!-- feature-tests:end -->

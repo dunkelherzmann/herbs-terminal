@@ -309,11 +309,8 @@ final class TailcatShare: ObservableObject {
     }
 }
 
-/// "<tab name> <yyyy-MM-dd HH-mm>.txt", with characters that can't be in a file name replaced.
+/// "<tab name> <Unix time in seconds>.txt", with characters that can't be in a file name replaced.
 func sessionFileName(title: String, date: Date = Date()) -> String {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.dateFormat = "yyyy-MM-dd HH-mm"
     let name = title.map { "/:\\".contains($0) ? "-" : $0 }
-    return String(name).trimmingCharacters(in: .whitespaces) + " " + formatter.string(from: date) + ".txt"
+    return String(name).trimmingCharacters(in: .whitespaces) + " " + String(Int(date.timeIntervalSince1970)) + ".txt"
 }

@@ -41,7 +41,7 @@ It covers the everyday features of the stock macOS Terminal and Ptyxis. It adds:
   - Passwords and tokens in a command line (`user:pass@host`, `--password=`, `*_TOKEN=`) are hidden before the title is shown.
   - Double-click the title to return the window to its default size and the text to its default zoom. Right-click it to make the current size and text size the defaults.
 - **Right:**
-  - **Export Session** (⌘S): saves everything in the active terminal, scrollback included, to a text file named after the tab and the time, for example `Terminal 2 2026-11-06 09-05.txt`.
+  - **Export Session** (⌘S): saves everything in the active terminal, scrollback included, to a text file named after the tab and the time in Unix time (seconds since 1 January 1970, UTC), for example `Terminal 2 1794474300.txt`.
   - **Take Screenshot** (⇧⌘S): copies a picture of the whole window, as it looks now, to the clipboard, ready to paste anywhere.
   - **Show File Explorer / Show Terminal**: switch the tab between its shell and its explorer.
   - **MultiExec**.

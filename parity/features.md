@@ -13,7 +13,7 @@ When the Mac gains a feature, add it here with the next free id in its group.
 - **W3** Title in the middle: `user@host ~`, following the shell's title, current folder and foreground program; home shown as `~`.
 - **W4** Secrets in a command line (`user:pass@`, `--password=`, `*_TOKEN=`) hidden in the title.
 - **W5** Double-click the title: default window size and text zoom. Right-click: make the current size and text size the defaults.
-- **W6** Export Session button and shortcut: whole scrollback to `<tab> <date time>.txt`.
+- **W6** Export Session button and shortcut: whole scrollback to `<tab> <Unix time>.txt`, the time in seconds.
 - **W7** Take Screenshot button and shortcut: picture of the window to the clipboard.
 - **W8** Show File Explorer / Show Terminal button.
 - **W9** MultiExec button (toggle).
@@ -27,6 +27,7 @@ When the Mac gains a feature, add it here with the next free id in its group.
 - **W17** Hover hints on every control after about half a second, also in the background; screen readers get the same text.
 - **W18** New Window.
 - **W19** Every menu in the window: on the Mac the system menu bar holds only the app menu, the Main Menu has Edit, Shell and Window submenus, Hide and Quit, and every shortcut still works. On Linux and Windows the Main Menu holds Edit, Shell and Window in the Mac's order.
+- **W20** A closed window leaves the session: after New Window and closing that window with its close button, the session holds one window, so the next launch opens one.
 
 ## T: Tabs
 

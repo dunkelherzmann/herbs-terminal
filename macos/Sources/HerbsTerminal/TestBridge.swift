@@ -136,6 +136,11 @@ enum TestBridge {
         case "session-snapshot":
             // Every window as session restore would save it (the test copy never writes it).
             return try JSONSerialization.jsonObject(with: try JSONEncoder().encode(SessionRestore.snapshot(Workspace.all)))
+        case "close-window":
+            // The newest window closed with its close button, as a person would.
+            guard let window = Workspace.all.last?.window else { throw Failure(description: "no window") }
+            window.performClose(nil)
+            return true
         case "session-open":
             // Reopens windows from a snapshot, as the next launch would.
             let data = try JSONSerialization.data(withJSONObject: request["windows"] ?? [])

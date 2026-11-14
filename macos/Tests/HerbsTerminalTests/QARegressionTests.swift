@@ -269,11 +269,10 @@ func exportSessionSavesTheWholeTextUnderTheTabNameAndTime() throws {
     let text = Workspace.sessionText(shell)
     #expect(text.hasPrefix("line 1\n") && text.contains("line 150\n") && text.hasSuffix("last line\n"))
 
-    var parts = DateComponents()
-    parts.year = 2026; parts.month = 11; parts.day = 6; parts.hour = 9; parts.minute = 5
-    let date = try #require(Calendar.current.date(from: parts))
-    #expect(Workspace.sessionFileName(title: "Terminal 2", date: date) == "Terminal 2 2026-11-06 09-05.txt")
-    #expect(Workspace.sessionFileName(title: "logs/prod: web", date: date) == "logs-prod- web 2026-11-06 09-05.txt")
+    // The time is Unix time in whole seconds, the same in every time zone.
+    let date = Date(timeIntervalSince1970: 1_794_474_300.7)
+    #expect(Workspace.sessionFileName(title: "Terminal 2", date: date) == "Terminal 2 1794474300.txt")
+    #expect(Workspace.sessionFileName(title: "logs/prod: web", date: date) == "logs-prod- web 1794474300.txt")
 }
 
 @Test(.timeLimit(.minutes(2))) @MainActor
