@@ -70,6 +70,11 @@ final class Workspace: ObservableObject {
     /// Every open window's workspace, for quitting and for saving the session.
     private static var registry: [WeakWorkspace] = []
     static var all: [Workspace] { registry.compactMap(\.value) }
+    /// A closed window leaves the list at once: its workspace can outlive the window for a while, and it must
+    /// not be saved with the session (it would reopen as an extra window) or counted when quitting.
+    func windowClosed() { Self.registry.removeAll { $0.value == nil || $0.value === self } }
+    /// Set once this window has asked for the next window from the last session, so it asks only once.
+    var openedNextRestored = false
     private struct WeakWorkspace { weak var value: Workspace? }
 
     /// MultiExec, like MobaXterm's: every pane of every tab in a grid, and what you type in an included
@@ -196,7 +201,7 @@ final class Workspace: ObservableObject {
     }
 
     /// Export Session (⌘S): the focused terminal's whole text, scrollback included, to a text file named
-    /// after the tab and the time, for example "Terminal 2 2026-11-06 00-35.txt". In an editor tab, ⌘S saves.
+    /// after the tab and the time in Unix time (seconds), for example "Terminal 2 1794700800.txt". In an editor tab, ⌘S saves.
     func exportSession() {
         if let editor = selected.editor { editor.save(); return }
         let text = Self.sessionText(selected.focusedShell)
@@ -272,13 +277,10 @@ final class Workspace: ObservableObject {
         return lines.joined(separator: "\n") + "\n"
     }
 
-    /// "<tab name> <yyyy-MM-dd HH-mm>.txt", with characters that can't be in a file name replaced.
+    /// "<tab name> <Unix time in seconds>.txt", with characters that can't be in a file name replaced.
     static func sessionFileName(title: String, date: Date = Date()) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd HH-mm"
         let name = title.map { "/:\\".contains($0) ? "-" : $0 }
-        return String(name).trimmingCharacters(in: .whitespaces) + " " + formatter.string(from: date) + ".txt"
+        return String(name).trimmingCharacters(in: .whitespaces) + " " + String(Int(date.timeIntervalSince1970)) + ".txt"
     }
 
     /// ⌘1–⌘9: the tab at that position; ⌘9 is the last tab, as in Terminal and Safari.
@@ -936,7 +938,10 @@ private struct ActiveWorkspace: View {
         .focusedSceneValue(\.workspace, workspace)
         // Each extra window from the last session opens its own workspace, which takes the next saved window.
         .onAppear {
-            if SessionRestore.hasPending { openWindow(id: "session") }
+            if SessionRestore.hasPending, !workspace.openedNextRestored {
+                workspace.openedNextRestored = true
+                openWindow(id: "session")
+            }
             if TestBridge.isActive { TestBridge.openWindow = { openWindow(id: "session") } }
             SettingsOpener.action = { openSettings() }
         }
@@ -1086,6 +1091,11 @@ final class WindowCloseGuard: NSObject, NSWindowDelegate {
             }
         }
         return Workspace.confirmClosing(workspace.tabs, scope: "this window")
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        original?.windowWillClose?(notification)
+        workspace?.windowClosed()
     }
 
     override func responds(to selector: Selector!) -> Bool {

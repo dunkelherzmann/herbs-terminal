@@ -737,10 +737,9 @@ final class Workspace: WindowObject {
     /// Export Session: everything in the terminal, scrollback included, to a text file named after the tab and time.
     func exportSession() {
         guard let pane = focusedPane else { return }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH-mm"
         let safe = pane.tabName.map { "\\/:*?\"<>|".contains($0) ? "-" : $0 }
-        let name = String(safe) + " " + formatter.string(from: Date()) + ".txt"
+        // The time is Unix time in seconds, for example "Terminal 2 1794474300.txt".
+        let name = String(safe) + " " + String(Int(Date().timeIntervalSince1970)) + ".txt"
         guard let path = saveFile(owner: hwnd, title: "Export Session", name: name, filter: [("Text files (*.txt)", "*.txt")],
                                   defaultExtension: "txt") else { return }
         do {

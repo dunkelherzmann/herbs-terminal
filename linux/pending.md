@@ -7,16 +7,17 @@ What the Linux version still needs before it can ship with as few bugs as possib
 - [x] **Main Menu matches the Mac's in-window menus** (#70). It holds the same menus, submenus, order and shortcuts (Edit, Shell and Window included), and no command is reachable only somewhere else; W19 checks it. (§2, §14, enhancements.md) *Asked 2026-11-09.*
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-10 13:12)
+## Feature test results (2026-11-14 05:52)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Not checked automatically (40)
+### Not checked automatically (41)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
 - [ ] **W2** Connect via SSH button; highlighted while connected, then shows the connection details (account,… (§2): checked as S10
 - [ ] **W17** Hover hints on every control after about half a second, also in the background; screen readers get… (§2): covered by parity/check.sh (hover texts through the accessibility tree)
+- [ ] **W20** A closed window leaves the session: after New Window and closing that window with its close… (§2): this platform's test bridge can't close a window or read the session yet
 - [ ] **P5** Focused pane outlined; Zoom, Clear, Reset and Find act on it. (§2): visual: shown in the window's picture, not reported by the bridge
 - [ ] **P6** The tab's SSH connection and explorer belong to its first pane; the next pane takes over when it… (§2): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **B6** Bell: sound, flash, both or none; flash at most twice a second, gentle with Reduce Motion. (§2): sound and flash can't be observed by the bridge

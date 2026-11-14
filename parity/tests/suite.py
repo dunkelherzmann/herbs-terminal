@@ -371,7 +371,9 @@ def _(c):
         files = [f for f in os.listdir(folder) if f.endswith(".txt")]
         return files and marker in open(os.path.join(folder, files[0]), encoding="utf-8", errors="replace").read() and files[0]
     name = c.until(lambda s: exported(), "expected the session saved as a text file with the scrollback", timeout=10) and exported()
-    c.expect(re.match(r"Terminal 1 \d{4}-\d{2}-\d{2} \d{2}-\d{2}(-\d{2})?\.txt$", name), f"expected the file named after the tab and the time, saw {name!r}")
+    # The time is Unix time in seconds; the test host's clock is the app's, so it is within the last few minutes.
+    stamp = re.match(r"Terminal 1 (\d+)\.txt$", name)
+    c.expect(stamp and abs(time.time() - int(stamp.group(1))) < 300, f"expected the file named after the tab and the Unix time, saw {name!r}")
 
 @test("W7", "Take Screenshot copies the window")
 def _(c):
@@ -446,6 +448,21 @@ manual("W17", "Hover hints", "covered by parity/check.sh (hover texts through th
 def _(c):
     c.command("new-window", settle=2)
     c.until(lambda s: len(s["windows"]) == 2, "expected a second window")
+
+@test("W20", "A closed window isn't saved with the session")
+def _(c):
+    c.command("new-window", settle=2)
+    c.until(lambda s: len(s["windows"]) == 2, "expected a second window")
+    try:
+        c.bridge.call("close-window")
+        time.sleep(1.5)
+        snapshot = c.bridge.call("session-snapshot")
+    except bridge_module.BridgeError as error:
+        if "unknown op" in str(error):
+            c.unverified("this platform's test bridge can't close a window or read the session yet")
+        raise
+    c.until(lambda s: len(s["windows"]) == 1, "expected one window after closing the second")
+    c.expect(len(snapshot) == 1, f"expected the session to hold one window, saw {len(snapshot)}")
 
 # ---------------------------------------------------------------- T: Tabs
 

@@ -151,7 +151,7 @@ enum ThemesAndText {
     }
 
     @MainActor static func sessionNamesAndRedaction() throws {
-        expect(sessionFileName(title: "a/b", date: Date(timeIntervalSince1970: 0)).hasPrefix("a-b 1970-01-01"))
+        expect(sessionFileName(title: "a/b", date: Date(timeIntervalSince1970: 1_794_474_300.7)) == "a-b 1794474300.txt")
         expect(redactCredentials("curl https://user:pw@host --password=x") == "curl https://user:•••@host --password=•••")
     }
 }

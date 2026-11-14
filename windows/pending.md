@@ -58,20 +58,26 @@ project's `enhancements.md` and `bugs.md` stay the record of requests and releas
 - [x] Dropping files on the terminal types their paths (#15)
 
 <!-- feature-tests:start -->
-## Feature test results (2026-11-10 17:21)
+## Feature test results (2026-11-14 05:57)
 
 Written by `parity/tests/report.py`; rerun the tests and the report rather than editing this part.
 
-### Not checked automatically (35)
+### Not checked automatically (39)
 
 Try these by hand before a release, or extend the test bridge so a test can check them.
 
 - [ ] **W2** Connect via SSH button; highlighted while connected, then shows the connection details (account,… (§2): checked as S10
 - [ ] **W17** Hover hints on every control after about half a second, also in the background; screen readers get… (§2): covered by parity/check.sh (hover texts through the accessibility tree)
+- [ ] **W20** A closed window leaves the session: after New Window and closing that window with its close… (§2): this platform's test bridge can't close a window or read the session yet
 - [ ] **P5** Focused pane outlined; Zoom, Clear, Reset and Find act on it. (§2): visual: shown in the window's picture, not reported by the bridge
 - [ ] **P6** The tab's SSH connection and explorer belong to its first pane; the next pane takes over when it… (§2): needs an SSH test host (HERBS_TEST_SSH or ~/.config/herbs-terminal/test-ssh: user@host:port:password)
 - [ ] **B6** Bell: sound, flash, both or none; flash at most twice a second, gentle with Reduce Motion. (§2): sound and flash can't be observed by the bridge
 - [ ] **B14** Full color, bold/italic/underline, wide characters, mouse reporting for full-screen programs. (§2): visual: needs the window's picture compared with the Mac's
+- [ ] **R7** Settings ▸ Profiles: add, duplicate, rename, delete, choose the default; startup command and start… (§3): Settings opens; its Profiles page isn't read by the bridge yet
+- [ ] **R8** Settings ▸ Text: any installed monospaced font, 6–72 pt, cursor shape and blink, opacity 20–100 %,… (§3): Settings opens; its Text page isn't read by the bridge yet
+- [ ] **R9** Settings ▸ Terminal: Option as Meta, scrollback 100–1,000,000, bell, where new tabs open, restore… (§3): Settings opens; its Terminal page isn't read by the bridge yet
+- [ ] **R10** Settings ▸ Window: columns × rows for new windows (default 100 × 30), size badge toggle, Apply to… (§3): Settings opens; its Window page isn't read by the bridge yet
+- [ ] **R11** Settings ▸ Colors: color scheme, presets, import and removal. (§3): Settings opens; its Colors page isn't read by the bridge yet
 - [ ] **R12** Light and dark follow the system, for the whole app (dialogs and Settings included). (§3): visual: needs pictures in light and dark mode
 - [ ] **S6** Shared connection (ControlMaster) so the explorer and transfers reuse the shell's login; keepalive… (§4): needs the user's own ssh setup or a dropped link; not automated yet
 - [ ] **S8** Host-key questions, one-time codes and retries asked in the terminal. (§4): needs the user's own ssh setup or a dropped link; not automated yet
@@ -91,8 +97,6 @@ Try these by hand before a release, or extend the test bridge so a test can chec
 - [ ] **L3** Change the Administrator Password re-encrypts everything; removing it asks. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L4** Plain text needs an explicit choice and a second confirmation. (§6): covered by the unit and self tests of the shared vault code
 - [ ] **L7** Opening asks for the Administrator Password; Skip shows plain-text logins with an unlock bar. (§6): needs the logins locked at start, which takes a second launch of the same test copy
-- [ ] **C3** Connect: shell and explorer through Tailcat, address never in arguments or history. (§8): needs the test host shared over tailcat (~/.config/herbs-terminal/test-tailcat holds its address)
-- [ ] **C4** Clear message when nothing answers SSH on the peer. (§8): needs a peer whose SSH service is off (parity/tests/tailcat-host.sh shares one for a run)
 - [ ] **C7** Unlock… / Lock… button with the vault states. (§8): the Tailcat window isn't driven by the bridge yet
 - [ ] **Y3** Password fields have visible labels. (§9): covered by the accessibility tree; not automated here
 - [ ] **Y4** Resizing follows Reduce Motion; visual bell limited to twice a second. (§9): window resizing isn't animated on Windows; the slower fade with animations off is visual
