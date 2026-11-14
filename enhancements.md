@@ -75,6 +75,6 @@ A box is ticked once the change has shipped. A request that covers several platf
 - [x] **Plain wording in the explanatory docs:** a pass with the humanizer skill over `README.md`, `SPECIFICATION.md` and `windows/README.md`. *Requested 2026-11-12 · Mac, Linux, Windows.* In #93: the README's feature list and two sentences lost their long dashes, and the spec's hover-hint lists use colons. The rest already read plainly.
 - [x] **Release 1.0.248 on GitHub,** with the latest build for each system. *Requested 2026-11-12 · Mac, Linux, Windows.* Published as `v1.0.248` from #93's commit: the Mac zip, the Linux Flatpak for x86_64 and aarch64 and the Windows zip, each built on its own system (the aarch64 one by GitHub's build of the same commit). Installed on the Mac, Linux and Windows.
 - [ ] **Export Session names the file with the time in Unix time** (seconds), for example `Terminal 2 1794474300.txt`, instead of the date and time. *Requested 2026-11-14 · Mac, Linux, Windows.*
-  - [ ] Mac
-  - [ ] Linux
-  - [ ] Windows
+  - [ ] Mac: in #95, tested (W6).
+  - [ ] Linux: in #95, tested (W6).
+  - [ ] Windows: in #95, tested (W6).
